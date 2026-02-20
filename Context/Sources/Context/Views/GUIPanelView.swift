@@ -47,18 +47,15 @@ struct GUIPanelView: View {
 
             Divider()
 
-            // Tab content - placeholders for now
+            // Tab content
             Group {
                 switch appState.selectedTab {
                 case .dashboard:
-                    Text("Dashboard")
-                        .foregroundColor(.secondary)
+                    DashboardView()
                 case .sessions:
-                    Text("Sessions")
-                        .foregroundColor(.secondary)
+                    SessionListView()
                 case .tasks:
-                    Text("Tasks")
-                        .foregroundColor(.secondary)
+                    KanbanBoard()
                 case .notes:
                     Text("Notes")
                         .foregroundColor(.secondary)
