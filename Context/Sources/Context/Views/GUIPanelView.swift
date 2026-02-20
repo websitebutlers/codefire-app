@@ -57,11 +57,9 @@ struct GUIPanelView: View {
                 case .tasks:
                     KanbanBoard()
                 case .notes:
-                    Text("Notes")
-                        .foregroundColor(.secondary)
+                    NoteListView()
                 case .memory:
-                    Text("Memory")
-                        .foregroundColor(.secondary)
+                    PatternListView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
