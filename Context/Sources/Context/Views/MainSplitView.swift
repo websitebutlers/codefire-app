@@ -11,10 +11,10 @@ struct MainSplitView: View {
                 .frame(minWidth: 160, maxWidth: 240)
 
             TerminalTabView(projectPath: $projectPath)
-                .frame(minWidth: 400, idealWidth: 600)
+                .frame(minWidth: 300, idealWidth: 450, maxWidth: 550)
 
             GUIPanelView()
-                .frame(minWidth: 400, idealWidth: 600)
+                .frame(minWidth: 420, idealWidth: 720)
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .ignoresSafeArea()
@@ -28,7 +28,10 @@ struct MainSplitView: View {
 }
 
 /// Configures the hosting NSWindow for a seamless title-bar appearance.
+/// Optionally sets a window title (visible in Mission Control / Window menu).
 struct WindowConfigurator: NSViewRepresentable {
+    var title: String? = nil
+
     typealias NSViewType = NSView
 
     func makeNSView(context: NSViewRepresentableContext<WindowConfigurator>) -> NSView {
@@ -45,9 +48,18 @@ struct WindowConfigurator: NSViewRepresentable {
                 window.toolbar = NSToolbar()
             }
             window.toolbar?.showsBaselineSeparator = false
+            if let title {
+                window.title = title
+            }
         }
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: NSViewRepresentableContext<WindowConfigurator>) {}
+    func updateNSView(_ nsView: NSView, context: NSViewRepresentableContext<WindowConfigurator>) {
+        DispatchQueue.main.async {
+            if let title, let window = nsView.window {
+                window.title = title
+            }
+        }
+    }
 }

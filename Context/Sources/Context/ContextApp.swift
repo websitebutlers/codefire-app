@@ -106,6 +106,14 @@ struct ContextApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1400, height: 900)
 
+        WindowGroup(for: String.self) { $projectId in
+            if let projectId {
+                ProjectWindowView(projectId: projectId)
+            }
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1200, height: 850)
+
         Settings {
             SettingsView(settings: appSettings)
         }

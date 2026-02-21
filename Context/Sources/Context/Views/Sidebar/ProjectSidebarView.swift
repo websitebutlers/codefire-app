@@ -5,6 +5,7 @@ import AppKit
 
 struct ProjectSidebarView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.openWindow) private var openWindow
 
     @State private var showingNewClient = false
     @State private var newClientName = ""
@@ -216,7 +217,7 @@ struct ProjectSidebarView: View {
             isSelected: isSelected,
             accentColor: .accentColor
         ) {
-            appState.selectProject(project)
+            openWindow(value: project.id)
         }
         .padding(.leading, 20)
         .padding(.trailing, 8)
