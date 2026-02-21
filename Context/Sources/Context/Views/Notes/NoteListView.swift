@@ -2,6 +2,7 @@ import SwiftUI
 import GRDB
 
 struct NoteListView: View {
+    var globalMode: Bool = false
     @EnvironmentObject var appState: AppState
     @State private var notes: [Note] = []
     @State private var selectedNote: Note?
@@ -102,17 +103,26 @@ struct NoteListView: View {
     // MARK: - CRUD
 
     private func loadNotes() {
-        guard let project = appState.currentProject else {
-            notes = []
-            return
-        }
-
         do {
-            notes = try DatabaseService.shared.dbQueue.read { db in
-                try Note
-                    .filter(Column("projectId") == project.id)
-                    .order(Column("updatedAt").desc)
-                    .fetchAll(db)
+            if globalMode {
+                notes = try DatabaseService.shared.dbQueue.read { db in
+                    try Note
+                        .filter(Column("isGlobal") == true)
+                        .order(Column("updatedAt").desc)
+                        .fetchAll(db)
+                }
+            } else {
+                guard let project = appState.currentProject else {
+                    notes = []
+                    return
+                }
+                notes = try DatabaseService.shared.dbQueue.read { db in
+                    try Note
+                        .filter(Column("projectId") == project.id)
+                        .filter(Column("isGlobal") == false)
+                        .order(Column("updatedAt").desc)
+                        .fetchAll(db)
+                }
             }
         } catch {
             print("NoteListView: failed to load notes: \(error)")
@@ -120,18 +130,25 @@ struct NoteListView: View {
     }
 
     private func createNote() {
-        guard let project = appState.currentProject else { return }
+        let projectId: String
+        if globalMode {
+            projectId = "__global__"
+        } else {
+            guard let project = appState.currentProject else { return }
+            projectId = project.id
+        }
 
         let now = Date()
         var note = Note(
             id: nil,
-            projectId: project.id,
+            projectId: projectId,
             title: "Untitled Note",
             content: "",
             pinned: false,
             sessionId: nil,
             createdAt: now,
-            updatedAt: now
+            updatedAt: now,
+            isGlobal: globalMode
         )
 
         do {

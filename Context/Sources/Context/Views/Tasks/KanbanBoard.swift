@@ -3,6 +3,7 @@ import GRDB
 import UniformTypeIdentifiers
 
 struct KanbanBoard: View {
+    var globalMode: Bool = false
     @EnvironmentObject var appState: AppState
     @State private var todoTasks: [TaskItem] = []
     @State private var inProgressTasks: [TaskItem] = []
@@ -136,21 +137,28 @@ struct KanbanBoard: View {
     }
 
     private func loadTasks() {
-        guard let project = appState.currentProject else {
-            todoTasks = []
-            inProgressTasks = []
-            doneTasks = []
-            return
-        }
-
         do {
-            let allTasks = try DatabaseService.shared.dbQueue.read { db in
-                try TaskItem
-                    .filter(Column("projectId") == project.id)
-                    .order(Column("priority").desc, Column("createdAt").desc)
-                    .fetchAll(db)
+            let allTasks: [TaskItem]
+            if globalMode {
+                allTasks = try DatabaseService.shared.dbQueue.read { db in
+                    try TaskItem
+                        .filter(Column("isGlobal") == true)
+                        .order(Column("priority").desc, Column("createdAt").desc)
+                        .fetchAll(db)
+                }
+            } else {
+                guard let project = appState.currentProject else {
+                    todoTasks = []; inProgressTasks = []; doneTasks = []
+                    return
+                }
+                allTasks = try DatabaseService.shared.dbQueue.read { db in
+                    try TaskItem
+                        .filter(Column("projectId") == project.id)
+                        .filter(Column("isGlobal") == false)
+                        .order(Column("priority").desc, Column("createdAt").desc)
+                        .fetchAll(db)
+                }
             }
-
             todoTasks = allTasks.filter { $0.status == "todo" }
             inProgressTasks = allTasks.filter { $0.status == "in_progress" }
             doneTasks = allTasks.filter { $0.status == "done" }
@@ -178,6 +186,9 @@ struct KanbanBoard: View {
 
     private func createTask(_ task: TaskItem) {
         var newTask = task
+        if globalMode {
+            newTask.isGlobal = true
+        }
         do {
             try DatabaseService.shared.dbQueue.write { db in
                 try newTask.insert(db)
@@ -435,7 +446,7 @@ struct NewTaskSheet: View {
                     if !title.trimmingCharacters(in: .whitespaces).isEmpty {
                         var task = TaskItem(
                             id: nil,
-                            projectId: appState.currentProject?.id ?? "",
+                            projectId: appState.currentProject?.id ?? "__global__",
                             title: title.trimmingCharacters(in: .whitespaces),
                             description: description.isEmpty ? nil : description,
                             status: "todo",
