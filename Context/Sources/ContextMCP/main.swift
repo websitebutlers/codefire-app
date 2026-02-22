@@ -126,6 +126,37 @@ struct BrowserCommand: Codable, FetchableRecord, MutablePersistableRecord {
     }
 }
 
+struct CodeChunk: Codable, FetchableRecord {
+    var id: String
+    var fileId: String
+    var projectId: String
+    var chunkType: String
+    var symbolName: String?
+    var content: String
+    var startLine: Int?
+    var endLine: Int?
+    var embedding: Data?
+
+    static let databaseTableName = "codeChunks"
+
+    var embeddingVector: [Float]? {
+        guard let data = embedding else { return nil }
+        return data.withUnsafeBytes { buffer in
+            Array(buffer.bindMemory(to: Float.self))
+        }
+    }
+}
+
+struct IndexState: Codable, FetchableRecord {
+    var projectId: String
+    var status: String
+    var lastFullIndexAt: Date?
+    var totalChunks: Int
+    var lastError: String?
+
+    static let databaseTableName = "indexState"
+}
+
 // MARK: - MCP Protocol Types
 
 struct MCPError: LocalizedError {
@@ -809,6 +840,30 @@ class MCPServer {
                     ]
                 ]
             ],
+            // Context Engine
+            [
+                "name": "context_search",
+                "description": "Semantic code search across the current project. Finds functions, classes, documentation, and git history matching a natural language query. Uses hybrid vector similarity + keyword search.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "query": [
+                            "type": "string",
+                            "description": "Natural language description of what you're looking for in the codebase"
+                        ],
+                        "limit": [
+                            "type": "integer",
+                            "description": "Maximum results to return (default 10, max 30)"
+                        ],
+                        "types": [
+                            "type": "array",
+                            "items": ["type": "string", "enum": ["function", "class", "block", "doc", "commit"]],
+                            "description": "Filter by chunk type (optional, defaults to all)"
+                        ]
+                    ],
+                    "required": ["query"]
+                ] as [String: Any]
+            ] as [String: Any],
         ]
     }
 
@@ -861,6 +916,7 @@ class MCPServer {
             case "browser_drag":       result = try browserDrag(args)
             case "browser_iframe":     result = try browserIframe(args)
             case "browser_clear_session": result = try browserClearSession(args)
+            case "context_search":     result = try contextSearch(args)
             default:
                 return errorResponse(id: req.id, code: -32602, message: "Unknown tool: \(toolName)")
             }
@@ -1659,6 +1715,246 @@ class MCPServer {
             try BrowserCommand.deleteOne(db, key: commandId)
         }
         throw MCPError(message: "Browser command timed out after \(Int(timeout))s. Is Context.app running with the browser tab visible?")
+    }
+
+    // MARK: - Context Engine
+
+    func contextSearch(_ args: [String: Any]?) throws -> String {
+        guard let query = args?["query"] as? String, !query.isEmpty else {
+            throw MCPError(message: "Missing required parameter: query")
+        }
+
+        let limit = args?["limit"] as? Int ?? 10
+        let types = args?["types"] as? [String]
+
+        guard let projectId = detectedProjectId else {
+            throw MCPError(message: "No project detected. Run from within a project directory.")
+        }
+
+        // Check index state
+        let state = try db.read { conn in
+            try IndexState.fetchOne(conn, sql: "SELECT * FROM indexState WHERE projectId = ?", arguments: [projectId])
+        }
+
+        let indexStatus = state?.status ?? "not_indexed"
+
+        if indexStatus == "not_indexed" || state == nil {
+            return formatJSON([
+                "results": [] as [Any],
+                "index_status": "not_indexed",
+                "message": "Project not yet indexed. Open the project in Context.app to start indexing."
+            ])
+        }
+
+        // Get API key for query embedding
+        guard let apiKey = UserDefaults.standard.string(forKey: "openRouterAPIKey"), !apiKey.isEmpty else {
+            throw MCPError(message: "OpenRouter API key not configured. Set it in Context.app Settings > Context Engine.")
+        }
+
+        let model = UserDefaults.standard.string(forKey: "embeddingModel") ?? "openai/text-embedding-3-small"
+
+        // Embed the query
+        let queryVector = try embedQuery(query: query, apiKey: apiKey, model: model)
+
+        // Load all chunks with embeddings for this project
+        let chunks: [(CodeChunk, String)] = try db.read { conn in
+            var sql = """
+                SELECT c.*, f.relativePath
+                FROM codeChunks c
+                JOIN indexedFiles f ON c.fileId = f.id
+                WHERE c.projectId = ?
+            """
+            var arguments: [DatabaseValueConvertible] = [projectId]
+
+            if let types = types, !types.isEmpty {
+                let placeholders = types.map { _ in "?" }.joined(separator: ", ")
+                sql += " AND c.chunkType IN (\(placeholders))"
+                arguments.append(contentsOf: types)
+            }
+
+            let rows = try Row.fetchAll(conn, sql: sql, arguments: StatementArguments(arguments))
+            return try rows.map { row in
+                let chunk = try CodeChunk(row: row)
+                let path: String = row["relativePath"]
+                return (chunk, path)
+            }
+        }
+
+        // Compute cosine similarity
+        var results: [(path: String, chunk: CodeChunk, score: Float)] = []
+
+        for (chunk, path) in chunks {
+            guard let vector = chunk.embeddingVector else { continue }
+            let sim = cosineSimilarity(queryVector, vector)
+            if sim > 0.3 {
+                results.append((path, chunk, sim))
+            }
+        }
+
+        // Also do FTS5 keyword search
+        let ftsQuery = query
+            .replacingOccurrences(of: "\"", with: "\"\"")
+            .components(separatedBy: .whitespaces)
+            .filter { !$0.isEmpty }
+            .map { "\"\($0)\"" }
+            .joined(separator: " OR ")
+
+        if !ftsQuery.isEmpty {
+            let ftsRows: [(CodeChunk, String, Double)] = (try? db.read { conn in
+                var sql = """
+                    SELECT c.*, f.relativePath, bm25(codeChunksFts) AS rank
+                    FROM codeChunksFts fts
+                    JOIN codeChunks c ON c.rowid = fts.rowid
+                    JOIN indexedFiles f ON c.fileId = f.id
+                    WHERE codeChunksFts MATCH ? AND c.projectId = ?
+                """
+                var arguments: [DatabaseValueConvertible] = [ftsQuery, projectId]
+
+                if let types = types, !types.isEmpty {
+                    let placeholders = types.map { _ in "?" }.joined(separator: ", ")
+                    sql += " AND c.chunkType IN (\(placeholders))"
+                    arguments.append(contentsOf: types)
+                }
+
+                sql += " ORDER BY rank LIMIT 50"
+
+                let rows = try Row.fetchAll(conn, sql: sql, arguments: StatementArguments(arguments))
+                return try rows.map { row in
+                    let chunk = try CodeChunk(row: row)
+                    let path: String = row["relativePath"]
+                    let rank: Double = row["rank"] ?? 0
+                    return (chunk, path, rank)
+                }
+            }) ?? []
+
+            // Merge FTS results with semantic results
+            let maxRank = ftsRows.map { abs($0.2) }.max() ?? 1.0
+            let existingIds = Set(results.map { $0.chunk.id })
+
+            for (chunk, path, rank) in ftsRows {
+                let normalizedScore = Float(abs(rank) / max(maxRank, 0.001))
+                if existingIds.contains(chunk.id) {
+                    // Boost existing semantic result with keyword score
+                    if let idx = results.firstIndex(where: { $0.chunk.id == chunk.id }) {
+                        results[idx].score = (0.7 * results[idx].score) + (0.3 * normalizedScore)
+                    }
+                } else {
+                    // Add keyword-only result
+                    results.append((path, chunk, 0.3 * normalizedScore))
+                }
+            }
+        }
+
+        // Sort by score, take top N
+        results.sort { $0.score > $1.score }
+        let topResults = results.prefix(min(limit, 30))
+
+        let formatted: [[String: Any]] = topResults.map { item in
+            var result: [String: Any] = [
+                "file": item.path,
+                "type": item.chunk.chunkType,
+                "score": Double(item.score),
+                "content": item.chunk.content
+            ]
+            if let symbol = item.chunk.symbolName {
+                result["symbol"] = symbol
+            }
+            if let start = item.chunk.startLine, let end = item.chunk.endLine {
+                result["lines"] = "\(start)-\(end)"
+            }
+            return result
+        }
+
+        return formatJSON([
+            "results": formatted,
+            "index_status": indexStatus,
+            "total_chunks": state?.totalChunks ?? 0
+        ])
+    }
+
+    /// Embed a query string using OpenRouter's embeddings API (synchronous for MCP).
+    private func embedQuery(query: String, apiKey: String, model: String) throws -> [Float] {
+        let url = URL(string: "https://openrouter.ai/api/v1/embeddings")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Context App", forHTTPHeaderField: "X-Title")
+        request.timeoutInterval = 15
+
+        let body: [String: Any] = ["model": model, "input": query]
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: body) else {
+            throw MCPError(message: "Failed to encode embedding request")
+        }
+        request.httpBody = bodyData
+
+        var result: (vector: [Float]?, error: String?) = (nil, nil)
+        let semaphore = DispatchSemaphore(value: 0)
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            defer { semaphore.signal() }
+
+            if let error = error {
+                result.error = error.localizedDescription
+                return
+            }
+
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                result.error = "Invalid embedding response"
+                return
+            }
+
+            if let error = json["error"] as? [String: Any],
+               let message = error["message"] as? String {
+                result.error = message
+                return
+            }
+
+            guard let dataArray = json["data"] as? [[String: Any]],
+                  let first = dataArray.first,
+                  let embedding = first["embedding"] as? [NSNumber] else {
+                result.error = "Missing embedding in response"
+                return
+            }
+
+            result.vector = embedding.map { $0.floatValue }
+        }.resume()
+
+        semaphore.wait()
+
+        if let error = result.error {
+            throw MCPError(message: "Embedding failed: \(error)")
+        }
+
+        guard let vector = result.vector else {
+            throw MCPError(message: "No embedding returned")
+        }
+
+        return vector
+    }
+
+    /// Cosine similarity between two Float vectors.
+    private func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
+        guard a.count == b.count, !a.isEmpty else { return 0 }
+        var dot: Float = 0, normA: Float = 0, normB: Float = 0
+        for i in 0..<a.count {
+            dot += a[i] * b[i]
+            normA += a[i] * a[i]
+            normB += b[i] * b[i]
+        }
+        let denom = sqrt(normA) * sqrt(normB)
+        guard denom > 0 else { return 0 }
+        return dot / denom
+    }
+
+    /// Serialize a dictionary to a formatted JSON string.
+    private func formatJSON(_ dict: [String: Any]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
+              let str = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return str
     }
 
     // MARK: - JSON-RPC Helpers
