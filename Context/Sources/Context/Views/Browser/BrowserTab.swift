@@ -415,6 +415,149 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
         }
     }
 
+    /// Press a key or key combination on an element or the focused element.
+    @MainActor
+    func pressKey(ref: String?, key: String, modifiers: [String]) async throws -> [String: Any] {
+        let js = """
+            const el = ref
+                ? document.querySelector('[data-ax-ref="' + ref + '"]')
+                : document.activeElement;
+            if (!el) return { error: ref ? "not_found" : "no_focused_element" };
+
+            const keyCodeMap = {
+                'Enter': 'Enter', 'Tab': 'Tab', 'Escape': 'Escape',
+                'Backspace': 'Backspace', 'Delete': 'Delete', 'Space': 'Space',
+                'ArrowUp': 'ArrowUp', 'ArrowDown': 'ArrowDown',
+                'ArrowLeft': 'ArrowLeft', 'ArrowRight': 'ArrowRight',
+                'Home': 'Home', 'End': 'End', 'PageUp': 'PageUp', 'PageDown': 'PageDown'
+            };
+
+            const mods = modifiers || [];
+            const opts = {
+                key: key === 'Space' ? ' ' : key,
+                code: keyCodeMap[key] || ('Key' + key.toUpperCase()),
+                bubbles: true, cancelable: true, view: window,
+                shiftKey: mods.includes('shift'),
+                ctrlKey: mods.includes('ctrl'),
+                altKey: mods.includes('alt'),
+                metaKey: mods.includes('meta')
+            };
+
+            if (ref) el.focus();
+            el.dispatchEvent(new KeyboardEvent('keydown', opts));
+            if (key.length === 1 || key === 'Space') el.dispatchEvent(new KeyboardEvent('keypress', opts));
+            el.dispatchEvent(new KeyboardEvent('keyup', opts));
+
+            // Handle native behaviors that synthetic events don't trigger
+            if (key === 'Enter') {
+                const form = el.closest('form');
+                if (form) { try { form.requestSubmit(); } catch(e) { form.submit(); } }
+                else if (el.tagName === 'A' || el.tagName === 'BUTTON') el.click();
+            } else if (key === 'Tab') {
+                const focusable = Array.from(document.querySelectorAll(
+                    'a[href],button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])'
+                )).filter(e => e.offsetParent !== null);
+                const idx = focusable.indexOf(el);
+                const next = mods.includes('shift')
+                    ? focusable[idx - 1] || focusable[focusable.length - 1]
+                    : focusable[idx + 1] || focusable[0];
+                if (next) next.focus();
+            }
+
+            return { pressed: true, key: key, modifiers: mods, target: el.tagName };
+        """
+        return try await withCheckedThrowingContinuation { continuation in
+            webView.callAsyncJavaScript(
+                js,
+                arguments: ["ref": ref as Any, "key": key, "modifiers": modifiers],
+                in: nil,
+                in: .defaultClient
+            ) { result in
+                switch result {
+                case .success(let value):
+                    if let dict = value as? [String: Any] {
+                        continuation.resume(returning: dict)
+                    } else {
+                        continuation.resume(returning: ["pressed": true])
+                    }
+                case .failure:
+                    // Key press may have triggered navigation
+                    continuation.resume(returning: ["pressed": true, "navigated": true])
+                }
+            }
+        }
+    }
+
+    /// Execute arbitrary JavaScript on the page and return the result.
+    @MainActor
+    func evalJavaScript(expression: String) async throws -> [String: Any] {
+        let wrappedJS = """
+            try {
+                const __result = await (async () => { \(expression) })();
+                if (__result === undefined) return { result: null };
+                try {
+                    JSON.stringify(__result);
+                    return { result: __result };
+                } catch(e) {
+                    return { error: "Result is not JSON-serializable" };
+                }
+            } catch(e) {
+                return { error: e.toString() };
+            }
+        """
+        return try await withCheckedThrowingContinuation { continuation in
+            webView.callAsyncJavaScript(
+                wrappedJS,
+                arguments: [:],
+                in: nil,
+                in: .defaultClient
+            ) { result in
+                switch result {
+                case .success(let value):
+                    if let dict = value as? [String: Any] {
+                        continuation.resume(returning: dict)
+                    } else {
+                        continuation.resume(returning: ["result": value as Any])
+                    }
+                case .failure(let error):
+                    continuation.resume(returning: ["error": error.localizedDescription])
+                }
+            }
+        }
+    }
+
+    /// Hover over an element by ref, dispatching mouseenter and mouseover events.
+    @MainActor
+    func hoverElement(ref: String) async throws -> [String: Any] {
+        let js = """
+            const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+            if (!el) return { error: "not_found" };
+            el.scrollIntoView({block: 'center', behavior: 'instant'});
+            el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: false, cancelable: false, view: window}));
+            el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true, view: window}));
+            return { hovered: true, tag: el.tagName, text: (el.textContent || '').trim().slice(0, 100) };
+        """
+        return try await withCheckedThrowingContinuation { continuation in
+            webView.callAsyncJavaScript(
+                js,
+                arguments: ["ref": ref],
+                in: nil,
+                in: .defaultClient
+            ) { result in
+                switch result {
+                case .success(let value):
+                    if let dict = value as? [String: Any] {
+                        continuation.resume(returning: dict)
+                    } else {
+                        continuation.resume(returning: ["hovered": true])
+                    }
+                case .failure:
+                    continuation.resume(returning: ["hovered": true, "navigated": true])
+                }
+            }
+        }
+    }
+
     /// Take a snapshot screenshot and return the saved file path.
     @MainActor
     func takeScreenshot() async throws -> (path: String, width: Int, height: Int) {
