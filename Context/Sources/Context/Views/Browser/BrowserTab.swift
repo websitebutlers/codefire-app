@@ -57,6 +57,9 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     private static let maxLogEntries = 500
     private var observations: [NSKeyValueObservation] = []
 
+    /// When set, subsequent JS execution targets this iframe instead of the main frame.
+    var activeIframeRef: String?
+
     var errorCount: Int {
         consoleLogs.filter { $0.level == "error" }.count
     }
@@ -79,6 +82,8 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
 
     override init() {
         let config = WKWebViewConfiguration()
+        // Use persistent data store — cookies, localStorage, sessionStorage survive app restarts
+        config.websiteDataStore = .default()
         config.preferences.isElementFullscreenEnabled = true
 
         // Inject console interceptor script
@@ -556,6 +561,156 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
                 }
             }
         }
+    }
+
+    /// Set a file on an <input type="file"> element using base64-encoded data.
+    @MainActor
+    func uploadFile(ref: String, fileData: String, filename: String, mimeType: String) async throws -> [String: Any] {
+        let js = """
+            const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+            if (!el) return { error: "not_found" };
+            if (el.tagName !== 'INPUT' || el.type !== 'file') return { error: "not_file_input", tag: el.tagName, type: el.type || '' };
+
+            const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+            const file = new File([bytes], filename, { type: mimeType });
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            el.files = dt.files;
+
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+
+            return { uploaded: true, filename: filename, size: bytes.length };
+        """
+        return try await withCheckedThrowingContinuation { continuation in
+            webView.callAsyncJavaScript(
+                js,
+                arguments: ["ref": ref, "base64Data": fileData, "filename": filename, "mimeType": mimeType],
+                in: nil,
+                in: .defaultClient
+            ) { result in
+                switch result {
+                case .success(let value):
+                    continuation.resume(returning: value as? [String: Any] ?? ["uploaded": true])
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Drag an element to a target element using HTML5 drag and drop events.
+    @MainActor
+    func dragElement(fromRef: String, toRef: String) async throws -> [String: Any] {
+        let js = """
+            const from = document.querySelector('[data-ax-ref="' + fromRef + '"]');
+            if (!from) return { error: "source_not_found" };
+            const to = document.querySelector('[data-ax-ref="' + toRef + '"]');
+            if (!to) return { error: "target_not_found" };
+
+            const dt = new DataTransfer();
+            dt.setData('text/plain', from.textContent || '');
+
+            const mkOpts = () => ({
+                bubbles: true, cancelable: true, view: window, dataTransfer: dt
+            });
+
+            from.dispatchEvent(new DragEvent('dragstart', mkOpts()));
+            from.dispatchEvent(new DragEvent('drag', mkOpts()));
+            to.dispatchEvent(new DragEvent('dragenter', mkOpts()));
+            to.dispatchEvent(new DragEvent('dragover', mkOpts()));
+            to.dispatchEvent(new DragEvent('drop', mkOpts()));
+            from.dispatchEvent(new DragEvent('dragend', mkOpts()));
+
+            return { dragged: true, from: from.tagName, to: to.tagName };
+        """
+        return try await withCheckedThrowingContinuation { continuation in
+            webView.callAsyncJavaScript(
+                js,
+                arguments: ["fromRef": fromRef, "toRef": toRef],
+                in: nil,
+                in: .defaultClient
+            ) { result in
+                switch result {
+                case .success(let value):
+                    continuation.resume(returning: value as? [String: Any] ?? ["dragged": true])
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Switch execution context to an iframe, or back to main frame if ref is nil.
+    @MainActor
+    func switchToIframe(ref: String?) async throws -> [String: Any] {
+        if let ref = ref {
+            // Validate the iframe exists and is accessible
+            let js = """
+                const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+                if (!el) return { error: "not_found" };
+                if (el.tagName !== 'IFRAME') return { error: "not_iframe", tag: el.tagName };
+                try {
+                    const doc = el.contentDocument;
+                    if (!doc) return { error: "cross_origin", src: el.src || '' };
+                    return { frame: "iframe", src: el.src || '', ref: ref, title: doc.title || '' };
+                } catch(e) {
+                    return { error: "cross_origin", src: el.src || '' };
+                }
+            """
+            let result: [String: Any] = try await withCheckedThrowingContinuation { continuation in
+                webView.callAsyncJavaScript(
+                    js,
+                    arguments: ["ref": ref],
+                    in: nil,
+                    in: .defaultClient
+                ) { result in
+                    switch result {
+                    case .success(let value):
+                        continuation.resume(returning: value as? [String: Any] ?? [:])
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+            if result["error"] == nil {
+                activeIframeRef = ref
+            }
+            return result
+        } else {
+            activeIframeRef = nil
+            return ["frame": "main"]
+        }
+    }
+
+    /// Clear browsing data (cookies, cache, localStorage).
+    @MainActor
+    func clearSessionData(types: [String]) async throws -> [String: Any] {
+        var dataTypes = Set<String>()
+        let requestedTypes = types.isEmpty ? ["all"] : types
+
+        if requestedTypes.contains("all") {
+            dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+        } else {
+            if requestedTypes.contains("cookies") {
+                dataTypes.insert(WKWebsiteDataTypeCookies)
+            }
+            if requestedTypes.contains("cache") {
+                dataTypes.insert(WKWebsiteDataTypeDiskCache)
+                dataTypes.insert(WKWebsiteDataTypeMemoryCache)
+            }
+            if requestedTypes.contains("localStorage") {
+                dataTypes.insert(WKWebsiteDataTypeLocalStorage)
+                dataTypes.insert(WKWebsiteDataTypeSessionStorage)
+            }
+        }
+
+        await webView.configuration.websiteDataStore.removeData(
+            ofTypes: dataTypes,
+            modifiedSince: .distantPast
+        )
+
+        return ["cleared": requestedTypes]
     }
 
     /// Take a snapshot screenshot and return the saved file path.
