@@ -158,6 +158,8 @@ struct GUIPanelView: View {
                                 MemoryEditorView()
                             case .rules:
                                 ClaudeMdEditorView()
+                            case .github:
+                                GitHubTabView()
                             case .visualize:
                                 VisualizerView()
                             case .browser:

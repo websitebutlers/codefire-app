@@ -55,6 +55,7 @@ struct ContextApp: App {
     @StateObject private var devEnvironment = DevEnvironment()
     @StateObject private var projectAnalyzer = ProjectAnalyzer()
     @StateObject private var claudeService = ClaudeService()
+    @StateObject private var githubService = GitHubService()
     @StateObject private var oauthManager: GoogleOAuthManager
     @StateObject private var gmailPoller: GmailPoller
 
@@ -85,6 +86,7 @@ struct ContextApp: App {
                 .environmentObject(projectAnalyzer)
                 .environmentObject(claudeService)
                 .environmentObject(gmailPoller)
+                .environmentObject(githubService)
                 .onAppear {
                     NSApplication.shared.activate(ignoringOtherApps: true)
                     appState.loadProjects()
@@ -97,6 +99,7 @@ struct ContextApp: App {
                         sessionWatcher.watchProject(project)
                         devEnvironment.scan(projectPath: project.path)
                         projectAnalyzer.scan(projectPath: project.path)
+                        githubService.startMonitoring(projectPath: project.path)
                         if let claudeDir = project.claudeProject {
                             liveMonitor.startMonitoring(claudeProjectPath: claudeDir)
                         }

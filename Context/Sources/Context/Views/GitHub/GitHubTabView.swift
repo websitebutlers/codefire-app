@@ -157,7 +157,8 @@ struct GitHubTabView: View {
 
     // MARK: - Section Header
 
-    private func sectionHeader(title: String, icon: String, count: Int, key: String) {
+    @ViewBuilder
+    private func sectionHeader(title: String, icon: String, count: Int, key: String) -> some View {
         let isExpanded = expandedSections.contains(key)
 
         Button {

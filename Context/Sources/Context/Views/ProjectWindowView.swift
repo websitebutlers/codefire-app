@@ -14,6 +14,7 @@ struct ProjectWindowView: View {
     @StateObject private var devEnvironment = DevEnvironment()
     @StateObject private var projectAnalyzer = ProjectAnalyzer()
     @StateObject private var claudeService = ClaudeService()
+    @StateObject private var githubService = GitHubService()
 
     @State private var projectPath: String = ""
     @State private var project: Project?
@@ -23,10 +24,10 @@ struct ProjectWindowView: View {
             if project != nil {
                 HSplitView {
                     TerminalTabView(projectPath: $projectPath)
-                        .frame(minWidth: 300, idealWidth: 500, maxWidth: 600)
+                        .frame(minWidth: 400, idealWidth: 600)
 
                     GUIPanelView()
-                        .frame(minWidth: 420, idealWidth: 720)
+                        .frame(minWidth: 400, idealWidth: 600)
                 }
             } else {
                 VStack {
@@ -44,6 +45,7 @@ struct ProjectWindowView: View {
         .environmentObject(devEnvironment)
         .environmentObject(projectAnalyzer)
         .environmentObject(claudeService)
+        .environmentObject(githubService)
         .background(Color(nsColor: .windowBackgroundColor))
         .ignoresSafeArea()
         .background(WindowConfigurator(title: project?.name))
@@ -54,6 +56,7 @@ struct ProjectWindowView: View {
             devEnvironment.stop()
             liveMonitor.stopMonitoring()
             sessionWatcher.stopWatching()
+            githubService.stopMonitoring()
         }
     }
 
@@ -69,6 +72,7 @@ struct ProjectWindowView: View {
             sessionWatcher.watchProject(loaded)
             devEnvironment.scan(projectPath: loaded.path)
             projectAnalyzer.scan(projectPath: loaded.path)
+            githubService.startMonitoring(projectPath: loaded.path)
             if let claudeDir = loaded.claudeProject {
                 liveMonitor.startMonitoring(claudeProjectPath: claudeDir)
             }
