@@ -150,7 +150,7 @@ class BrowserCommandExecutor: ObservableObject {
         guard let url = args["url"] as? String else { throw BrowserCommandError.missingParam("url") }
 
         guard isDomainAllowed(url) else {
-            throw BrowserCommandError.domainNotAllowed(url)
+            throw BrowserCommandError.domainNotAllowed(URL(string: url)?.host ?? url)
         }
 
         let tab: BrowserTab
@@ -244,7 +244,7 @@ class BrowserCommandExecutor: ObservableObject {
 
         if let url = url {
             guard isDomainAllowed(url) else {
-                throw BrowserCommandError.domainNotAllowed(url)
+                throw BrowserCommandError.domainNotAllowed(URL(string: url)?.host ?? url)
             }
         }
 
@@ -726,7 +726,8 @@ enum BrowserCommandError: LocalizedError {
         case .refNotFound(let ref):
             return "Element with ref '\(ref)' not found. The page may have changed — use browser_snapshot to get fresh refs."
         case .domainNotAllowed(let domain):
-            return "Domain '\(domain)' is not in the allowed list. Configure allowed domains in Context.app settings."
+            let allowed = UserDefaults.standard.stringArray(forKey: "browserAllowedDomains") ?? []
+            return "Domain '\(domain)' is not in the allowed list. Allowed: \(allowed.joined(separator: ", "))"
         }
     }
 }

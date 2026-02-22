@@ -156,13 +156,26 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
         webView.load(URLRequest(url: url))
     }
 
+    // MARK: - Iframe JS Scoping
+
+    /// When an iframe context is active, wrap JS so `document` and `window` refer to the iframe's context.
+    /// This allows all automation methods to transparently operate inside the active iframe.
+    private func scopeJS(_ js: String) -> String {
+        guard let ref = activeIframeRef else { return js }
+        return """
+            const __frame = document.querySelector('[data-ax-ref="\(ref)"]');
+            if (!__frame || !__frame.contentDocument) throw new Error('iframe_not_accessible');
+            return await (async function(document, window) { \(js) })(__frame.contentDocument, __frame.contentWindow);
+        """
+    }
+
     // MARK: - Automation Methods
 
     /// Serialize the page's accessibility tree into compact structured text for LLM consumption.
     /// Runs in .defaultClient content world (invisible to page JS, bypasses CSP).
     @MainActor
     func snapshotAccessibilityTree() async throws -> String {
-        let js = "try { return " + Self.accessibilityTreeJS + " } catch(e) { return 'ERROR: ' + e.message; }"
+        let js = scopeJS("try { return " + Self.accessibilityTreeJS + " } catch(e) { return 'ERROR: ' + e.message; }")
         return try await withCheckedThrowingContinuation { continuation in
             webView.callAsyncJavaScript(
                 js,
@@ -183,11 +196,11 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     /// Extract text content from an element by CSS selector.
     @MainActor
     func extractText(selector: String) async throws -> (text: String?, found: Bool) {
-        let js = """
+        let js = scopeJS("""
             const el = document.querySelector(selector);
             if (!el) return { found: false, text: null };
             return { found: true, text: el.textContent.trim() };
-        """
+        """)
         return try await withCheckedThrowingContinuation { continuation in
             webView.callAsyncJavaScript(
                 js,
@@ -214,14 +227,14 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     /// Click an element identified by its data-ax-ref attribute.
     @MainActor
     func clickElement(ref: String) async throws -> [String: Any] {
-        let js = """
+        let js = scopeJS("""
             const el = document.querySelector('[data-ax-ref="' + ref + '"]');
             if (!el) return { error: "not_found" };
             el.scrollIntoView({block: 'center', behavior: 'instant'});
             el.focus();
             el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
             return { clicked: true, tag: el.tagName, text: (el.textContent || '').trim().slice(0, 100) };
-        """
+        """)
         return try await withCheckedThrowingContinuation { continuation in
             webView.callAsyncJavaScript(
                 js,
@@ -247,7 +260,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     /// Type text into an input or textarea element by ref. Uses native setter for React compatibility.
     @MainActor
     func typeText(ref: String, text: String, clear: Bool = true) async throws -> [String: Any] {
-        let js = """
+        let js = scopeJS("""
             const el = document.querySelector('[data-ax-ref="' + ref + '"]');
             if (!el) return { error: "not_found" };
             const tag = el.tagName;
@@ -270,7 +283,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
             el.dispatchEvent(new Event('input', {bubbles: true}));
             el.dispatchEvent(new Event('change', {bubbles: true}));
             return { typed: true, ref: ref, value: el.value };
-        """
+        """)
         return try await withCheckedThrowingContinuation { continuation in
             webView.callAsyncJavaScript(
                 js,
@@ -291,7 +304,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     /// Select an option from a <select> element by value or visible label text.
     @MainActor
     func selectOption(ref: String, value: String?, label: String?) async throws -> [String: Any] {
-        let js = """
+        let js = scopeJS("""
             const el = document.querySelector('[data-ax-ref="' + ref + '"]');
             if (!el) return { error: "not_found" };
             if (el.tagName !== 'SELECT') return { error: "not_select", tag: el.tagName };
@@ -314,7 +327,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
 
             el.dispatchEvent(new Event('change', {bubbles: true}));
             return { selected: true, value: target.value, label: target.text.trim() };
-        """
+        """)
         return try await withCheckedThrowingContinuation { continuation in
             webView.callAsyncJavaScript(
                 js,
@@ -335,7 +348,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     /// Scroll the page by direction/amount or scroll a specific element into view.
     @MainActor
     func scrollPage(ref: String?, direction: String?, amount: Int?) async throws -> [String: Any] {
-        let js = """
+        let js = scopeJS("""
             if (ref) {
                 const el = document.querySelector('[data-ax-ref="' + ref + '"]');
                 if (!el) return { error: "not_found" };
@@ -355,7 +368,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
                 scrollHeight: document.body.scrollHeight,
                 viewportHeight: window.innerHeight
             };
-        """
+        """)
         return try await withCheckedThrowingContinuation { continuation in
             webView.callAsyncJavaScript(
                 js,
@@ -380,7 +393,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     /// Wait for an element to appear in the DOM by ref or CSS selector.
     @MainActor
     func waitForElement(ref: String?, selector: String?, timeout: Int = 5) async throws -> [String: Any] {
-        let js = """
+        let js = scopeJS("""
             const maxMs = Math.min((timeout || 5), 15) * 1000;
             const query = ref ? '[data-ax-ref="' + ref + '"]' : selector;
             if (!query) return { error: "missing_param", message: "Provide ref or selector" };
@@ -398,7 +411,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
                 };
                 check();
             });
-        """
+        """)
         return try await withCheckedThrowingContinuation { continuation in
             webView.callAsyncJavaScript(
                 js,
@@ -423,7 +436,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     /// Press a key or key combination on an element or the focused element.
     @MainActor
     func pressKey(ref: String?, key: String, modifiers: [String]) async throws -> [String: Any] {
-        let js = """
+        let js = scopeJS("""
             const el = ref
                 ? document.querySelector('[data-ax-ref="' + ref + '"]')
                 : document.activeElement;
@@ -470,7 +483,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
             }
 
             return { pressed: true, key: key, modifiers: mods, target: el.tagName };
-        """
+        """)
         return try await withCheckedThrowingContinuation { continuation in
             webView.callAsyncJavaScript(
                 js,
@@ -496,7 +509,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     /// Execute arbitrary JavaScript on the page and return the result.
     @MainActor
     func evalJavaScript(expression: String) async throws -> [String: Any] {
-        let wrappedJS = """
+        let wrappedJS = scopeJS("""
             try {
                 const __result = await (async () => { \(expression) })();
                 if (__result === undefined) return { result: null };
@@ -509,7 +522,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
             } catch(e) {
                 return { error: e.toString() };
             }
-        """
+        """)
         return try await withCheckedThrowingContinuation { continuation in
             webView.callAsyncJavaScript(
                 wrappedJS,
@@ -534,14 +547,14 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     /// Hover over an element by ref, dispatching mouseenter and mouseover events.
     @MainActor
     func hoverElement(ref: String) async throws -> [String: Any] {
-        let js = """
+        let js = scopeJS("""
             const el = document.querySelector('[data-ax-ref="' + ref + '"]');
             if (!el) return { error: "not_found" };
             el.scrollIntoView({block: 'center', behavior: 'instant'});
             el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: false, cancelable: false, view: window}));
             el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true, view: window}));
             return { hovered: true, tag: el.tagName, text: (el.textContent || '').trim().slice(0, 100) };
-        """
+        """)
         return try await withCheckedThrowingContinuation { continuation in
             webView.callAsyncJavaScript(
                 js,
@@ -566,7 +579,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     /// Set a file on an <input type="file"> element using base64-encoded data.
     @MainActor
     func uploadFile(ref: String, fileData: String, filename: String, mimeType: String) async throws -> [String: Any] {
-        let js = """
+        let js = scopeJS("""
             const el = document.querySelector('[data-ax-ref="' + ref + '"]');
             if (!el) return { error: "not_found" };
             if (el.tagName !== 'INPUT' || el.type !== 'file') return { error: "not_file_input", tag: el.tagName, type: el.type || '' };
@@ -581,7 +594,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
             el.dispatchEvent(new Event('input', { bubbles: true }));
 
             return { uploaded: true, filename: filename, size: bytes.length };
-        """
+        """)
         return try await withCheckedThrowingContinuation { continuation in
             webView.callAsyncJavaScript(
                 js,
@@ -602,7 +615,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     /// Drag an element to a target element using HTML5 drag and drop events.
     @MainActor
     func dragElement(fromRef: String, toRef: String) async throws -> [String: Any] {
-        let js = """
+        let js = scopeJS("""
             const from = document.querySelector('[data-ax-ref="' + fromRef + '"]');
             if (!from) return { error: "source_not_found" };
             const to = document.querySelector('[data-ax-ref="' + toRef + '"]');
@@ -623,7 +636,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
             from.dispatchEvent(new DragEvent('dragend', mkOpts()));
 
             return { dragged: true, from: from.tagName, to: to.tagName };
-        """
+        """)
         return try await withCheckedThrowingContinuation { continuation in
             webView.callAsyncJavaScript(
                 js,
