@@ -717,6 +717,45 @@ class MCPServer {
                     ]
                 ]
             ],
+            // Phase 3: JS execution, keyboard, hover
+            [
+                "name": "browser_press",
+                "description": "Press a key or key combination. Targets a specific element by ref, or the currently focused element if no ref is provided. Handles Enter (submits forms), Tab (moves focus), Escape, arrow keys, and any single character. Requires Context.app to be running with the browser tab visible.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "key": ["type": "string", "description": "Key to press: Enter, Tab, Escape, Backspace, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Space, Delete, Home, End, PageUp, PageDown, or any single character"],
+                        "modifiers": ["type": "array", "items": ["type": "string", "enum": ["shift", "ctrl", "alt", "meta"]], "description": "Modifier keys to hold (e.g. ['meta'] for Cmd+key on Mac)"],
+                        "ref": ["type": "string", "description": "Element ref to target (defaults to currently focused element)"],
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ],
+                    "required": ["key"]
+                ]
+            ],
+            [
+                "name": "browser_eval",
+                "description": "Execute JavaScript on the page and return the result. The expression runs inside an async function body, so use 'return' to return values and 'await' for promises. Use for reading page state, calling APIs, or handling edge cases other tools can't cover. Requires Context.app to be running with the browser tab visible.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "expression": ["type": "string", "description": "JavaScript to evaluate. Use 'return' to return a value (e.g. 'return document.title')"],
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ],
+                    "required": ["expression"]
+                ]
+            ],
+            [
+                "name": "browser_hover",
+                "description": "Hover over an element by ref. Dispatches mouseenter and mouseover events. Useful for dropdown menus, tooltips, and hover-state UI that requires mouse presence. Scrolls element into view first. Requires Context.app to be running with the browser tab visible.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "ref": ["type": "string", "description": "Element ref from browser_snapshot"],
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ],
+                    "required": ["ref"]
+                ]
+            ],
         ]
     }
 
@@ -762,6 +801,9 @@ class MCPServer {
             case "browser_select":      result = try browserSelect(args)
             case "browser_scroll":      result = try browserScroll(args)
             case "browser_wait":        result = try browserWait(args)
+            case "browser_press":       result = try browserPress(args)
+            case "browser_eval":        result = try browserEval(args)
+            case "browser_hover":       result = try browserHover(args)
             default:
                 return errorResponse(id: req.id, code: -32602, message: "Unknown tool: \(toolName)")
             }
@@ -1418,6 +1460,39 @@ class MCPServer {
         if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
         let swiftTimeout = TimeInterval(min(timeout, 15)) + 3.0
         return try executeBrowserCommand(tool: "browser_wait", args: cmdArgs, timeout: swiftTimeout)
+    }
+
+    // MARK: - Phase 3: JS Execution, Keyboard, Hover
+
+    func browserPress(_ args: [String: Any]) throws -> String {
+        guard let key = args["key"] as? String, !key.isEmpty else {
+            throw MCPError(message: "key is required")
+        }
+        var cmdArgs: [String: Any] = ["key": key]
+        if let ref = args["ref"] as? String { cmdArgs["ref"] = ref }
+        if let modifiers = args["modifiers"] as? [Any] {
+            cmdArgs["modifiers"] = modifiers
+        }
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        return try executeBrowserCommand(tool: "browser_press", args: cmdArgs)
+    }
+
+    func browserEval(_ args: [String: Any]) throws -> String {
+        guard let expression = args["expression"] as? String, !expression.isEmpty else {
+            throw MCPError(message: "expression is required")
+        }
+        var cmdArgs: [String: Any] = ["expression": expression]
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        return try executeBrowserCommand(tool: "browser_eval", args: cmdArgs, timeout: 10.0)
+    }
+
+    func browserHover(_ args: [String: Any]) throws -> String {
+        guard let ref = args["ref"] as? String, !ref.isEmpty else {
+            throw MCPError(message: "ref is required")
+        }
+        var cmdArgs: [String: Any] = ["ref": ref]
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        return try executeBrowserCommand(tool: "browser_hover", args: cmdArgs)
     }
 
     // MARK: - Browser Command Execution

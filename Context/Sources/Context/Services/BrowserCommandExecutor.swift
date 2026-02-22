@@ -124,6 +124,12 @@ class BrowserCommandExecutor: ObservableObject {
             return try await handleScroll(args)
         case "browser_wait":
             return try await handleWait(args)
+        case "browser_press":
+            return try await handlePress(args)
+        case "browser_eval":
+            return try await handleEval(args)
+        case "browser_hover":
+            return try await handleHover(args)
         default:
             throw BrowserCommandError.unknownTool(command.tool)
         }
@@ -350,6 +356,46 @@ class BrowserCommandExecutor: ObservableObject {
         return toJSON(result)
     }
 
+    // MARK: - Phase 3: JS Execution, Keyboard, Hover
+
+    private func handlePress(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        guard let key = args["key"] as? String, !key.isEmpty else {
+            throw BrowserCommandError.missingParam("key")
+        }
+        let ref = args["ref"] as? String
+        let modifiers = args["modifiers"] as? [String] ?? []
+        let result = try await tab.pressKey(ref: ref, key: key, modifiers: modifiers)
+        if let error = result["error"] as? String {
+            if error == "not_found" { throw BrowserCommandError.refNotFound(ref ?? "unknown") }
+            if error == "no_focused_element" {
+                throw MCPBrowserError.noFocusedElement
+            }
+        }
+        return toJSON(result)
+    }
+
+    private func handleEval(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        guard let expression = args["expression"] as? String, !expression.isEmpty else {
+            throw BrowserCommandError.missingParam("expression")
+        }
+        let result = try await tab.evalJavaScript(expression: expression)
+        return toJSON(result)
+    }
+
+    private func handleHover(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        guard let ref = args["ref"] as? String, !ref.isEmpty else {
+            throw BrowserCommandError.missingParam("ref")
+        }
+        let result = try await tab.hoverElement(ref: ref)
+        if let error = result["error"] as? String, error == "not_found" {
+            throw BrowserCommandError.refNotFound(ref)
+        }
+        return toJSON(result)
+    }
+
     // MARK: - Helpers
 
     private func resolveTab(_ args: [String: Any]) throws -> BrowserTab {
@@ -455,6 +501,7 @@ enum BrowserCommandError: LocalizedError {
 enum MCPBrowserError: LocalizedError {
     case notTypeable(ref: String, tag: String)
     case notSelect(ref: String, tag: String)
+    case noFocusedElement
 
     var errorDescription: String? {
         switch self {
@@ -462,6 +509,8 @@ enum MCPBrowserError: LocalizedError {
             return "Element '\(ref)' (\(tag)) is not a text input. Target an INPUT, TEXTAREA, or contenteditable element."
         case .notSelect(let ref, let tag):
             return "Element '\(ref)' (\(tag)) is not a <select> element."
+        case .noFocusedElement:
+            return "No element is currently focused. Provide a ref to target a specific element, or use browser_click to focus an element first."
         }
     }
 }
