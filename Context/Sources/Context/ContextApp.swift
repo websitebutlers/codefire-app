@@ -58,6 +58,7 @@ struct ContextApp: App {
     @StateObject private var githubService = GitHubService()
     @StateObject private var oauthManager: GoogleOAuthManager
     @StateObject private var gmailPoller: GmailPoller
+    @StateObject private var contextEngine = ContextEngine()
 
     init() {
         // Register as a foreground GUI app. Without this, a bare SPM executable
@@ -87,6 +88,7 @@ struct ContextApp: App {
                 .environmentObject(claudeService)
                 .environmentObject(gmailPoller)
                 .environmentObject(githubService)
+                .environmentObject(contextEngine)
                 .onAppear {
                     NSApplication.shared.activate(ignoringOtherApps: true)
                     appState.loadProjects()
@@ -100,6 +102,9 @@ struct ContextApp: App {
                         devEnvironment.scan(projectPath: project.path)
                         projectAnalyzer.scan(projectPath: project.path)
                         githubService.startMonitoring(projectPath: project.path)
+                        if appSettings.contextSearchEnabled {
+                            contextEngine.startIndexing(projectId: project.id, projectPath: project.path)
+                        }
                         if let claudeDir = project.claudeProject {
                             liveMonitor.startMonitoring(claudeProjectPath: claudeDir)
                         }
@@ -119,6 +124,7 @@ struct ContextApp: App {
 
         Settings {
             SettingsView(settings: appSettings)
+                .environmentObject(contextEngine)
         }
     }
 }

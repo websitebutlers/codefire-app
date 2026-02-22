@@ -79,17 +79,74 @@ private struct TerminalSettingsTab: View {
 
 private struct ContextEngineSettingsTab: View {
     @ObservedObject var settings: AppSettings
+    @EnvironmentObject var contextEngine: ContextEngine
+    @State private var apiKey: String = ClaudeService.openRouterAPIKey ?? ""
 
     var body: some View {
         Form {
+            Section("OpenRouter API") {
+                SecureField("API Key (sk-or-...)", text: $apiKey)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: apiKey) { _, val in
+                        ClaudeService.openRouterAPIKey = val.isEmpty ? nil : val
+                    }
+                HStack {
+                    Circle()
+                        .fill(apiKey.isEmpty ? Color.red : Color.green)
+                        .frame(width: 8, height: 8)
+                    Text(apiKey.isEmpty ? "No API key set" : "API key configured")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Code Search") {
+                Toggle("Enable context search", isOn: $settings.contextSearchEnabled)
+
+                Picker("Embedding Model", selection: $settings.embeddingModel) {
+                    Text("text-embedding-3-small").tag("openai/text-embedding-3-small")
+                    Text("text-embedding-3-large").tag("openai/text-embedding-3-large")
+                }
+
+                HStack {
+                    Text("Index Status:")
+                        .font(.system(size: 12))
+                    Text(contextEngine.indexStatus.capitalized)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(statusColor)
+                    if contextEngine.isIndexing {
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.7)
+                    }
+                }
+
+                if contextEngine.totalChunks > 0 {
+                    Text("\(contextEngine.totalChunks) chunks indexed")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+
+                if let error = contextEngine.lastError {
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundColor(.red)
+                }
+
+                HStack {
+                    Button("Rebuild Index") { contextEngine.rebuildIndex() }
+                        .disabled(contextEngine.isIndexing)
+                    Button("Clear Index") { Task { await contextEngine.clearIndex() } }
+                        .disabled(contextEngine.isIndexing)
+                }
+            }
+
             Section("Automation") {
                 Toggle("Auto-snapshot sessions", isOn: $settings.autoSnapshotSessions)
                 Toggle("Auto-update codebase tree", isOn: $settings.autoUpdateCodebaseTree)
                 Toggle("MCP server auto-start", isOn: $settings.mcpServerAutoStart)
                 Toggle("CLAUDE.md injection", isOn: $settings.claudeMDInjection)
-            }
 
-            Section("Timing") {
                 HStack {
                     Text("Snapshot debounce: \(Int(settings.snapshotDebounce))s")
                     Slider(
@@ -102,6 +159,15 @@ private struct ContextEngineSettingsTab: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    private var statusColor: Color {
+        switch contextEngine.indexStatus {
+        case "ready": return .green
+        case "indexing": return .orange
+        case "error": return .red
+        default: return .secondary
+        }
     }
 }
 
