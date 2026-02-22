@@ -223,9 +223,34 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
             }
         }
 
-        guard let tiffData = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiffData),
-              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+        // Render NSImage into a fresh bitmap to get reliable PNG export.
+        // WKWebView.takeSnapshot returns images with opaque backing representations
+        // that don't convert directly via tiffRepresentation or cgImage().
+        let pixelWidth = Int(image.size.width * (NSScreen.main?.backingScaleFactor ?? 2.0))
+        let pixelHeight = Int(image.size.height * (NSScreen.main?.backingScaleFactor ?? 2.0))
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelWidth,
+            pixelsHigh: pixelHeight,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            throw NSError(domain: "BrowserTab", code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create bitmap for screenshot"])
+        }
+        bitmap.size = image.size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        image.draw(in: NSRect(origin: .zero, size: image.size),
+                   from: .zero, operation: .copy, fraction: 1.0)
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let pngData = bitmap.representation(using: .png, properties: [:]) else {
             throw NSError(domain: "BrowserTab", code: -2,
                 userInfo: [NSLocalizedDescriptionKey: "Failed to convert screenshot to PNG"])
         }
