@@ -8,6 +8,7 @@ class GmailPoller: ObservableObject {
     @Published var lastSyncDate: Date?
     @Published var lastError: String?
     @Published var newTaskCount: Int = 0
+    @Published var syncLog: String = ""
 
     private var timer: Timer?
     private let oauthManager: GoogleOAuthManager
@@ -39,12 +40,12 @@ class GmailPoller: ObservableObject {
         await syncAllAccounts()
     }
 
-    // MARK: - Core Sync Loop
-
-    private func syncAllAccounts() async {
+    /// Manual sync with a specific lookback duration. Ignores lastSyncAt.
+    func syncWithLookback(hours: Int) async {
         guard !isSyncing else { return }
         isSyncing = true
         lastError = nil
+        syncLog = ""
         var totalNew = 0
 
         do {
@@ -52,8 +53,12 @@ class GmailPoller: ObservableObject {
                 try GmailAccount.filter(Column("isActive") == true).fetchAll(db)
             }
 
+            log("Found \(accounts.count) active account(s)")
+
+            let lookback = Date().addingTimeInterval(-Double(hours * 3600))
+
             for account in accounts {
-                let count = await syncAccount(account)
+                let count = await syncAccount(account, after: lookback)
                 totalNew += count
             }
 
@@ -62,50 +67,114 @@ class GmailPoller: ObservableObject {
 
             if totalNew > 0 {
                 NotificationCenter.default.post(name: .tasksDidChange, object: nil)
-                NotificationCenter.default.post(name: .gmailDidSync, object: nil)
             }
+            NotificationCenter.default.post(name: .gmailDidSync, object: nil)
+
+            log("Done — \(totalNew) new task(s) created")
         } catch {
             lastError = "Sync failed: \(error.localizedDescription)"
-            print("GmailPoller: sync error: \(error)")
+            log("ERROR: \(error.localizedDescription)")
         }
 
         isSyncing = false
     }
 
-    private func syncAccount(_ account: GmailAccount) async -> Int {
-        let after = account.lastSyncAt ?? Date().addingTimeInterval(-86400)
+    // MARK: - Core Sync Loop
+
+    private func syncAllAccounts() async {
+        guard !isSyncing else { return }
+        isSyncing = true
+        lastError = nil
+        syncLog = ""
+        var totalNew = 0
+
+        do {
+            let accounts = try await DatabaseService.shared.dbQueue.read { db in
+                try GmailAccount.filter(Column("isActive") == true).fetchAll(db)
+            }
+
+            for account in accounts {
+                let after = account.lastSyncAt ?? Date().addingTimeInterval(-172800)
+                let count = await syncAccount(account, after: after)
+                totalNew += count
+            }
+
+            newTaskCount = totalNew
+            lastSyncDate = Date()
+
+            if totalNew > 0 {
+                NotificationCenter.default.post(name: .tasksDidChange, object: nil)
+            }
+            NotificationCenter.default.post(name: .gmailDidSync, object: nil)
+        } catch {
+            lastError = "Sync failed: \(error.localizedDescription)"
+            log("ERROR: \(error.localizedDescription)")
+        }
+
+        isSyncing = false
+    }
+
+    private func syncAccount(_ account: GmailAccount, after: Date) async -> Int {
+        // Build query from whitelist rules so Gmail pre-filters to relevant senders
+        let whitelistQuery = buildWhitelistQuery()
+        guard !whitelistQuery.isEmpty else {
+            log("[\(account.email)] No whitelist rules — skipping")
+            updateLastSync(accountId: account.id)
+            return 0
+        }
+
+        let query = "(\(whitelistQuery)) -in:spam -in:trash"
+        log("[\(account.email)] Query: \(query)")
+        log("[\(account.email)] Looking back to \(after.formatted(.dateTime.month(.abbreviated).day().hour().minute()))")
 
         guard let listResponse = await apiService.listMessages(
             accountId: account.id,
-            query: "in:inbox",
-            after: after
-        ) else { return 0 }
+            query: query,
+            after: after,
+            maxResults: 100
+        ) else {
+            log("[\(account.email)] Failed to list messages (API error or no token)")
+            return 0
+        }
+
+        log("[\(account.email)] Gmail returned \(listResponse.messageIds.count) message(s)")
 
         let existingIds = getExistingMessageIds(for: account.id)
         let newMessageIds = listResponse.messageIds.filter { !existingIds.contains($0.id) }
+
+        log("[\(account.email)] \(newMessageIds.count) new (not previously processed)")
 
         guard !newMessageIds.isEmpty else {
             updateLastSync(accountId: account.id)
             return 0
         }
 
+        // Fetch full details for ALL matching messages (they're pre-filtered by whitelist)
         var messages: [GmailAPIService.GmailMessage] = []
-        for (msgId, _) in newMessageIds.prefix(20) {
+        for (msgId, _) in newMessageIds {
             if let msg = await apiService.getMessage(id: msgId, accountId: account.id) {
                 messages.append(msg)
             }
         }
 
+        log("[\(account.email)] Fetched \(messages.count) full message(s)")
+
+        // Double-check whitelist match (safety net — Gmail from: query is fuzzy)
         var whitelistedMessages: [(GmailAPIService.GmailMessage, WhitelistMatch)] = []
         for msg in messages {
             let senderEmail = WhitelistFilter.extractEmail(from: msg.from)
             if let match = WhitelistFilter.check(senderEmail: senderEmail) {
                 whitelistedMessages.append((msg, match))
+            } else {
+                log("[\(account.email)] Skipped (no exact whitelist match): \(senderEmail)")
+                // Save as skipped for dedup
+                saveSkippedEmail(message: msg, accountId: account.id)
             }
         }
 
+        log("[\(account.email)] \(whitelistedMessages.count) passed whitelist check")
+
         guard !whitelistedMessages.isEmpty else {
-            saveProcessedEmails(messages: messages, account: account, matches: [:])
             updateLastSync(accountId: account.id)
             return 0
         }
@@ -114,13 +183,25 @@ class GmailPoller: ObservableObject {
             (subject: $0.0.subject, from: $0.0.from, body: $0.0.body, isCalendar: $0.0.isCalendarInvite)
         }
 
+        log("[\(account.email)] Triaging \(triageInput.count) email(s) with Claude…")
+
         let triageResults = await Task.detached {
             EmailTriageService.triageEmails(triageInput)
         }.value
 
         var newTasks = 0
         for (i, (msg, match)) in whitelistedMessages.enumerated() {
-            guard i < triageResults.count, let triage = triageResults[i] else { continue }
+            guard i < triageResults.count, let triage = triageResults[i] else {
+                // Triage returned nil (not actionable) — still save the email
+                saveProcessedEmail(
+                    message: msg,
+                    accountId: account.id,
+                    taskId: nil,
+                    triageType: "fyi"
+                )
+                log("[\(account.email)] FYI (not actionable): \(msg.subject)")
+                continue
+            }
 
             let taskId = createTaskFromEmail(
                 message: msg,
@@ -136,11 +217,51 @@ class GmailPoller: ObservableObject {
                 triageType: triage.type
             )
 
+            log("[\(account.email)] Task created [\(triage.type)]: \(triage.title)")
             newTasks += 1
         }
 
         updateLastSync(accountId: account.id)
         return newTasks
+    }
+
+    // MARK: - Whitelist Query Builder
+
+    /// Builds a Gmail `from:` query from whitelist rules.
+    /// Example: "from:@10kadvertising.com OR from:nick@example.com"
+    private func buildWhitelistQuery() -> String {
+        do {
+            let rules = try DatabaseService.shared.dbQueue.read { db in
+                try WhitelistRule
+                    .filter(Column("isActive") == true)
+                    .fetchAll(db)
+            }
+
+            guard !rules.isEmpty else { return "" }
+
+            let fromClauses = rules.map { rule -> String in
+                let pattern = rule.pattern
+                // @domain.com → from:domain.com  |  user@email.com → from:user@email.com
+                if pattern.hasPrefix("@") {
+                    return "from:\(String(pattern.dropFirst()))"
+                }
+                return "from:\(pattern)"
+            }
+
+            return fromClauses.joined(separator: " OR ")
+        } catch {
+            print("GmailPoller: failed to build whitelist query: \(error)")
+            return ""
+        }
+    }
+
+    // MARK: - Logging
+
+    private func log(_ message: String) {
+        let timestamp = Date().formatted(.dateTime.hour().minute().second())
+        let line = "[\(timestamp)] \(message)"
+        syncLog += line + "\n"
+        print("GmailPoller: \(message)")
     }
 
     // MARK: - Database Helpers
@@ -237,32 +358,26 @@ class GmailPoller: ObservableObject {
         }
     }
 
-    private func saveProcessedEmails(
-        messages: [GmailAPIService.GmailMessage],
-        account: GmailAccount,
-        matches: [String: WhitelistMatch]
-    ) {
-        for msg in messages {
-            var email = ProcessedEmail(
-                id: nil,
-                gmailMessageId: msg.id,
-                gmailThreadId: msg.threadId,
-                gmailAccountId: account.id,
-                fromAddress: WhitelistFilter.extractEmail(from: msg.from),
-                fromName: WhitelistFilter.extractName(from: msg.from),
-                subject: msg.subject,
-                snippet: msg.snippet,
-                body: nil,
-                receivedAt: msg.date,
-                taskId: nil,
-                triageType: "skipped",
-                isRead: false,
-                repliedAt: nil,
-                importedAt: Date()
-            )
-            try? DatabaseService.shared.dbQueue.write { db in
-                try email.insert(db)
-            }
+    private func saveSkippedEmail(message: GmailAPIService.GmailMessage, accountId: String) {
+        var email = ProcessedEmail(
+            id: nil,
+            gmailMessageId: message.id,
+            gmailThreadId: message.threadId,
+            gmailAccountId: accountId,
+            fromAddress: WhitelistFilter.extractEmail(from: message.from),
+            fromName: WhitelistFilter.extractName(from: message.from),
+            subject: message.subject,
+            snippet: message.snippet,
+            body: nil,
+            receivedAt: message.date,
+            taskId: nil,
+            triageType: "skipped",
+            isRead: false,
+            repliedAt: nil,
+            importedAt: Date()
+        )
+        try? DatabaseService.shared.dbQueue.write { db in
+            try email.insert(db)
         }
     }
 

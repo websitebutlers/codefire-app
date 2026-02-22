@@ -1,54 +1,54 @@
 import Foundation
-import Security
+import CryptoKit
 
+/// Stores secrets in a local JSON file in Application Support.
+/// Uses file-system permissions for security (same as gh CLI, gcloud, etc.).
+/// This avoids macOS Keychain ACL prompts with ad-hoc signed builds.
 enum KeychainHelper {
-    private static let service = "com.context.gmail"
+    private static var store: [String: String] = {
+        load()
+    }()
+
+    private static let storeURL: URL = {
+        let dir = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!.appendingPathComponent("Context", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent(".credentials.json")
+    }()
 
     static func save(key: String, value: String) throws {
-        guard let data = value.data(using: .utf8) else { return }
-
-        let deleteQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-        ]
-        SecItemDelete(deleteQuery as CFDictionary)
-
-        let addQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data,
-        ]
-
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw KeychainError.saveFailed(status)
-        }
+        store[key] = value
+        persist()
     }
 
     static func read(key: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        store[key]
     }
 
     static func delete(key: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-        ]
-        SecItemDelete(query as CFDictionary)
+        store.removeValue(forKey: key)
+        persist()
+    }
+
+    // MARK: - File I/O
+
+    private static func load() -> [String: String] {
+        guard let data = try? Data(contentsOf: storeURL),
+              let dict = try? JSONDecoder().decode([String: String].self, from: data)
+        else { return [:] }
+        return dict
+    }
+
+    private static func persist() {
+        guard let data = try? JSONEncoder().encode(store) else { return }
+        try? data.write(to: storeURL, options: [.atomic])
+        // Restrict file permissions to owner-only (600)
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: storeURL.path
+        )
     }
 
     enum KeychainError: Error {

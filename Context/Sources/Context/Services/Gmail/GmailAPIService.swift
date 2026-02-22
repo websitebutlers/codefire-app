@@ -88,7 +88,14 @@ class GmailAPIService {
             (payload["parts"] as? [[String: Any]])?.contains { ($0["mimeType"] as? String)?.contains("calendar") == true } == true
 
         let body = extractPlainTextBody(from: payload)
-        let date = parseGmailDate(dateStr) ?? Date()
+
+        // Prefer internalDate (epoch ms) — always present and reliable
+        let date: Date
+        if let internalMs = json["internalDate"] as? String, let ms = Double(internalMs) {
+            date = Date(timeIntervalSince1970: ms / 1000)
+        } else {
+            date = parseGmailDate(dateStr) ?? Date()
+        }
 
         return GmailMessage(
             id: json["id"] as? String ?? id,
