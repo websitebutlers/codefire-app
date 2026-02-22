@@ -114,6 +114,16 @@ class BrowserCommandExecutor: ObservableObject {
             return try handleTabClose(args)
         case "browser_tab_switch":
             return try handleTabSwitch(args)
+        case "browser_click":
+            return try await handleClick(args)
+        case "browser_type":
+            return try await handleType(args)
+        case "browser_select":
+            return try await handleSelect(args)
+        case "browser_scroll":
+            return try await handleScroll(args)
+        case "browser_wait":
+            return try await handleWait(args)
         default:
             throw BrowserCommandError.unknownTool(command.tool)
         }
@@ -260,6 +270,86 @@ class BrowserCommandExecutor: ObservableObject {
         }
     }
 
+    // MARK: - Phase 2: Interaction Handlers
+
+    private func handleClick(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        guard let ref = args["ref"] as? String else {
+            throw BrowserCommandError.missingParam("ref")
+        }
+        let result = try await tab.clickElement(ref: ref)
+        if let error = result["error"] as? String, error == "not_found" {
+            throw BrowserCommandError.refNotFound(ref)
+        }
+        return toJSON(result)
+    }
+
+    private func handleType(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        guard let ref = args["ref"] as? String else {
+            throw BrowserCommandError.missingParam("ref")
+        }
+        guard let text = args["text"] as? String else {
+            throw BrowserCommandError.missingParam("text")
+        }
+        let clear = args["clear"] as? Bool ?? true
+        let result = try await tab.typeText(ref: ref, text: text, clear: clear)
+        if let error = result["error"] as? String {
+            if error == "not_found" { throw BrowserCommandError.refNotFound(ref) }
+            if error == "not_typeable" {
+                let tag = result["tag"] as? String ?? "unknown"
+                throw MCPBrowserError.notTypeable(ref: ref, tag: tag)
+            }
+        }
+        return toJSON(result)
+    }
+
+    private func handleSelect(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        guard let ref = args["ref"] as? String else {
+            throw BrowserCommandError.missingParam("ref")
+        }
+        let value = args["value"] as? String
+        let label = args["label"] as? String
+        guard value != nil || label != nil else {
+            throw BrowserCommandError.missingParam("value or label")
+        }
+        let result = try await tab.selectOption(ref: ref, value: value, label: label)
+        if let error = result["error"] as? String {
+            if error == "not_found" { throw BrowserCommandError.refNotFound(ref) }
+            if error == "not_select" {
+                let tag = result["tag"] as? String ?? "unknown"
+                throw MCPBrowserError.notSelect(ref: ref, tag: tag)
+            }
+            // no_match returns available options — pass through as result, not error
+        }
+        return toJSON(result)
+    }
+
+    private func handleScroll(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        let ref = args["ref"] as? String
+        let direction = args["direction"] as? String
+        let amount = args["amount"] as? Int
+        let result = try await tab.scrollPage(ref: ref, direction: direction, amount: amount)
+        if let error = result["error"] as? String, error == "not_found" {
+            throw BrowserCommandError.refNotFound(ref ?? "unknown")
+        }
+        return toJSON(result)
+    }
+
+    private func handleWait(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        let ref = args["ref"] as? String
+        let selector = args["selector"] as? String
+        let timeout = args["timeout"] as? Int ?? 5
+        let result = try await tab.waitForElement(ref: ref, selector: selector, timeout: timeout)
+        if let error = result["error"] as? String, error == "missing_param" {
+            throw BrowserCommandError.missingParam("ref or selector")
+        }
+        return toJSON(result)
+    }
+
     // MARK: - Helpers
 
     private func resolveTab(_ args: [String: Any]) throws -> BrowserTab {
@@ -342,6 +432,7 @@ enum BrowserCommandError: LocalizedError {
     case tabNotFound(String)
     case missingParam(String)
     case unknownTool(String)
+    case refNotFound(String)
 
     var errorDescription: String? {
         switch self {
@@ -355,6 +446,22 @@ enum BrowserCommandError: LocalizedError {
             return "Missing required parameter: \(name)"
         case .unknownTool(let name):
             return "Unknown browser tool: \(name)"
+        case .refNotFound(let ref):
+            return "Element with ref '\(ref)' not found. The page may have changed — use browser_snapshot to get fresh refs."
+        }
+    }
+}
+
+enum MCPBrowserError: LocalizedError {
+    case notTypeable(ref: String, tag: String)
+    case notSelect(ref: String, tag: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notTypeable(let ref, let tag):
+            return "Element '\(ref)' (\(tag)) is not a text input. Target an INPUT, TEXTAREA, or contenteditable element."
+        case .notSelect(let ref, let tag):
+            return "Element '\(ref)' (\(tag)) is not a <select> element."
         }
     }
 }

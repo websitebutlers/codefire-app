@@ -206,6 +206,215 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
         }
     }
 
+    /// Click an element identified by its data-ax-ref attribute.
+    @MainActor
+    func clickElement(ref: String) async throws -> [String: Any] {
+        let js = """
+            const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+            if (!el) return { error: "not_found" };
+            el.scrollIntoView({block: 'center', behavior: 'instant'});
+            el.focus();
+            el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
+            return { clicked: true, tag: el.tagName, text: (el.textContent || '').trim().slice(0, 100) };
+        """
+        return try await withCheckedThrowingContinuation { continuation in
+            webView.callAsyncJavaScript(
+                js,
+                arguments: ["ref": ref],
+                in: nil,
+                in: .defaultClient
+            ) { result in
+                switch result {
+                case .success(let value):
+                    if let dict = value as? [String: Any] {
+                        continuation.resume(returning: dict)
+                    } else {
+                        continuation.resume(returning: ["clicked": true])
+                    }
+                case .failure:
+                    // Click may have triggered navigation, which kills the JS context
+                    continuation.resume(returning: ["clicked": true, "navigated": true])
+                }
+            }
+        }
+    }
+
+    /// Type text into an input or textarea element by ref. Uses native setter for React compatibility.
+    @MainActor
+    func typeText(ref: String, text: String, clear: Bool = true) async throws -> [String: Any] {
+        let js = """
+            const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+            if (!el) return { error: "not_found" };
+            const tag = el.tagName;
+            const editable = (tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable);
+            if (!editable) return { error: "not_typeable", tag: tag };
+
+            el.focus();
+            const proto = tag === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+
+            if (clear) {
+                if (setter) setter.call(el, '');
+                else el.value = '';
+                el.dispatchEvent(new Event('input', {bubbles: true}));
+            }
+
+            if (setter) setter.call(el, text);
+            else el.value = text;
+
+            el.dispatchEvent(new Event('input', {bubbles: true}));
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+            return { typed: true, ref: ref, value: el.value };
+        """
+        return try await withCheckedThrowingContinuation { continuation in
+            webView.callAsyncJavaScript(
+                js,
+                arguments: ["ref": ref, "text": text, "clear": clear],
+                in: nil,
+                in: .defaultClient
+            ) { result in
+                switch result {
+                case .success(let value):
+                    continuation.resume(returning: value as? [String: Any] ?? ["typed": true])
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Select an option from a <select> element by value or visible label text.
+    @MainActor
+    func selectOption(ref: String, value: String?, label: String?) async throws -> [String: Any] {
+        let js = """
+            const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+            if (!el) return { error: "not_found" };
+            if (el.tagName !== 'SELECT') return { error: "not_select", tag: el.tagName };
+
+            const options = Array.from(el.options);
+            let target;
+            if (value) target = options.find(o => o.value === value);
+            else if (label) target = options.find(o => o.text.trim() === label);
+
+            if (!target) {
+                return {
+                    error: "no_match",
+                    available: options.map(o => ({value: o.value, label: o.text.trim()}))
+                };
+            }
+
+            const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+            if (setter) setter.call(el, target.value);
+            else el.value = target.value;
+
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+            return { selected: true, value: target.value, label: target.text.trim() };
+        """
+        return try await withCheckedThrowingContinuation { continuation in
+            webView.callAsyncJavaScript(
+                js,
+                arguments: ["ref": ref, "value": value as Any, "label": label as Any],
+                in: nil,
+                in: .defaultClient
+            ) { result in
+                switch result {
+                case .success(let value):
+                    continuation.resume(returning: value as? [String: Any] ?? ["selected": true])
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Scroll the page by direction/amount or scroll a specific element into view.
+    @MainActor
+    func scrollPage(ref: String?, direction: String?, amount: Int?) async throws -> [String: Any] {
+        let js = """
+            if (ref) {
+                const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+                if (!el) return { error: "not_found" };
+                el.scrollIntoView({block: 'center', behavior: 'instant'});
+            } else {
+                const amt = amount || 500;
+                switch (direction) {
+                    case 'down':  window.scrollBy(0, amt); break;
+                    case 'up':    window.scrollBy(0, -amt); break;
+                    case 'top':   window.scrollTo(0, 0); break;
+                    case 'bottom': window.scrollTo(0, document.body.scrollHeight); break;
+                }
+            }
+            return {
+                scrolled: true,
+                scrollY: Math.round(window.scrollY),
+                scrollHeight: document.body.scrollHeight,
+                viewportHeight: window.innerHeight
+            };
+        """
+        return try await withCheckedThrowingContinuation { continuation in
+            webView.callAsyncJavaScript(
+                js,
+                arguments: [
+                    "ref": ref as Any,
+                    "direction": direction as Any,
+                    "amount": amount as Any
+                ],
+                in: nil,
+                in: .defaultClient
+            ) { result in
+                switch result {
+                case .success(let value):
+                    continuation.resume(returning: value as? [String: Any] ?? ["scrolled": true])
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Wait for an element to appear in the DOM by ref or CSS selector.
+    @MainActor
+    func waitForElement(ref: String?, selector: String?, timeout: Int = 5) async throws -> [String: Any] {
+        let js = """
+            const maxMs = Math.min((timeout || 5), 15) * 1000;
+            const query = ref ? '[data-ax-ref="' + ref + '"]' : selector;
+            if (!query) return { error: "missing_param", message: "Provide ref or selector" };
+
+            const start = Date.now();
+            return new Promise((resolve) => {
+                const check = () => {
+                    if (document.querySelector(query)) {
+                        resolve({ found: true, elapsed_ms: Date.now() - start });
+                    } else if (Date.now() - start >= maxMs) {
+                        resolve({ found: false, elapsed_ms: Date.now() - start });
+                    } else {
+                        setTimeout(check, 100);
+                    }
+                };
+                check();
+            });
+        """
+        return try await withCheckedThrowingContinuation { continuation in
+            webView.callAsyncJavaScript(
+                js,
+                arguments: [
+                    "ref": ref as Any,
+                    "selector": selector as Any,
+                    "timeout": timeout
+                ],
+                in: nil,
+                in: .defaultClient
+            ) { result in
+                switch result {
+                case .success(let value):
+                    continuation.resume(returning: value as? [String: Any] ?? ["found": false])
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     /// Take a snapshot screenshot and return the saved file path.
     @MainActor
     func takeScreenshot() async throws -> (path: String, width: Int, height: Int) {

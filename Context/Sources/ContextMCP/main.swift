@@ -650,6 +650,73 @@ class MCPServer {
                     "required": ["tab_id"]
                 ] as [String: Any]
             ],
+            // Phase 2: Interaction tools
+            [
+                "name": "browser_click",
+                "description": "Click an element by its ref from browser_snapshot. Automatically scrolls into view first. Requires Context.app to be running with the browser tab visible.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "ref": ["type": "string", "description": "Element ref from browser_snapshot (e.g. 'e5')"],
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ],
+                    "required": ["ref"]
+                ]
+            ],
+            [
+                "name": "browser_type",
+                "description": "Type text into an input or textarea element by ref. Clears existing content by default. Works with React and other framework-controlled inputs. Requires Context.app to be running with the browser tab visible.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "ref": ["type": "string", "description": "Element ref from browser_snapshot"],
+                        "text": ["type": "string", "description": "Text to type"],
+                        "clear": ["type": "boolean", "description": "Clear existing content first (default: true)"],
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ],
+                    "required": ["ref", "text"]
+                ]
+            ],
+            [
+                "name": "browser_select",
+                "description": "Select an option from a <select> dropdown by value or visible label text. On mismatch, returns all available options. Requires Context.app to be running with the browser tab visible.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "ref": ["type": "string", "description": "Element ref of the <select> element"],
+                        "value": ["type": "string", "description": "Option value to select"],
+                        "label": ["type": "string", "description": "Option visible text to select (alternative to value)"],
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ],
+                    "required": ["ref"]
+                ]
+            ],
+            [
+                "name": "browser_scroll",
+                "description": "Scroll the page by direction/amount, or scroll a specific element into view. Returns scroll position info. Requires Context.app to be running with the browser tab visible.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "ref": ["type": "string", "description": "Scroll this element into view (overrides direction/amount)"],
+                        "direction": ["type": "string", "description": "Scroll direction", "enum": ["up", "down", "top", "bottom"]],
+                        "amount": ["type": "integer", "description": "Pixels to scroll (default: 500, ignored for top/bottom)"],
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ]
+                ]
+            ],
+            [
+                "name": "browser_wait",
+                "description": "Wait for an element to appear on the page. Use after clicking something that triggers async loading. Accepts ref or CSS selector. Returns found status, not an error on timeout. Requires Context.app to be running with the browser tab visible.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "ref": ["type": "string", "description": "Wait for element with this ref to exist"],
+                        "selector": ["type": "string", "description": "CSS selector to wait for (use when element has no ref yet)"],
+                        "timeout": ["type": "integer", "description": "Max seconds to wait (default: 5, max: 15)"],
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ]
+                ]
+            ],
         ]
     }
 
@@ -690,6 +757,11 @@ class MCPServer {
             case "browser_tab_open":    result = try browserTabOpen(args)
             case "browser_tab_close":   result = try browserTabClose(args)
             case "browser_tab_switch":  result = try browserTabSwitch(args)
+            case "browser_click":       result = try browserClick(args)
+            case "browser_type":        result = try browserType(args)
+            case "browser_select":      result = try browserSelect(args)
+            case "browser_scroll":      result = try browserScroll(args)
+            case "browser_wait":        result = try browserWait(args)
             default:
                 return errorResponse(id: req.id, code: -32602, message: "Unknown tool: \(toolName)")
             }
@@ -1281,6 +1353,71 @@ class MCPServer {
             throw MCPError(message: "tab_id is required")
         }
         return try executeBrowserCommand(tool: "browser_tab_switch", args: ["tab_id": tabId])
+    }
+
+    // MARK: - Phase 2: Interaction Tools
+
+    func browserClick(_ args: [String: Any]) throws -> String {
+        guard let ref = args["ref"] as? String, !ref.isEmpty else {
+            throw MCPError(message: "ref is required")
+        }
+        var cmdArgs: [String: Any] = ["ref": ref]
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        return try executeBrowserCommand(tool: "browser_click", args: cmdArgs)
+    }
+
+    func browserType(_ args: [String: Any]) throws -> String {
+        guard let ref = args["ref"] as? String, !ref.isEmpty else {
+            throw MCPError(message: "ref is required")
+        }
+        guard let text = args["text"] as? String else {
+            throw MCPError(message: "text is required")
+        }
+        var cmdArgs: [String: Any] = ["ref": ref, "text": text]
+        if let clear = args["clear"] as? Bool { cmdArgs["clear"] = clear }
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        return try executeBrowserCommand(tool: "browser_type", args: cmdArgs)
+    }
+
+    func browserSelect(_ args: [String: Any]) throws -> String {
+        guard let ref = args["ref"] as? String, !ref.isEmpty else {
+            throw MCPError(message: "ref is required")
+        }
+        let value = args["value"] as? String
+        let label = args["label"] as? String
+        guard value != nil || label != nil else {
+            throw MCPError(message: "value or label is required")
+        }
+        var cmdArgs: [String: Any] = ["ref": ref]
+        if let v = value { cmdArgs["value"] = v }
+        if let l = label { cmdArgs["label"] = l }
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        return try executeBrowserCommand(tool: "browser_select", args: cmdArgs)
+    }
+
+    func browserScroll(_ args: [String: Any]) throws -> String {
+        var cmdArgs: [String: Any] = [:]
+        if let ref = args["ref"] as? String { cmdArgs["ref"] = ref }
+        if let direction = args["direction"] as? String { cmdArgs["direction"] = direction }
+        if let amount = args["amount"] as? Int { cmdArgs["amount"] = amount }
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        return try executeBrowserCommand(tool: "browser_scroll", args: cmdArgs)
+    }
+
+    func browserWait(_ args: [String: Any]) throws -> String {
+        let ref = args["ref"] as? String
+        let selector = args["selector"] as? String
+        guard ref != nil || selector != nil else {
+            throw MCPError(message: "ref or selector is required")
+        }
+        var cmdArgs: [String: Any] = [:]
+        if let r = ref { cmdArgs["ref"] = r }
+        if let s = selector { cmdArgs["selector"] = s }
+        let timeout = args["timeout"] as? Int ?? 5
+        cmdArgs["timeout"] = timeout
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        let swiftTimeout = TimeInterval(min(timeout, 15)) + 3.0
+        return try executeBrowserCommand(tool: "browser_wait", args: cmdArgs, timeout: swiftTimeout)
     }
 
     // MARK: - Browser Command Execution
