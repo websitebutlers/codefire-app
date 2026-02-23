@@ -40,6 +40,14 @@ struct TerminalTabView: View {
                 .padding(.leading, 2)
 
                 Spacer()
+
+                CLIQuickLaunchView(
+                    projectPath: projectPath,
+                    onLaunchCLI: { title, command in
+                        launchTask(title: title, command: command)
+                    }
+                )
+                .padding(.trailing, 6)
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
