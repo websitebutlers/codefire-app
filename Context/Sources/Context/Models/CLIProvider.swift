@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Central registry of supported AI coding CLI tools.
 /// Each case describes how to detect, display, and configure a specific CLI.
-enum CLIProvider: String, CaseIterable, Codable, Identifiable {
+enum CLIProvider: String, CaseIterable, Codable, Identifiable, Hashable {
     case claude
     case gemini
     case codex
@@ -61,28 +61,45 @@ enum CLIProvider: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Whether the CLI binary is available on the system PATH.
+    /// Cached installation status. Call `CLIProvider.refreshInstallationStatus()` to update.
+    private static var _installationCache: [CLIProvider: Bool] = [:]
+
+    /// Whether the CLI binary is available on the system PATH (cached).
+    /// Returns `false` until `refreshInstallationStatus()` has been called.
     var isInstalled: Bool {
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        process.arguments = [command]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        process.environment = ProcessInfo.processInfo.environment
+        Self._installationCache[self] ?? false
+    }
 
-        do {
-            try process.run()
-            process.waitUntilExit()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let path = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-               !path.isEmpty {
-                return true
+    /// Check installation status for all CLIs in the background.
+    static func refreshInstallationStatus() async {
+        await withTaskGroup(of: (CLIProvider, Bool).self) { group in
+            for cli in CLIProvider.allCases {
+                group.addTask {
+                    let result = await Task.detached(priority: .utility) {
+                        let process = Process()
+                        let pipe = Pipe()
+                        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+                        process.arguments = [cli.command]
+                        process.standardOutput = pipe
+                        process.standardError = FileHandle.nullDevice
+                        do {
+                            try process.run()
+                            process.waitUntilExit()
+                            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                            let path = String(data: data, encoding: .utf8)?
+                                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                            return !path.isEmpty && process.terminationStatus == 0
+                        } catch {
+                            return false
+                        }
+                    }.value
+                    return (cli, result)
+                }
             }
-        } catch {}
-
-        return false
+            for await (cli, installed) in group {
+                _installationCache[cli] = installed
+            }
+        }
     }
 
     // MARK: - MCP Configuration
@@ -116,8 +133,8 @@ enum CLIProvider: String, CaseIterable, Codable, Identifiable {
             return """
             {
               "mcpServers": {
-                "context": {
-                  "command": "\(binaryPath)",
+                "context-tasks": {
+                  "command": "\(jsonEscaped(binaryPath))",
                   "args": []
                 }
               }
@@ -128,8 +145,8 @@ enum CLIProvider: String, CaseIterable, Codable, Identifiable {
             return """
             {
               "mcpServers": {
-                "context": {
-                  "command": "\(binaryPath)",
+                "context-tasks": {
+                  "command": "\(jsonEscaped(binaryPath))",
                   "args": []
                 }
               }
@@ -138,22 +155,28 @@ enum CLIProvider: String, CaseIterable, Codable, Identifiable {
 
         case .codex:
             return """
-            [mcp.context]
-            command = "\(binaryPath)"
+            [mcp_servers.context-tasks]
+            command = "\(jsonEscaped(binaryPath))"
             args = []
             """
 
         case .opencode:
             return """
             {
-              "mcpServers": {
-                "context": {
-                  "command": "\(binaryPath)",
-                  "args": []
+              "mcp": {
+                "context-tasks": {
+                  "type": "local",
+                  "command": ["\(jsonEscaped(binaryPath))"]
                 }
               }
             }
             """
         }
+    }
+
+    /// Escape a string for safe embedding in JSON/TOML string literals.
+    private func jsonEscaped(_ s: String) -> String {
+        s.replacingOccurrences(of: "\\", with: "\\\\")
+         .replacingOccurrences(of: "\"", with: "\\\"")
     }
 }
