@@ -127,6 +127,7 @@ struct ContextApp: App {
                     if appSettings.gmailSyncEnabled {
                         gmailPoller.startPolling(interval: appSettings.gmailSyncInterval)
                     }
+                    contextEngine.startPollingForRequests()
                 }
                 .onChange(of: appState.currentProject) { _, project in
                     if let project = project {

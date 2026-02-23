@@ -331,6 +331,14 @@ class DatabaseService {
                 t.column("lastError", .text)
             }
 
+            try db.create(table: "indexRequests", ifNotExists: true) { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("projectId", .text).notNull()
+                t.column("projectPath", .text).notNull()
+                t.column("status", .text).notNull().defaults(to: "pending")
+                t.column("createdAt", .datetime).notNull()
+            }
+
             // FTS virtual tables don't support ifNotExists in GRDB, so check manually
             let ftsExists = try Row.fetchOne(db, sql: "SELECT 1 FROM sqlite_master WHERE type='table' AND name='codeChunksFts'")
             if ftsExists == nil {

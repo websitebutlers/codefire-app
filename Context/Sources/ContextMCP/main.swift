@@ -38,6 +38,19 @@ func openDatabase() throws -> DatabaseQueue {
         """)
     }
 
+    // Ensure indexRequests table exists for MCP-to-GUI IPC
+    try db.write { conn in
+        try conn.execute(sql: """
+            CREATE TABLE IF NOT EXISTS indexRequests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                projectId TEXT NOT NULL,
+                projectPath TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                createdAt DATETIME NOT NULL
+            )
+        """)
+    }
+
     return db
 }
 
@@ -1739,60 +1752,35 @@ class MCPServer {
         let indexStatus = state?.status ?? "not_indexed"
 
         if indexStatus == "not_indexed" || state == nil {
+            // Request indexing from the GUI app via IPC
+            let projectPath = try db.read { conn -> String? in
+                try Project.fetchOne(conn, sql: "SELECT * FROM projects WHERE id = ?", arguments: [projectId])?.path
+            } ?? workingDirectory
+
+            let existingRequest = try db.read { conn in
+                try Row.fetchOne(conn, sql: "SELECT 1 FROM indexRequests WHERE projectId = ? AND status = 'pending'", arguments: [projectId])
+            }
+
+            if existingRequest == nil {
+                try db.write { conn in
+                    try conn.execute(
+                        sql: "INSERT INTO indexRequests (projectId, projectPath, status, createdAt) VALUES (?, ?, 'pending', ?)",
+                        arguments: [projectId, projectPath, Date()]
+                    )
+                }
+            }
+
             return formatJSON([
                 "results": [] as [Any],
-                "index_status": "not_indexed",
-                "message": "Project not yet indexed. Open the project in Context.app to start indexing."
+                "index_status": "indexing_requested",
+                "message": "Indexing has been requested. The Context app will begin indexing this project shortly. Try again in a few seconds."
             ])
         }
 
-        // Get API key for query embedding
-        let appDefaults = UserDefaults(suiteName: "com.context.app")
-        guard let apiKey = appDefaults?.string(forKey: "openRouterAPIKey"), !apiKey.isEmpty else {
-            throw MCPError(message: "OpenRouter API key not configured. Set it in Context.app Settings > Context Engine.")
-        }
+        // --- Step 1: FTS5 keyword search (always works, no API call needed) ---
 
-        let model = appDefaults?.string(forKey: "embeddingModel") ?? "openai/text-embedding-3-small"
-
-        // Embed the query
-        let queryVector = try embedQuery(query: query, apiKey: apiKey, model: model)
-
-        // Load all chunks with embeddings for this project
-        let chunks: [(CodeChunk, String)] = try db.read { conn in
-            var sql = """
-                SELECT c.*, f.relativePath
-                FROM codeChunks c
-                JOIN indexedFiles f ON c.fileId = f.id
-                WHERE c.projectId = ?
-            """
-            var arguments: [DatabaseValueConvertible] = [projectId]
-
-            if let types = types, !types.isEmpty {
-                let placeholders = types.map { _ in "?" }.joined(separator: ", ")
-                sql += " AND c.chunkType IN (\(placeholders))"
-                arguments.append(contentsOf: types)
-            }
-
-            let rows = try Row.fetchAll(conn, sql: sql, arguments: StatementArguments(arguments))
-            return try rows.map { row in
-                let chunk = try CodeChunk(row: row)
-                let path: String = row["relativePath"]
-                return (chunk, path)
-            }
-        }
-
-        // Compute cosine similarity
         var results: [(path: String, chunk: CodeChunk, score: Float)] = []
 
-        for (chunk, path) in chunks {
-            guard let vector = chunk.embeddingVector else { continue }
-            let sim = cosineSimilarity(queryVector, vector)
-            if sim > 0.3 {
-                results.append((path, chunk, sim))
-            }
-        }
-
-        // Also do FTS5 keyword search
         let ftsQuery = query
             .replacingOccurrences(of: "\"", with: "\"\"")
             .components(separatedBy: .whitespaces)
@@ -1828,25 +1816,87 @@ class MCPServer {
                 }
             }) ?? []
 
-            // Merge FTS results with semantic results
             let maxRank = ftsRows.map { abs($0.2) }.max() ?? 1.0
-            let existingIds = Set(results.map { $0.chunk.id })
-
             for (chunk, path, rank) in ftsRows {
                 let normalizedScore = Float(abs(rank) / max(maxRank, 0.001))
-                if existingIds.contains(chunk.id) {
-                    // Boost existing semantic result with keyword score
-                    if let idx = results.firstIndex(where: { $0.chunk.id == chunk.id }) {
-                        results[idx].score = (0.7 * results[idx].score) + (0.3 * normalizedScore)
+                results.append((path, chunk, normalizedScore))
+            }
+        }
+
+        // --- Step 2: Semantic search (optional — requires API key + embeddings) ---
+
+        let appDefaults = UserDefaults(suiteName: "com.context.app")
+        let apiKey = appDefaults?.string(forKey: "openRouterAPIKey")
+        let hasApiKey = apiKey != nil && !apiKey!.isEmpty
+
+        // Determine embedding status
+        let embeddingStatus: String
+        if !hasApiKey {
+            embeddingStatus = "none"
+        } else {
+            let hasUnembedded = (try? db.read { conn in
+                try Row.fetchOne(conn, sql: "SELECT 1 FROM codeChunks WHERE projectId = ? AND embedding IS NULL LIMIT 1", arguments: [projectId])
+            }) != nil
+            embeddingStatus = hasUnembedded ? "in_progress" : "complete"
+        }
+
+        if hasApiKey {
+            // Check if any chunks have embeddings before attempting semantic search
+            let hasEmbeddings = (try? db.read { conn in
+                try Row.fetchOne(conn, sql: "SELECT 1 FROM codeChunks WHERE projectId = ? AND embedding IS NOT NULL LIMIT 1", arguments: [projectId])
+            }) != nil
+
+            if hasEmbeddings {
+                let model = appDefaults?.string(forKey: "embeddingModel") ?? "openai/text-embedding-3-small"
+
+                if let queryVector = try? embedQuery(query: query, apiKey: apiKey!, model: model) {
+                    // Load chunks WITH embeddings only
+                    let chunks: [(CodeChunk, String)] = (try? db.read { conn in
+                        var sql = """
+                            SELECT c.*, f.relativePath
+                            FROM codeChunks c
+                            JOIN indexedFiles f ON c.fileId = f.id
+                            WHERE c.projectId = ? AND c.embedding IS NOT NULL
+                        """
+                        var arguments: [DatabaseValueConvertible] = [projectId]
+
+                        if let types = types, !types.isEmpty {
+                            let placeholders = types.map { _ in "?" }.joined(separator: ", ")
+                            sql += " AND c.chunkType IN (\(placeholders))"
+                            arguments.append(contentsOf: types)
+                        }
+
+                        let rows = try Row.fetchAll(conn, sql: sql, arguments: StatementArguments(arguments))
+                        return try rows.map { row in
+                            let chunk = try CodeChunk(row: row)
+                            let path: String = row["relativePath"]
+                            return (chunk, path)
+                        }
+                    }) ?? []
+
+                    // Compute cosine similarity and merge with FTS results
+                    let existingIds = Set(results.map { $0.chunk.id })
+
+                    for (chunk, path) in chunks {
+                        guard let vector = chunk.embeddingVector else { continue }
+                        let sim = cosineSimilarity(queryVector, vector)
+                        if sim > 0.3 {
+                            if existingIds.contains(chunk.id) {
+                                // Boost FTS result with semantic score
+                                if let idx = results.firstIndex(where: { $0.chunk.id == chunk.id }) {
+                                    results[idx].score = (0.3 * results[idx].score) + (0.7 * sim)
+                                }
+                            } else {
+                                results.append((path, chunk, sim))
+                            }
+                        }
                     }
-                } else {
-                    // Add keyword-only result
-                    results.append((path, chunk, 0.3 * normalizedScore))
                 }
             }
         }
 
-        // Sort by score, take top N
+        // --- Step 3: Sort, format, return ---
+
         results.sort { $0.score > $1.score }
         let topResults = results.prefix(min(limit, 30))
 
@@ -1869,6 +1919,7 @@ class MCPServer {
         return formatJSON([
             "results": formatted,
             "index_status": indexStatus,
+            "embedding_status": embeddingStatus,
             "total_chunks": state?.totalChunks ?? 0
         ])
     }

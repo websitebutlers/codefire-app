@@ -14,25 +14,27 @@ class AppState: ObservableObject {
 
     enum GUITab: String, CaseIterable {
         case tasks = "Tasks"
-        case dashboard = "Dashboard"
-        case sessions = "Sessions"
         case notes = "Notes"
+        case files = "Files"
+        case browser = "Browser"
         case memory = "Memory"
         case rules = "Rules"
-        case browser = "Browser"
         case github = "GitHub"
+        case sessions = "Sessions"
+        case dashboard = "Details"
         case visualize = "Visualize"
 
         var icon: String {
             switch self {
-            case .dashboard: return "house"
-            case .sessions: return "clock"
             case .tasks: return "checklist"
             case .notes: return "note.text"
+            case .files: return "folder"
+            case .browser: return "globe"
             case .memory: return "brain"
             case .rules: return "doc.text.magnifyingglass"
-            case .browser: return "globe"
             case .github: return "arrow.triangle.branch"
+            case .sessions: return "clock"
+            case .dashboard: return "info.circle"
             case .visualize: return "chart.dots.scatter"
             }
         }
