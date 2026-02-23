@@ -158,6 +158,8 @@ struct GUIPanelView: View {
                                 KanbanBoard()
                             case .notes:
                                 NoteListView()
+                            case .files:
+                                FileBrowserView()
                             case .memory:
                                 MemoryEditorView()
                             case .rules:
@@ -255,7 +257,16 @@ struct GUIPanelView: View {
                 isIndexing: contextEngine.isIndexing,
                 indexStatus: contextEngine.indexStatus,
                 progress: contextEngine.indexProgress,
-                totalChunks: contextEngine.totalChunks
+                totalChunks: contextEngine.totalChunks,
+                lastError: contextEngine.lastError,
+                isEmbedding: contextEngine.isEmbedding,
+                embeddingProgress: contextEngine.embeddingProgress,
+                onReindex: {
+                    contextEngine.rebuildIndex()
+                },
+                onClearIndex: {
+                    Task { await contextEngine.clearIndex() }
+                }
             )
             ProfileIndicator(
                 isGenerating: appState.isProfileGenerating,
@@ -436,12 +447,18 @@ struct IndexIndicator: View {
     let indexStatus: String
     let progress: Double
     let totalChunks: Int
+    let lastError: String?
+    var isEmbedding: Bool = false
+    var embeddingProgress: Double = 0
+    var onReindex: (() -> Void)?
+    var onClearIndex: (() -> Void)?
 
     private var statusColor: Color {
         switch indexStatus {
         case "indexing": return .orange
         case "ready": return .green
         case "error": return .red
+        case "idle": return .secondary.opacity(0.6)
         default: return .secondary.opacity(0.5)
         }
     }
@@ -451,44 +468,81 @@ struct IndexIndicator: View {
             return "Indexing \(Int(progress * 100))%"
         }
         switch indexStatus {
-        case "ready": return "Codebase \(totalChunks)"
-        case "error": return "Codebase Error"
+        case "ready": return "Indexed \(totalChunks)"
+        case "error": return "Index Error"
+        case "idle": return "Not Indexed"
         default: return "Codebase"
         }
     }
 
     private var isActive: Bool {
-        isIndexing || indexStatus == "ready" || indexStatus == "error"
+        true // Always show as active so the button is clearly interactive
     }
 
     var body: some View {
-        HStack(spacing: 5) {
-            if isIndexing {
-                ProgressView()
-                    .controlSize(.mini)
-                    .scaleEffect(0.6)
-            } else {
-                Image(systemName: indexStatus == "ready" ? "chevron.left.forwardslash.chevron.right" : "chevron.left.forwardslash.chevron.right")
-                    .font(.system(size: 10, weight: indexStatus == "ready" ? .semibold : .regular))
-                    .foregroundColor(statusColor)
+        Menu {
+            if indexStatus == "no_key" {
+                Text("Set OpenRouter API key in Settings")
             }
-            Text(label)
-                .font(.system(size: 10, weight: isActive ? .semibold : .medium))
-                .foregroundColor(statusColor)
+            if let error = lastError, indexStatus == "error" {
+                Text(error)
+            }
+
+            Divider()
+
+            Button {
+                onReindex?()
+            } label: {
+                Label(indexStatus == "idle" || indexStatus == "no_key" ? "Index Codebase" : "Re-index Codebase",
+                      systemImage: "arrow.clockwise")
+            }
+            .disabled(isIndexing || indexStatus == "no_key")
+
+            if indexStatus == "ready" || indexStatus == "error" {
+                Button(role: .destructive) {
+                    onClearIndex?()
+                } label: {
+                    Label("Clear Index", systemImage: "trash")
+                }
+                .disabled(isIndexing)
+            }
+        } label: {
+            HStack(spacing: 5) {
+                if isIndexing {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .scaleEffect(0.6)
+                } else {
+                    Image(systemName: "chevron.left.forwardslash.chevron.right")
+                        .font(.system(size: 10, weight: isActive ? .semibold : .regular))
+                        .foregroundColor(statusColor)
+                }
+                Text(label)
+                    .font(.system(size: 10, weight: isActive ? .semibold : .medium))
+                    .foregroundColor(statusColor)
+                if isEmbedding && !isIndexing {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .scaleEffect(0.5)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(statusColor.opacity(0.12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .strokeBorder(
+                                isActive ? statusColor.opacity(0.3) : Color.clear,
+                                lineWidth: 1
+                            )
+                    )
+            )
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 5)
-                .fill(statusColor.opacity(0.12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 5)
-                        .strokeBorder(
-                            isActive ? statusColor.opacity(0.3) : Color.clear,
-                            lineWidth: 1
-                        )
-                )
-        )
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
     }
 }
 

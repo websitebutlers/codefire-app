@@ -129,6 +129,7 @@ struct ContextApp: App {
                     if appSettings.gmailSyncEnabled {
                         gmailPoller.startPolling(interval: appSettings.gmailSyncInterval)
                     }
+                    contextEngine.startPollingForRequests()
                     Task {
                         await briefingService.checkAndGenerate(settings: appSettings)
                     }

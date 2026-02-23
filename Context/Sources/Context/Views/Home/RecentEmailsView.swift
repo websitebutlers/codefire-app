@@ -542,7 +542,22 @@ private struct EmailDetailView: View {
         let senderName = email.fromName ?? email.fromAddress
         var desc = "From: \(senderName)\n"
         desc += "Subject: \(email.subject)\n\n"
-        if let snippet = email.snippet { desc += snippet }
+        // Use full body, stripping Gmail quoted reply (lines starting with ">")
+        if let body = email.body {
+            let lines = body.components(separatedBy: "\n")
+            var currentMessage: [String] = []
+            for line in lines {
+                if line.hasPrefix(">") { break }
+                currentMessage.append(line)
+            }
+            // Trim trailing blank lines
+            while currentMessage.last?.trimmingCharacters(in: .whitespaces).isEmpty == true {
+                currentMessage.removeLast()
+            }
+            desc += currentMessage.joined(separator: "\n")
+        } else if let snippet = email.snippet {
+            desc += snippet
+        }
 
         var task = TaskItem(
             id: nil,

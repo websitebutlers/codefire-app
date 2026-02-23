@@ -29,6 +29,14 @@ class DatabaseService {
         }
 
         try migrator.migrate(dbQueue)
+
+        // Ensure __global__ project exists for email-created and global tasks
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                INSERT OR IGNORE INTO projects (id, name, path, createdAt, sortOrder)
+                VALUES ('__global__', 'Global', '', ?, -1)
+            """, arguments: [Date()])
+        }
     }
 
     private var migrator: DatabaseMigrator {
@@ -329,6 +337,14 @@ class DatabaseService {
                 t.column("lastFullIndexAt", .datetime)
                 t.column("totalChunks", .integer).notNull().defaults(to: 0)
                 t.column("lastError", .text)
+            }
+
+            try db.create(table: "indexRequests", ifNotExists: true) { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("projectId", .text).notNull()
+                t.column("projectPath", .text).notNull()
+                t.column("status", .text).notNull().defaults(to: "pending")
+                t.column("createdAt", .datetime).notNull()
             }
 
             // FTS virtual tables don't support ifNotExists in GRDB, so check manually

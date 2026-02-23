@@ -1,8 +1,9 @@
 import Foundation
 
 /// Calls OpenRouter's /embeddings endpoint to generate vector embeddings.
-/// Supports batching (up to 20 texts per request) and retry with exponential backoff.
-class EmbeddingClient {
+/// Supports batching (up to 100 texts per request) and retry with exponential backoff.
+/// Sendable: all stored properties are immutable constants.
+final class EmbeddingClient: Sendable {
 
     struct EmbeddingResult {
         let embeddings: [[Float]]
@@ -10,7 +11,7 @@ class EmbeddingClient {
     }
 
     private let maxRetries = 3
-    private let batchSize = 20
+    private let batchSize = 100
 
     /// Embed a single text string. Returns 1536-dimensional vector or nil on failure.
     func embed(_ text: String) async -> (vector: [Float]?, error: String?) {

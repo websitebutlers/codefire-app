@@ -14,9 +14,13 @@ class ContextEngine: ObservableObject {
     @Published var indexedFileCount: Int = 0
     @Published var totalFileCount: Int = 0
     @Published var lastIndexedAt: Date?
+    @Published var embeddingProgress: Double = 0  // 0.0 to 1.0, for background embedding phase
+    @Published var isEmbedding: Bool = false
 
     private let embeddingClient = EmbeddingClient()
     private var fileWatcher: FileWatcher?
+    private var indexRequestPoller: Timer?
+    private var embeddingTask: Task<Void, Never>?
     private var currentProjectId: String?
     private var currentProjectPath: String?
 
@@ -46,6 +50,7 @@ class ContextEngine: ObservableObject {
 
         currentProjectId = projectId
         currentProjectPath = projectPath
+        lastError = nil
 
         // Load existing index state
         if let state = try? DatabaseService.shared.dbQueue.read({ db in
@@ -55,7 +60,13 @@ class ContextEngine: ObservableObject {
             lastIndexedAt = state.lastFullIndexAt
             if state.status == "ready" {
                 indexStatus = "ready"
+            } else if state.status == "error" {
+                indexStatus = "error"
+                lastError = state.lastError
             }
+        } else {
+            indexStatus = "idle"
+            totalChunks = 0
         }
 
         // Start file watcher
@@ -77,11 +88,74 @@ class ContextEngine: ObservableObject {
     func stopWatching() {
         fileWatcher?.stop()
         fileWatcher = nil
+        embeddingTask?.cancel()
+        embeddingTask = nil
+        isEmbedding = false
+    }
+
+    // MARK: - Index Request Polling (MCP IPC)
+
+    /// Start polling for index requests from MCP processes.
+    func startPollingForRequests() {
+        indexRequestPoller = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                await self.checkForIndexRequests()
+            }
+        }
+    }
+
+    /// Stop polling for index requests.
+    func stopPollingForRequests() {
+        indexRequestPoller?.invalidate()
+        indexRequestPoller = nil
+    }
+
+    private func checkForIndexRequests() async {
+        guard !isIndexing else { return }
+
+        do {
+            // Fetch oldest pending request
+            let requestData = try await DatabaseService.shared.dbQueue.read { db -> (Int64, String, String)? in
+                guard let row = try Row.fetchOne(db, sql: """
+                    SELECT id, projectId, projectPath FROM indexRequests
+                    WHERE status = 'pending'
+                    ORDER BY createdAt ASC LIMIT 1
+                """) else { return nil }
+                return (row["id"] as Int64, row["projectId"] as String, row["projectPath"] as String)
+            }
+
+            guard let (requestId, projectId, projectPath) = requestData else { return }
+
+            // Mark as processing
+            try await DatabaseService.shared.dbQueue.write { db in
+                try db.execute(
+                    sql: "UPDATE indexRequests SET status = 'processing' WHERE id = ?",
+                    arguments: [requestId]
+                )
+            }
+
+            // Start indexing this project
+            startIndexing(projectId: projectId, projectPath: projectPath)
+
+            // Mark as completed (indexing is async, but the request is fulfilled)
+            try await DatabaseService.shared.dbQueue.write { db in
+                try db.execute(
+                    sql: "UPDATE indexRequests SET status = 'completed' WHERE id = ?",
+                    arguments: [requestId]
+                )
+            }
+        } catch {
+            print("ContextEngine: failed to check index requests: \(error)")
+        }
     }
 
     /// Force a full re-index of the current project.
     func rebuildIndex() {
         guard let projectId = currentProjectId, let _ = currentProjectPath else { return }
+        embeddingTask?.cancel()
+        embeddingTask = nil
+        isEmbedding = false
         Task {
             // Clear existing index
             try? await DatabaseService.shared.dbQueue.write { db in
@@ -95,6 +169,9 @@ class ContextEngine: ObservableObject {
     /// Clear the index for the current project.
     func clearIndex() async {
         guard let projectId = currentProjectId else { return }
+        embeddingTask?.cancel()
+        embeddingTask = nil
+        isEmbedding = false
         do {
             try await DatabaseService.shared.dbQueue.write { db in
                 try db.execute(sql: "DELETE FROM codeChunks WHERE projectId = ?", arguments: [projectId])
@@ -110,14 +187,11 @@ class ContextEngine: ObservableObject {
 
     // MARK: - Full Index
 
+    /// Max chunks per embedding API call
+    private let embeddingBatchSize = 100
+
     private func performFullIndex() async {
         guard let projectId = currentProjectId, let projectPath = currentProjectPath else { return }
-
-        // Check API key
-        guard ClaudeService.openRouterAPIKey != nil else {
-            lastError = "OpenRouter API key not configured"
-            return
-        }
 
         isIndexing = true
         indexStatus = "indexing"
@@ -127,117 +201,135 @@ class ContextEngine: ObservableObject {
         lastError = nil
         await updateIndexState(projectId: projectId, status: "indexing")
 
+        // Capture skip sets for use off main actor
+        let skipDirsCopy = skipDirs
+        let skipExtsCopy = skipExtensions
+
         do {
-            // 1. Enumerate files
-            let files = enumerateFiles(at: projectPath)
-            totalFileCount = files.count
+            // Phase 1: Fast FTS Index — enumerate, chunk, store (no embedding)
+            // FTS5 syncs automatically via GRDB triggers on codeChunks
 
-            // 2. Process each file
-            var processedChunks = 0
-            var pendingChunks: [(CodeChunk, String)] = []  // (chunk without embedding, text to embed)
+            // 1. Heavy file I/O runs OFF main actor via Task.detached
+            let fileWork = await Task.detached { () -> (
+                pendingChunks: [CodeChunk],
+                pendingFileRecords: [IndexedFile],
+                staleFileIds: [String],
+                totalFiles: Int,
+                skippedFiles: Int
+            ) in
+                let files = ContextEngine.enumerateFilesOffMain(at: projectPath, skipDirs: skipDirsCopy, skipExtensions: skipExtsCopy)
 
-            for (relativePath, fileURL) in files {
-                let content: String
-                do {
-                    content = try String(contentsOf: fileURL, encoding: .utf8)
-                } catch {
-                    continue  // Skip unreadable files
-                }
+                // Use write instead of read to avoid GRDB read isolation path crash
+                let existingFiles: [String: IndexedFile] = (try? await DatabaseService.shared.dbQueue.write { db in
+                    let records = try IndexedFile
+                        .filter(Column("projectId") == projectId)
+                        .fetchAll(db)
+                    return Dictionary(records.map { ($0.relativePath, $0) }, uniquingKeysWith: { _, latest in latest })
+                }) ?? [:]
 
-                // Check content hash
-                let hash = sha256(content)
-                let existingFile = try? await DatabaseService.shared.dbQueue.read { db in
-                    try IndexedFile
-                        .filter(Column("projectId") == projectId && Column("relativePath") == relativePath)
-                        .fetchOne(db)
-                }
+                var pendingChunks: [CodeChunk] = []
+                var pendingFileRecords: [IndexedFile] = []
+                var staleFileIds: [String] = []
+                var skippedFiles = 0
 
-                if let existing = existingFile, existing.contentHash == hash {
-                    continue  // File unchanged, skip
-                }
-
-                // Delete old chunks for this file if it existed
-                if let existing = existingFile {
-                    try? await DatabaseService.shared.dbQueue.write { db in
-                        try db.execute(sql: "DELETE FROM codeChunks WHERE fileId = ?", arguments: [existing.id])
+                for (relativePath, fileURL) in files {
+                    let content: String
+                    do {
+                        content = try String(contentsOf: fileURL, encoding: .utf8)
+                    } catch {
+                        continue
                     }
-                }
 
-                // Chunk the file
-                let language = CodeChunker.detectLanguage(from: relativePath)
-                let chunks: [CodeChunker.Chunk]
+                    let hash = ContextEngine.sha256Static(content)
+                    let existing = existingFiles[relativePath]
 
-                if language == "markdown" {
-                    chunks = CodeChunker.chunkMarkdown(content: content, filePath: relativePath)
-                } else if let lang = language {
-                    chunks = CodeChunker.chunkFile(content: content, language: lang, filePath: relativePath)
-                } else {
-                    continue  // Skip unknown file types
-                }
+                    if let existing, existing.contentHash == hash {
+                        skippedFiles += 1
+                        continue  // File unchanged
+                    }
 
-                // Create/update IndexedFile record
-                let fileId = existingFile?.id ?? UUID().uuidString
-                let indexedFile = IndexedFile(
-                    id: fileId,
-                    projectId: projectId,
-                    relativePath: relativePath,
-                    contentHash: hash,
-                    language: language,
-                    lastIndexedAt: Date()
-                )
-                try await DatabaseService.shared.dbQueue.write { db in
-                    var record = indexedFile
-                    try record.save(db)
-                }
+                    if let existing {
+                        staleFileIds.append(existing.id)
+                    }
 
-                // Queue chunks for embedding
-                for chunk in chunks {
-                    let codeChunk = CodeChunk(
-                        id: UUID().uuidString,
-                        fileId: fileId,
+                    let language = CodeChunker.detectLanguage(from: relativePath)
+                    let chunks: [CodeChunker.Chunk]
+
+                    if language == "markdown" {
+                        chunks = CodeChunker.chunkMarkdown(content: content, filePath: relativePath)
+                    } else if let lang = language {
+                        chunks = CodeChunker.chunkFile(content: content, language: lang, filePath: relativePath)
+                    } else {
+                        skippedFiles += 1
+                        continue
+                    }
+
+                    let fileId = existing?.id ?? UUID().uuidString
+                    pendingFileRecords.append(IndexedFile(
+                        id: fileId,
                         projectId: projectId,
-                        chunkType: chunk.chunkType,
-                        symbolName: chunk.symbolName,
-                        content: chunk.content,
-                        startLine: chunk.startLine,
-                        endLine: chunk.endLine,
-                        embedding: nil
-                    )
-                    pendingChunks.append((codeChunk, chunk.content))
+                        relativePath: relativePath,
+                        contentHash: hash,
+                        language: language,
+                        lastIndexedAt: Date()
+                    ))
 
-                    // Batch embed when we hit 20
-                    if pendingChunks.count >= 20 {
-                        processedChunks += try await embedAndStore(pendingChunks)
-                        pendingChunks.removeAll()
-                        totalChunks = processedChunks
+                    for chunk in chunks {
+                        pendingChunks.append(CodeChunk(
+                            id: UUID().uuidString,
+                            fileId: fileId,
+                            projectId: projectId,
+                            chunkType: chunk.chunkType,
+                            symbolName: chunk.symbolName,
+                            content: chunk.content,
+                            startLine: chunk.startLine,
+                            endLine: chunk.endLine,
+                            embedding: nil
+                        ))
                     }
                 }
 
-                // Update file-level progress
-                indexedFileCount += 1
-                if totalFileCount > 0 {
-                    indexProgress = Double(indexedFileCount) / Double(totalFileCount)
+                return (pendingChunks, pendingFileRecords, staleFileIds, files.count, skippedFiles)
+            }.value
+
+            totalFileCount = fileWork.totalFiles
+            indexedFileCount = fileWork.skippedFiles
+            indexProgress = 0.3
+
+            // 2. Batch DB write: delete stale chunks + upsert file records + insert new chunks
+            if !fileWork.staleFileIds.isEmpty || !fileWork.pendingFileRecords.isEmpty || !fileWork.pendingChunks.isEmpty {
+                try await DatabaseService.shared.dbQueue.write { db in
+                    for fileId in fileWork.staleFileIds {
+                        try db.execute(sql: "DELETE FROM codeChunks WHERE fileId = ?", arguments: [fileId])
+                    }
+                    for var record in fileWork.pendingFileRecords {
+                        try record.save(db)
+                    }
+                    for var chunk in fileWork.pendingChunks {
+                        try chunk.insert(db)
+                    }
                 }
             }
 
-            // Embed remaining chunks
-            if !pendingChunks.isEmpty {
-                processedChunks += try await embedAndStore(pendingChunks)
-            }
+            indexProgress = 0.6
 
-            // 3. Index git history
-            processedChunks += await indexGitHistory(projectId: projectId, projectPath: projectPath)
+            // 3. Index git history (store without embedding)
+            _ = await indexGitHistory(projectId: projectId, projectPath: projectPath)
+            indexProgress = 0.8
 
             // 4. Clean up orphaned files
             try await cleanupOrphanedFiles(projectId: projectId, projectPath: projectPath)
 
-            // 5. Update state
-            totalChunks = processedChunks
+            // 5. Count total chunks and mark as ready — FTS search works immediately
+            await updateTotalChunks(projectId: projectId)
             indexStatus = "ready"
             isIndexing = false
             indexProgress = 1.0
             lastIndexedAt = Date()
-            await updateIndexState(projectId: projectId, status: "ready", totalChunks: processedChunks)
+            await updateIndexState(projectId: projectId, status: "ready", totalChunks: totalChunks)
+
+            // Phase 2: Background embedding (non-blocking, optional enhancement)
+            startBackgroundEmbedding()
 
         } catch {
             lastError = error.localizedDescription
@@ -311,8 +403,8 @@ class ContextEngine: ObservableObject {
                     try record.save(db)
                 }
 
-                let pendingChunks: [(CodeChunk, String)] = chunks.map { chunk in
-                    let codeChunk = CodeChunk(
+                let pendingChunks: [CodeChunk] = chunks.map { chunk in
+                    CodeChunk(
                         id: UUID().uuidString,
                         fileId: fileId,
                         projectId: projectId,
@@ -323,11 +415,35 @@ class ContextEngine: ObservableObject {
                         endLine: chunk.endLine,
                         embedding: nil
                     )
-                    return (codeChunk, chunk.content)
                 }
 
                 if !pendingChunks.isEmpty {
-                    _ = try? await embedAndStore(pendingChunks)
+                    // Store chunks immediately — FTS search works right away
+                    try? await DatabaseService.shared.dbQueue.write { db in
+                        for var chunk in pendingChunks {
+                            try chunk.insert(db)
+                        }
+                    }
+                    // Embed in background for semantic search enhancement
+                    if ClaudeService.openRouterAPIKey != nil {
+                        let chunksToEmbed = pendingChunks
+                        let client = embeddingClient
+                        Task.detached {
+                            let texts = chunksToEmbed.map { $0.content }
+                            let result = await client.embedBatch(texts)
+                            try? await DatabaseService.shared.dbQueue.write { db in
+                                for (i, chunk) in chunksToEmbed.enumerated() {
+                                    if i < result.embeddings.count && !result.embeddings[i].isEmpty {
+                                        let encoded = CodeChunk.encodeEmbedding(result.embeddings[i])
+                                        try db.execute(
+                                            sql: "UPDATE codeChunks SET embedding = ? WHERE id = ?",
+                                            arguments: [encoded, chunk.id]
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Update total count
@@ -402,8 +518,8 @@ class ContextEngine: ObservableObject {
             try gitFile.save(db)
         }
 
-        let pendingChunks: [(CodeChunk, String)] = chunks.map { chunk in
-            let codeChunk = CodeChunk(
+        let codeChunks: [CodeChunk] = chunks.map { chunk in
+            CodeChunk(
                 id: UUID().uuidString,
                 fileId: gitFileId,
                 projectId: projectId,
@@ -414,31 +530,114 @@ class ContextEngine: ObservableObject {
                 endLine: chunk.endLine,
                 embedding: nil
             )
-            return (codeChunk, chunk.content)
         }
 
-        return (try? await embedAndStore(pendingChunks)) ?? 0
+        // Store without embedding — background embedding will pick these up
+        try? await DatabaseService.shared.dbQueue.write { db in
+            for var chunk in codeChunks {
+                try chunk.insert(db)
+            }
+        }
+        return codeChunks.count
+    }
+
+    // MARK: - Background Embedding
+
+    /// Start background embedding for chunks that don't have embeddings yet.
+    /// Non-blocking — runs entirely off the main actor, only hops back for progress updates.
+    /// Cancellable and resumable: always queries WHERE embedding IS NULL.
+    private func startBackgroundEmbedding() {
+        guard let projectId = currentProjectId else { return }
+        guard ClaudeService.openRouterAPIKey != nil else { return }
+
+        embeddingTask?.cancel()
+        isEmbedding = true
+        embeddingProgress = 0
+
+        let client = embeddingClient
+        let batchSize = embeddingBatchSize
+
+        embeddingTask = Task {
+            let totalUnembedded = (try? await DatabaseService.shared.dbQueue.read { db -> Int in
+                try Int.fetchOne(db, sql: """
+                    SELECT COUNT(*) FROM codeChunks
+                    WHERE projectId = ? AND embedding IS NULL
+                """, arguments: [projectId]) ?? 0
+            }) ?? 0
+
+            guard totalUnembedded > 0 else {
+                isEmbedding = false
+                embeddingProgress = 1
+                return
+            }
+
+            var totalProcessed = 0
+            let concurrency = 5
+
+            while !Task.isCancelled {
+                // Fetch next group of un-embedded chunks
+                let groupSize = batchSize * concurrency
+                let chunks: [(id: String, content: String)] = (try? await DatabaseService.shared.dbQueue.read { db in
+                    let rows = try Row.fetchAll(db, sql: """
+                        SELECT id, content FROM codeChunks
+                        WHERE projectId = ? AND embedding IS NULL
+                        LIMIT ?
+                    """, arguments: [projectId, groupSize])
+                    return rows.map { (id: $0["id"] as String, content: $0["content"] as String) }
+                }) ?? []
+
+                guard !chunks.isEmpty else { break }
+
+                // Split into batches and process concurrently off main actor
+                var batches: [[(id: String, content: String)]] = []
+                for i in stride(from: 0, to: chunks.count, by: batchSize) {
+                    batches.append(Array(chunks[i..<min(i + batchSize, chunks.count)]))
+                }
+
+                let batchesCopy = batches
+                let groupProcessed = await Task.detached {
+                    await withTaskGroup(of: Int.self, returning: Int.self) { group in
+                        for batch in batchesCopy {
+                            group.addTask {
+                                let texts = batch.map { $0.content }
+                                let result = await client.embedBatch(texts)
+                                try? await DatabaseService.shared.dbQueue.write { db in
+                                    for (i, item) in batch.enumerated() {
+                                        if i < result.embeddings.count && !result.embeddings[i].isEmpty {
+                                            let encoded = CodeChunk.encodeEmbedding(result.embeddings[i])
+                                            try db.execute(
+                                                sql: "UPDATE codeChunks SET embedding = ? WHERE id = ?",
+                                                arguments: [encoded, item.id]
+                                            )
+                                        }
+                                    }
+                                }
+                                return batch.count
+                            }
+                        }
+                        var sum = 0
+                        for await count in group { sum += count }
+                        return sum
+                    }
+                }.value
+
+                guard !Task.isCancelled else { break }
+
+                totalProcessed += groupProcessed
+                embeddingProgress = min(Double(totalProcessed) / Double(totalUnembedded), 1.0)
+            }
+
+            if !Task.isCancelled {
+                isEmbedding = false
+                embeddingProgress = 1
+            }
+        }
     }
 
     // MARK: - Helpers
 
-    private func embedAndStore(_ chunks: [(CodeChunk, String)]) async throws -> Int {
-        let texts = chunks.map { $0.1 }
-        let result = await embeddingClient.embedBatch(texts)
-
-        try await DatabaseService.shared.dbQueue.write { db in
-            for (i, (var chunk, _)) in chunks.enumerated() {
-                if i < result.embeddings.count && !result.embeddings[i].isEmpty {
-                    chunk.embedding = CodeChunk.encodeEmbedding(result.embeddings[i])
-                }
-                try chunk.insert(db)
-            }
-        }
-
-        return chunks.count
-    }
-
-    private func enumerateFiles(at path: String) -> [(String, URL)] {
+    /// Nonisolated static file enumeration for use from detached tasks
+    private nonisolated static func enumerateFilesOffMain(at path: String, skipDirs: Set<String>, skipExtensions: Set<String>) -> [(String, URL)] {
         let fm = FileManager.default
         var results: [(String, URL)] = []
 
@@ -461,7 +660,9 @@ class ContextEngine: ObservableObject {
             if skipExtensions.contains(ext) { continue }
 
             // Only index known file types
-            guard shouldIndex(relativePath: relativePath) else { continue }
+            let pathExt = (relativePath as NSString).pathExtension.lowercased()
+            if skipExtensions.contains(pathExt) { continue }
+            guard CodeChunker.isIndexable(relativePath) else { continue }
 
             guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]),
                   values.isRegularFile == true else { continue }
@@ -484,13 +685,18 @@ class ContextEngine: ObservableObject {
     }
 
     private nonisolated func sha256(_ string: String) -> String {
+        return Self.sha256Static(string)
+    }
+
+    private nonisolated static func sha256Static(_ string: String) -> String {
         let data = Data(string.utf8)
         let hash = SHA256.hash(data: data)
         return hash.map { String(format: "%02x", $0) }.joined()
     }
 
     private func cleanupOrphanedFiles(projectId: String, projectPath: String) async throws {
-        let indexed = try await DatabaseService.shared.dbQueue.read { db in
+        // Use write instead of read to avoid GRDB read isolation path crash
+        let indexed = try await DatabaseService.shared.dbQueue.write { db in
             try IndexedFile.filter(Column("projectId") == projectId).fetchAll(db)
         }
 
@@ -525,7 +731,8 @@ class ContextEngine: ObservableObject {
     }
 
     private func updateTotalChunks(projectId: String) async {
-        let count = try? await DatabaseService.shared.dbQueue.read { db in
+        // Use write instead of read to avoid GRDB read isolation path crash (swift_unexpectedError)
+        let count = try? await DatabaseService.shared.dbQueue.write { db -> Int in
             try CodeChunk.filter(Column("projectId") == projectId).fetchCount(db)
         }
         if let count = count {
