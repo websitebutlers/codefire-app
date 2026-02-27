@@ -166,6 +166,8 @@ struct GUIPanelView: View {
                                 ClaudeMdEditorView()
                             case .github:
                                 GitHubTabView()
+                            case .services:
+                                ProjectServicesView()
                             case .visualize:
                                 VisualizerView()
                             case .browser:
