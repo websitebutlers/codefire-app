@@ -164,8 +164,6 @@ struct GUIPanelView: View {
                                 MemoryEditorView()
                             case .rules:
                                 ClaudeMdEditorView()
-                            case .github:
-                                GitHubTabView()
                             case .services:
                                 ProjectServicesView()
                             case .git:

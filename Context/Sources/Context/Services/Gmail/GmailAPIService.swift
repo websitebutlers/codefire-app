@@ -59,6 +59,13 @@ class GmailAPIService {
 
     // MARK: - Get Full Message
 
+    struct GmailAttachment {
+        let attachmentId: String
+        let filename: String
+        let mimeType: String
+        let size: Int
+    }
+
     struct GmailMessage {
         let id: String
         let threadId: String
@@ -68,6 +75,7 @@ class GmailAPIService {
         let body: String
         let date: Date
         let isCalendarInvite: Bool
+        let attachments: [GmailAttachment]
     }
 
     func getMessage(id: String, accountId: String) async -> GmailMessage? {
@@ -88,6 +96,7 @@ class GmailAPIService {
             (payload["parts"] as? [[String: Any]])?.contains { ($0["mimeType"] as? String)?.contains("calendar") == true } == true
 
         let body = extractPlainTextBody(from: payload)
+        let attachments = extractAttachments(from: payload)
 
         // Prefer internalDate (epoch ms) — always present and reliable
         let date: Date
@@ -105,7 +114,8 @@ class GmailAPIService {
             snippet: snippet,
             body: body,
             date: date,
-            isCalendarInvite: isCalendar
+            isCalendarInvite: isCalendar,
+            attachments: attachments
         )
     }
 
@@ -180,6 +190,56 @@ class GmailAPIService {
             throw GmailAPIError.httpError(httpResponse?.statusCode ?? 0)
         }
         return data
+    }
+
+    // MARK: - Attachment Download
+
+    func getAttachment(messageId: String, attachmentId: String, accountId: String) async -> Data? {
+        guard let data = try? await request(
+            path: "/messages/\(messageId)/attachments/\(attachmentId)",
+            accountId: accountId
+        ),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let base64Data = json["data"] as? String
+        else { return nil }
+
+        // Gmail uses URL-safe base64
+        var base64 = base64Data
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while base64.count % 4 != 0 { base64.append("=") }
+        return Data(base64Encoded: base64)
+    }
+
+    // MARK: - Attachment Extraction
+
+    private func extractAttachments(from payload: [String: Any]) -> [GmailAttachment] {
+        var results: [GmailAttachment] = []
+        extractAttachmentsRecursive(from: payload, into: &results)
+        return results
+    }
+
+    private func extractAttachmentsRecursive(from part: [String: Any], into results: inout [GmailAttachment]) {
+        let filename = part["filename"] as? String ?? ""
+        let mimeType = part["mimeType"] as? String ?? ""
+        let body = part["body"] as? [String: Any] ?? [:]
+        let attachmentId = body["attachmentId"] as? String
+        let size = body["size"] as? Int ?? 0
+
+        if !filename.isEmpty, let attachmentId {
+            results.append(GmailAttachment(
+                attachmentId: attachmentId,
+                filename: filename,
+                mimeType: mimeType,
+                size: size
+            ))
+        }
+
+        if let parts = part["parts"] as? [[String: Any]] {
+            for subPart in parts {
+                extractAttachmentsRecursive(from: subPart, into: &results)
+            }
+        }
     }
 
     // MARK: - Body Extraction

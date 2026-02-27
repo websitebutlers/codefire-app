@@ -210,7 +210,7 @@ class GmailPoller: ObservableObject {
                 continue
             }
 
-            let taskId = createTaskFromEmail(
+            let taskId = await createTaskFromEmail(
                 message: msg,
                 triage: triage,
                 match: match,
@@ -290,7 +290,7 @@ class GmailPoller: ObservableObject {
         triage: EmailTriageResult,
         match: WhitelistMatch,
         accountId: String
-    ) -> Int64? {
+    ) async -> Int64? {
         let senderName = WhitelistFilter.extractName(from: message.from)
             ?? WhitelistFilter.extractEmail(from: message.from)
 
@@ -298,6 +298,45 @@ class GmailPoller: ObservableObject {
         description += "Subject: \(message.subject)\n\n"
         if let triageDesc = triage.description {
             description += triageDesc
+        }
+
+        // Append full email body for complete context
+        if !message.body.isEmpty {
+            description += "\n\n---\n\n**Original Email:**\n\n"
+            // Strip Gmail quoted replies (lines starting with ">")
+            let lines = message.body.components(separatedBy: "\n")
+            var originalLines: [String] = []
+            for line in lines {
+                if line.hasPrefix(">") { break }
+                originalLines.append(line)
+            }
+            while originalLines.last?.trimmingCharacters(in: .whitespaces).isEmpty == true {
+                originalLines.removeLast()
+            }
+            description += originalLines.joined(separator: "\n")
+        }
+
+        // Download attachments
+        var savedPaths: [String] = []
+        if !message.attachments.isEmpty {
+            let attachDir = Self.attachmentsDirectory(for: message.id)
+            for attachment in message.attachments {
+                if let data = await apiService.getAttachment(
+                    messageId: message.id,
+                    attachmentId: attachment.attachmentId,
+                    accountId: accountId
+                ) {
+                    let filePath = attachDir.appendingPathComponent(attachment.filename)
+                    do {
+                        try FileManager.default.createDirectory(at: attachDir, withIntermediateDirectories: true)
+                        try data.write(to: filePath)
+                        savedPaths.append(filePath.path)
+                        log("  Saved attachment: \(attachment.filename) (\(data.count) bytes)")
+                    } catch {
+                        print("GmailPoller: failed to save attachment \(attachment.filename): \(error)")
+                    }
+                }
+            }
         }
 
         var task = TaskItem(
@@ -321,9 +360,12 @@ class GmailPoller: ObservableObject {
         var labels = [triage.type]
         if message.isCalendarInvite { labels.append("calendar") }
         task.setLabels(labels)
+        if !savedPaths.isEmpty {
+            task.setAttachments(savedPaths)
+        }
 
         do {
-            try DatabaseService.shared.dbQueue.write { db in
+            try await DatabaseService.shared.dbQueue.write { db in
                 try task.insert(db)
             }
             return task.id
@@ -331,6 +373,18 @@ class GmailPoller: ObservableObject {
             print("GmailPoller: failed to create task: \(error)")
             return nil
         }
+    }
+
+    // MARK: - Attachments Directory
+
+    nonisolated private static func attachmentsDirectory(for messageId: String) -> URL {
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!
+        return appSupport
+            .appendingPathComponent("Context/email-attachments", isDirectory: true)
+            .appendingPathComponent(messageId, isDirectory: true)
     }
 
     private func saveProcessedEmail(
