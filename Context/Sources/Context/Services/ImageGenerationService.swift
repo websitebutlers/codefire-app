@@ -108,42 +108,88 @@ actor ImageGenerationService {
                 return GenerationResult(imageData: Data(), responseText: nil, error: message)
             }
 
-            // Parse response: extract image data and optional text
+            // Parse response
             guard let choices = json["choices"] as? [[String: Any]],
                   let firstChoice = choices.first,
-                  let message = firstChoice["message"] as? [String: Any],
-                  let content = message["content"] as? [[String: Any]] else {
+                  let message = firstChoice["message"] as? [String: Any] else {
+                let raw = String(data: data, encoding: .utf8) ?? "?"
+                print("ImageGenerationService: unexpected top-level: \(String(raw.prefix(500)))")
                 return GenerationResult(imageData: Data(), responseText: nil, error: "Unexpected response format")
             }
 
-            // Append assistant message to conversation history for multi-turn
-            if let rawContent = message["content"] {
-                let assistantMsg: [String: Any] = [
-                    "role": "assistant",
-                    "content": rawContent
-                ]
-                conversationHistory.append(assistantMsg)
+            // Check for refusal first
+            if let refusal = message["refusal"] as? String, !refusal.isEmpty {
+                return GenerationResult(imageData: Data(), responseText: nil, error: "Model refused: \(refusal)")
             }
 
-            var imageData: Data?
+            // Extract text content (may be empty string or array)
             var responseText: String?
-
-            for part in content {
-                guard let type = part["type"] as? String else { continue }
-                if type == "image_url",
-                   let imageUrl = part["image_url"] as? [String: Any],
-                   let urlString = imageUrl["url"] as? String,
-                   let commaIndex = urlString.firstIndex(of: ",") {
-                    let base64String = String(urlString[urlString.index(after: commaIndex)...])
-                    imageData = Data(base64Encoded: base64String)
-                } else if type == "text",
-                          let text = part["text"] as? String {
-                    responseText = text
+            if let str = message["content"] as? String, !str.isEmpty {
+                responseText = str
+            } else if let arr = message["content"] as? [[String: Any]] {
+                for part in arr {
+                    if part["type"] as? String == "text", let text = part["text"] as? String, !text.isEmpty {
+                        responseText = text
+                    }
                 }
             }
 
+            // Extract image — OpenRouter/Gemini returns images in message["images"] array
+            var imageData: Data?
+
+            // Primary: message.images[] (OpenRouter's actual format)
+            if let images = message["images"] as? [[String: Any]] {
+                for img in images {
+                    if let imageUrl = img["image_url"] as? [String: Any],
+                       let urlString = imageUrl["url"] as? String,
+                       let commaIndex = urlString.firstIndex(of: ",") {
+                        let base64String = String(urlString[urlString.index(after: commaIndex)...])
+                        imageData = Data(base64Encoded: base64String)
+                        if imageData != nil { break }
+                    }
+                }
+            }
+
+            // Fallback: content array with image_url parts
+            if imageData == nil, let arr = message["content"] as? [[String: Any]] {
+                for part in arr {
+                    if part["type"] as? String == "image_url",
+                       let imageUrl = part["image_url"] as? [String: Any],
+                       let urlString = imageUrl["url"] as? String,
+                       let commaIndex = urlString.firstIndex(of: ",") {
+                        let base64String = String(urlString[urlString.index(after: commaIndex)...])
+                        imageData = Data(base64Encoded: base64String)
+                        if imageData != nil { break }
+                    }
+                }
+            }
+
+            // Append assistant message to conversation history for multi-turn
+            // Reconstruct content with images for the API
+            var assistantContent: [[String: Any]] = []
+            if let text = responseText {
+                assistantContent.append(["type": "text", "text": text])
+            }
+            if let images = message["images"] as? [[String: Any]] {
+                assistantContent.append(contentsOf: images)
+            }
+            if !assistantContent.isEmpty {
+                conversationHistory.append([
+                    "role": "assistant",
+                    "content": assistantContent
+                ])
+            }
+
             guard let finalImageData = imageData, !finalImageData.isEmpty else {
-                return GenerationResult(imageData: Data(), responseText: responseText, error: "No image in response")
+                // Check finish_reason for clues
+                let finishReason = firstChoice["native_finish_reason"] as? String
+                    ?? firstChoice["finish_reason"] as? String ?? "unknown"
+                print("ImageGenerationService: no image. finish_reason=\(finishReason), content=\(message["content"] ?? "nil")")
+
+                if finishReason.lowercased().contains("safety") || finishReason.lowercased().contains("block") {
+                    return GenerationResult(imageData: Data(), responseText: responseText, error: "Image blocked by safety filter. Try a different prompt.")
+                }
+                return GenerationResult(imageData: Data(), responseText: responseText, error: "No image generated. The model may have declined this prompt. Try rephrasing.")
             }
 
             return GenerationResult(imageData: finalImageData, responseText: responseText, error: nil)
