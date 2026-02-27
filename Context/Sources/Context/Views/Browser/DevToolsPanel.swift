@@ -8,17 +8,27 @@ struct DevToolsPanel: View {
         case elements = "Elements"
         case styles = "Styles"
         case boxModel = "Box Model"
+        case network = "Network"
 
         var icon: String {
             switch self {
             case .elements: return "chevron.left.forwardslash.chevron.right"
             case .styles: return "paintbrush"
             case .boxModel: return "rectangle.center.inset.filled"
+            case .network: return "antenna.radiowaves.left.and.right"
             }
         }
     }
 
     @State private var selectedTab: DevToolsTab = .elements
+    @State private var selectedRequestId: String?
+    @State private var networkFilter: NetworkFilter = .all
+
+    enum NetworkFilter: String, CaseIterable {
+        case all = "All"
+        case fetch = "Fetch"
+        case xhr = "XHR"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,6 +46,8 @@ struct DevToolsPanel: View {
                     stylesTab
                 case .boxModel:
                     boxModelTab
+                case .network:
+                    networkTab
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -515,6 +527,279 @@ struct DevToolsPanel: View {
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    // MARK: - Network Tab
+
+    private var filteredRequests: [NetworkRequestEntry] {
+        switch networkFilter {
+        case .all: return tab.networkRequests
+        case .fetch: return tab.networkRequests.filter { $0.type == .fetch }
+        case .xhr: return tab.networkRequests.filter { $0.type == .xhr }
+        }
+    }
+
+    private var networkTab: some View {
+        VStack(spacing: 0) {
+            // Toolbar row
+            networkToolbar
+
+            Divider()
+
+            if let requestId = selectedRequestId,
+               let request = tab.networkRequests.first(where: { $0.id == requestId }) {
+                // Detail view
+                networkDetailView(request)
+            } else if filteredRequests.isEmpty {
+                emptyState(
+                    icon: "antenna.radiowaves.left.and.right",
+                    message: tab.isNetworkMonitorActive
+                        ? "No network requests captured"
+                        : "Enable network monitoring to capture requests"
+                )
+            } else {
+                // Request list
+                networkRequestList
+            }
+        }
+    }
+
+    private var networkToolbar: some View {
+        HStack(spacing: 6) {
+            // Record toggle
+            Button {
+                if tab.isNetworkMonitorActive {
+                    tab.stopNetworkMonitor()
+                } else {
+                    tab.startNetworkMonitor()
+                }
+            } label: {
+                Image(systemName: "record.circle")
+                    .font(.system(size: 11, weight: .medium))
+                    .frame(width: 26, height: 26)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(tab.isNetworkMonitorActive ? Color.red.opacity(0.2) : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(tab.isNetworkMonitorActive ? .red : .secondary)
+            .help(tab.isNetworkMonitorActive ? "Stop monitoring" : "Start monitoring")
+
+            // Clear button
+            Button {
+                tab.clearNetworkRequests()
+                selectedRequestId = nil
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 10, weight: .medium))
+                    .frame(width: 26, height: 26)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.secondary)
+            .help("Clear requests")
+            .disabled(tab.networkRequests.isEmpty)
+
+            // Filter picker
+            Picker("", selection: $networkFilter) {
+                ForEach(NetworkFilter.allCases, id: \.self) { filter in
+                    Text(filter.rawValue).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 140)
+
+            Spacer()
+
+            // Back button when viewing detail
+            if selectedRequestId != nil {
+                Button {
+                    selectedRequestId = nil
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("Back")
+                            .font(.system(size: 10))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color(nsColor: .controlBackgroundColor))
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+            }
+
+            // Request count
+            Text("\(filteredRequests.count) request\(filteredRequests.count == 1 ? "" : "s")")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+    }
+
+    private var networkRequestList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(filteredRequests) { request in
+                    networkRequestRow(request)
+                        .onTapGesture {
+                            selectedRequestId = request.id
+                        }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func networkRequestRow(_ request: NetworkRequestEntry) -> some View {
+        HStack(spacing: 6) {
+            // Status badge
+            Text(request.statusLabel)
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(request.statusColor)
+                .frame(width: 42, alignment: .trailing)
+
+            // Method
+            Text(request.method)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(.primary)
+                .frame(width: 36, alignment: .leading)
+
+            // Short URL
+            Text(request.shortURL)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer()
+
+            // Duration
+            Text(request.formattedDuration)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.tertiary)
+                .frame(width: 50, alignment: .trailing)
+
+            // Size
+            if !request.formattedSize.isEmpty {
+                Text(request.formattedSize)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 50, alignment: .trailing)
+            }
+
+            // Type icon
+            Image(systemName: request.type.icon)
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+                .frame(width: 14)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(
+            selectedRequestId == request.id
+                ? Color.accentColor.opacity(0.1)
+                : (request.isError ? Color.red.opacity(0.05) : Color.clear)
+        )
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func networkDetailView(_ request: NetworkRequestEntry) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                // Full URL
+                sectionHeader("URL")
+                Text(request.url)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .lineLimit(5)
+                    .padding(.horizontal, 12)
+
+                // General info
+                Divider()
+                sectionHeader("General")
+                VStack(alignment: .leading, spacing: 2) {
+                    networkDetailRow("Method", request.method)
+                    networkDetailRow("Status", request.statusLabel)
+                    networkDetailRow("Type", request.type.rawValue.uppercased())
+                    networkDetailRow("Duration", request.formattedDuration)
+                    if !request.formattedSize.isEmpty {
+                        networkDetailRow("Size", request.formattedSize)
+                    }
+                }
+                .padding(.horizontal, 12)
+
+                // Request headers
+                if let headers = request.requestHeaders, !headers.isEmpty {
+                    Divider()
+                    sectionHeader("Request Headers")
+                    headersView(headers)
+                }
+
+                // Response headers
+                if let headers = request.responseHeaders, !headers.isEmpty {
+                    Divider()
+                    sectionHeader("Response Headers")
+                    headersView(headers)
+                }
+
+                // Response body preview
+                if let body = request.responseBody, !body.isEmpty {
+                    Divider()
+                    sectionHeader("Response Body")
+                    let preview = body.count > 2000 ? String(body.prefix(2000)) + "\n... (truncated)" : body
+                    Text(preview)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(50)
+                        .padding(.horizontal, 12)
+                }
+            }
+            .padding(.vertical, 8)
+        }
+    }
+
+    private func networkDetailRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .top, spacing: 4) {
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .frame(width: 60, alignment: .trailing)
+            Text(value)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+        }
+    }
+
+    @ViewBuilder
+    private func headersView(_ headers: [String: String]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(headers.sorted(by: { $0.key < $1.key }), id: \.key) { key, value in
+                HStack(alignment: .top, spacing: 4) {
+                    Text(key)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.accentColor)
+                    Text(value)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
     }
 
     // MARK: - Shared Components

@@ -58,6 +58,12 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     @Published var inspectedBoxModel: BoxModelData?
     @Published var isElementPickerActive = false
 
+    // Network monitoring
+    @Published var networkRequests: [NetworkRequestEntry] = []
+    @Published var isNetworkMonitorActive = false
+    private static let maxNetworkEntries = 200
+    private var networkMonitorScript: WKUserScript?
+
     private static let maxLogEntries = 500
     private var observations: [NSKeyValueObservation] = []
 
@@ -145,6 +151,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
         // Register message handlers via weak proxy
         config.userContentController.add(WeakScriptMessageHandler(delegate: self), name: "consoleLog")
         config.userContentController.add(WeakScriptMessageHandler(delegate: self), name: "devtools")
+        config.userContentController.add(WeakScriptMessageHandler(delegate: self), name: "networkMonitor")
 
         observations = [
             webView.observe(\.title) { [weak self] wv, _ in
@@ -168,6 +175,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     deinit {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "consoleLog")
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "devtools")
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "networkMonitor")
     }
 
     func navigate(to urlString: String) {
@@ -815,6 +823,229 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
         return (fileURL.path, Int(image.size.width), Int(image.size.height))
     }
 
+    // MARK: - Network Monitor
+
+    /// Inject JS that monkey-patches fetch() and XMLHttpRequest to capture network requests.
+    @MainActor
+    func startNetworkMonitor() {
+        isNetworkMonitorActive = true
+
+        let js = """
+            (function() {
+                if (window.__ctxNetworkMonitorActive) return;
+                window.__ctxNetworkMonitorActive = true;
+                var reqCounter = 0;
+
+                window.__ctxOrigFetch = window.fetch;
+                window.__ctxOrigXHROpen = XMLHttpRequest.prototype.open;
+                window.__ctxOrigXHRSend = XMLHttpRequest.prototype.send;
+
+                function headersToObj(headers) {
+                    var obj = {};
+                    if (headers && typeof headers.forEach === 'function') {
+                        headers.forEach(function(v, k) { obj[k] = v; });
+                    }
+                    return obj;
+                }
+
+                window.fetch = function() {
+                    var id = 'net_' + (++reqCounter);
+                    var startTime = Date.now();
+                    var url = '';
+                    var method = 'GET';
+                    var reqHeaders = {};
+
+                    if (typeof arguments[0] === 'string') {
+                        url = arguments[0];
+                    } else if (arguments[0] instanceof Request) {
+                        url = arguments[0].url;
+                        method = arguments[0].method || 'GET';
+                        reqHeaders = headersToObj(arguments[0].headers);
+                    } else if (arguments[0] instanceof URL) {
+                        url = arguments[0].toString();
+                    }
+
+                    if (arguments[1]) {
+                        if (arguments[1].method) method = arguments[1].method;
+                        if (arguments[1].headers) {
+                            var h = arguments[1].headers;
+                            if (h instanceof Headers) reqHeaders = headersToObj(h);
+                            else if (typeof h === 'object') reqHeaders = h;
+                        }
+                    }
+
+                    try {
+                        window.webkit.messageHandlers.networkMonitor.postMessage({
+                            type: 'requestStart',
+                            requestId: id,
+                            method: method.toUpperCase(),
+                            url: url,
+                            requestType: 'fetch',
+                            requestHeaders: reqHeaders
+                        });
+                    } catch(e) {}
+
+                    return window.__ctxOrigFetch.apply(this, arguments).then(function(response) {
+                        var respHeaders = headersToObj(response.headers);
+                        var clone = response.clone();
+                        clone.text().then(function(body) {
+                            try {
+                                window.webkit.messageHandlers.networkMonitor.postMessage({
+                                    type: 'requestComplete',
+                                    requestId: id,
+                                    status: response.status,
+                                    statusText: response.statusText,
+                                    duration: (Date.now() - startTime) / 1000.0,
+                                    responseSize: body ? body.length : 0,
+                                    responseHeaders: respHeaders,
+                                    responseBody: body ? body.substring(0, 2000) : ''
+                                });
+                            } catch(e) {}
+                        }).catch(function() {
+                            try {
+                                window.webkit.messageHandlers.networkMonitor.postMessage({
+                                    type: 'requestComplete',
+                                    requestId: id,
+                                    status: response.status,
+                                    statusText: response.statusText,
+                                    duration: (Date.now() - startTime) / 1000.0,
+                                    responseSize: 0,
+                                    responseHeaders: respHeaders
+                                });
+                            } catch(e) {}
+                        });
+                        return response;
+                    }).catch(function(err) {
+                        try {
+                            window.webkit.messageHandlers.networkMonitor.postMessage({
+                                type: 'requestError',
+                                requestId: id,
+                                error: err.message || String(err)
+                            });
+                        } catch(e) {}
+                        throw err;
+                    });
+                };
+
+                XMLHttpRequest.prototype.open = function(method, url) {
+                    this.__ctxMethod = method;
+                    this.__ctxUrl = typeof url === 'string' ? url : (url ? url.toString() : '');
+                    return window.__ctxOrigXHROpen.apply(this, arguments);
+                };
+
+                XMLHttpRequest.prototype.send = function() {
+                    var xhr = this;
+                    var id = 'net_' + (++reqCounter);
+                    var startTime = Date.now();
+
+                    try {
+                        window.webkit.messageHandlers.networkMonitor.postMessage({
+                            type: 'requestStart',
+                            requestId: id,
+                            method: (xhr.__ctxMethod || 'GET').toUpperCase(),
+                            url: xhr.__ctxUrl || '',
+                            requestType: 'xhr'
+                        });
+                    } catch(e) {}
+
+                    xhr.addEventListener('loadend', function() {
+                        try {
+                            var body = '';
+                            var size = 0;
+                            try {
+                                body = xhr.responseText || '';
+                                size = body.length;
+                            } catch(e) {}
+                            var respHeaders = {};
+                            try {
+                                var raw = xhr.getAllResponseHeaders() || '';
+                                raw.split('\\r\\n').forEach(function(line) {
+                                    var idx = line.indexOf(': ');
+                                    if (idx > 0) respHeaders[line.substring(0, idx)] = line.substring(idx + 2);
+                                });
+                            } catch(e) {}
+                            window.webkit.messageHandlers.networkMonitor.postMessage({
+                                type: 'requestComplete',
+                                requestId: id,
+                                status: xhr.status,
+                                statusText: xhr.statusText,
+                                duration: (Date.now() - startTime) / 1000.0,
+                                responseSize: size,
+                                responseHeaders: respHeaders,
+                                responseBody: body.substring(0, 2000)
+                            });
+                        } catch(e) {}
+                    });
+
+                    xhr.addEventListener('error', function() {
+                        try {
+                            window.webkit.messageHandlers.networkMonitor.postMessage({
+                                type: 'requestError', requestId: id, error: 'Network error'
+                            });
+                        } catch(e) {}
+                    });
+
+                    xhr.addEventListener('abort', function() {
+                        try {
+                            window.webkit.messageHandlers.networkMonitor.postMessage({
+                                type: 'requestError', requestId: id, error: 'Request aborted'
+                            });
+                        } catch(e) {}
+                    });
+
+                    xhr.addEventListener('timeout', function() {
+                        try {
+                            window.webkit.messageHandlers.networkMonitor.postMessage({
+                                type: 'requestError', requestId: id, error: 'Request timed out'
+                            });
+                        } catch(e) {}
+                    });
+
+                    return window.__ctxOrigXHRSend.apply(this, arguments);
+                };
+            })();
+        """
+
+        // Use WKUserScript so the injection persists across page navigations
+        let script = WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        networkMonitorScript = script
+        webView.configuration.userContentController.addUserScript(script)
+
+        // Also inject into the current page immediately
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
+    /// Remove JS monkey-patches by restoring original fetch and XMLHttpRequest.
+    @MainActor
+    func stopNetworkMonitor() {
+        isNetworkMonitorActive = false
+
+        // Remove the persistent user script
+        if let script = networkMonitorScript {
+            let controller = webView.configuration.userContentController
+            let remaining = controller.userScripts.filter { $0 !== script }
+            controller.removeAllUserScripts()
+            for s in remaining { controller.addUserScript(s) }
+            networkMonitorScript = nil
+        }
+
+        // Clean up in the current page
+        let js = """
+            (function() {
+                if (window.__ctxOrigFetch) { window.fetch = window.__ctxOrigFetch; delete window.__ctxOrigFetch; }
+                if (window.__ctxOrigXHROpen) { XMLHttpRequest.prototype.open = window.__ctxOrigXHROpen; delete window.__ctxOrigXHROpen; }
+                if (window.__ctxOrigXHRSend) { XMLHttpRequest.prototype.send = window.__ctxOrigXHRSend; delete window.__ctxOrigXHRSend; }
+                delete window.__ctxNetworkMonitorActive;
+            })();
+        """
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
+    /// Clear all captured network requests.
+    func clearNetworkRequests() {
+        networkRequests.removeAll()
+    }
+
     // MARK: - DevTools Element Picker
 
     /// Inject an overlay that highlights hovered elements and captures clicks.
@@ -1246,6 +1477,61 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
                         self.inspectedStyles = await styles
                         self.inspectedBoxModel = await boxModel
                     }
+                }
+            }
+        } else if message.name == "networkMonitor" {
+            guard let body = message.body as? [String: Any],
+                  let type = body["type"] as? String
+            else { return }
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+
+                switch type {
+                case "requestStart":
+                    guard let requestId = body["requestId"] as? String,
+                          let method = body["method"] as? String,
+                          let url = body["url"] as? String,
+                          let requestType = body["requestType"] as? String
+                    else { return }
+
+                    let reqHeaders = body["requestHeaders"] as? [String: String]
+                    let entry = NetworkRequestEntry(
+                        id: requestId,
+                        method: method,
+                        url: url,
+                        type: NetworkRequestEntry.RequestType(rawValue: requestType) ?? .fetch,
+                        startTime: Date(),
+                        requestHeaders: reqHeaders
+                    )
+                    self.networkRequests.append(entry)
+
+                    // Cap at max entries
+                    if self.networkRequests.count > Self.maxNetworkEntries {
+                        self.networkRequests.removeFirst(self.networkRequests.count - Self.maxNetworkEntries)
+                    }
+
+                case "requestComplete":
+                    guard let requestId = body["requestId"] as? String else { return }
+                    if let index = self.networkRequests.firstIndex(where: { $0.id == requestId }) {
+                        self.networkRequests[index].status = body["status"] as? Int
+                        self.networkRequests[index].statusText = body["statusText"] as? String
+                        self.networkRequests[index].duration = body["duration"] as? TimeInterval
+                        self.networkRequests[index].responseSize = body["responseSize"] as? Int
+                        self.networkRequests[index].responseHeaders = body["responseHeaders"] as? [String: String]
+                        self.networkRequests[index].responseBody = body["responseBody"] as? String
+                        self.networkRequests[index].isComplete = true
+                    }
+
+                case "requestError":
+                    guard let requestId = body["requestId"] as? String else { return }
+                    if let index = self.networkRequests.firstIndex(where: { $0.id == requestId }) {
+                        self.networkRequests[index].isError = true
+                        self.networkRequests[index].isComplete = true
+                    }
+
+                default:
+                    break
                 }
             }
         }

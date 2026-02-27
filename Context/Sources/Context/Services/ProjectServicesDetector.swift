@@ -41,6 +41,21 @@ struct EnvironmentFile: Identifiable {
     let entries: [(key: String, value: String)]
 }
 
+struct EnvironmentTemplate: Identifiable {
+    let id = UUID()
+    let name: String
+    let path: String
+    let variables: [TemplateVariable]
+}
+
+struct TemplateVariable: Identifiable {
+    let id = UUID()
+    let key: String
+    let defaultValue: String
+    let comment: String?
+    let isRequired: Bool
+}
+
 // MARK: - Detector
 
 enum ProjectServicesDetector {
@@ -231,5 +246,68 @@ enum ProjectServicesDetector {
         }
 
         return results
+    }
+
+    /// Scan for environment template files (.env.example, .env.template, .env.sample) and parse their variables.
+    static func scanTemplates(projectPath: String) -> [EnvironmentTemplate] {
+        let fm = FileManager.default
+        let templateFileNames = [".env.example", ".env.template", ".env.sample"]
+        var templates: [EnvironmentTemplate] = []
+
+        for name in templateFileNames {
+            let fullPath = (projectPath as NSString).appendingPathComponent(name)
+            guard fm.fileExists(atPath: fullPath),
+                  let contents = try? String(contentsOfFile: fullPath, encoding: .utf8) else { continue }
+
+            var variables: [TemplateVariable] = []
+            var accumulatedComments: [String] = []
+
+            for line in contents.components(separatedBy: .newlines) {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+                if trimmed.hasPrefix("#") {
+                    let commentText = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
+                    if !commentText.isEmpty {
+                        accumulatedComments.append(commentText)
+                    }
+                    continue
+                }
+
+                guard !trimmed.isEmpty else {
+                    accumulatedComments.removeAll()
+                    continue
+                }
+
+                let parts = trimmed.split(separator: "=", maxSplits: 1)
+                guard !parts.isEmpty else {
+                    accumulatedComments.removeAll()
+                    continue
+                }
+
+                let key = String(parts[0]).trimmingCharacters(in: .whitespaces)
+                let value: String
+                if parts.count == 2 {
+                    value = String(parts[1]).trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                } else {
+                    value = ""
+                }
+
+                let comment: String? = accumulatedComments.isEmpty ? nil : accumulatedComments.joined(separator: " ")
+                let isRequired = value.isEmpty
+
+                variables.append(TemplateVariable(
+                    key: key,
+                    defaultValue: value,
+                    comment: comment,
+                    isRequired: isRequired
+                ))
+
+                accumulatedComments.removeAll()
+            }
+
+            templates.append(EnvironmentTemplate(name: name, path: fullPath, variables: variables))
+        }
+
+        return templates
     }
 }

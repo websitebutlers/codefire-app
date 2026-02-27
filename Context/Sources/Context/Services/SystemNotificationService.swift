@@ -19,6 +19,13 @@ class SystemNotificationService: NSObject, ObservableObject, UNUserNotificationC
     // MARK: - Authorization
 
     private func requestAuthorization() {
+        // UNUserNotificationCenter.current() crashes when the app lacks a proper
+        // bundle identifier (e.g. running a `swift build` binary from Terminal).
+        // Guard with Bundle.main.bundleIdentifier check to avoid SIGABRT.
+        guard Bundle.main.bundleIdentifier != nil else {
+            print("SystemNotificationService: skipping — no bundle identifier")
+            return
+        }
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
@@ -61,6 +68,7 @@ class SystemNotificationService: NSObject, ObservableObject, UNUserNotificationC
     // MARK: - Send Notifications
 
     private func sendNewEmailNotification(count: Int) {
+        guard Bundle.main.bundleIdentifier != nil else { return }
         let content = UNMutableNotificationContent()
         content.title = "New Emails"
         content.body = count == 1
@@ -77,6 +85,7 @@ class SystemNotificationService: NSObject, ObservableObject, UNUserNotificationC
     }
 
     private func sendClaudeFinishedNotification() {
+        guard Bundle.main.bundleIdentifier != nil else { return }
         let content = UNMutableNotificationContent()
         content.title = "Claude Finished"
         content.body = "Claude Code session has completed"
