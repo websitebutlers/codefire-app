@@ -16,6 +16,12 @@ struct FileBrowserView: View {
     @State private var isTruncated = false
     @State private var isBinary = false
 
+    // Edit mode state
+    @State private var isEditMode = false
+    @State private var showDiff = false
+    @State private var editedContent: String = ""
+    @State private var selectedFile: FileTreeNode?
+
     private static let maxFileSize = 512 * 1024 // 512 KB
     private static let maxLineCount = 10_000
 
@@ -116,6 +122,35 @@ struct FileBrowserView: View {
                                     )
                             }
                             Spacer()
+
+                            if currentContent != nil && !isBinary {
+                                // Diff toggle
+                                Button {
+                                    showDiff.toggle()
+                                    if showDiff { isEditMode = false }
+                                } label: {
+                                    Image(systemName: showDiff ? "arrow.left.arrow.right.circle.fill" : "arrow.left.arrow.right.circle")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(showDiff ? .accentColor : .secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Toggle Git Diff")
+
+                                // Edit/View toggle
+                                Button {
+                                    if !isEditMode {
+                                        editedContent = currentContent ?? ""
+                                    }
+                                    isEditMode.toggle()
+                                    if isEditMode { showDiff = false }
+                                } label: {
+                                    Image(systemName: isEditMode ? "pencil.circle.fill" : "pencil.circle")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(isEditMode ? .accentColor : .secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help(isEditMode ? "Switch to Read Mode" : "Switch to Edit Mode")
+                            }
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
@@ -138,7 +173,32 @@ struct FileBrowserView: View {
                         .background(Color.orange.opacity(0.08))
                     }
 
-                    CodeViewerView(content: content, language: currentLanguage)
+                    if isEditMode {
+                        CodeEditorView(
+                            content: $editedContent,
+                            language: currentLanguage,
+                            filePath: selectedFile?.fullPath.path
+                        )
+                    } else if showDiff, let path = selectedFile?.fullPath.path {
+                        DiffViewerView(filePath: path, originalContent: content)
+                    } else {
+                        CodeViewerView(content: content, language: currentLanguage)
+                    }
+                }
+                .onChange(of: selectedNodeId) { _, _ in
+                    isEditMode = false
+                    showDiff = false
+                    editedContent = ""
+                }
+                .background {
+                    if isEditMode, let path = selectedFile?.fullPath.path {
+                        Button("") {
+                            saveFile(content: editedContent, to: path)
+                        }
+                        .keyboardShortcut("s", modifiers: .command)
+                        .frame(width: 0, height: 0)
+                        .opacity(0)
+                    }
                 }
             } else {
                 emptyState(icon: "doc.text", title: "Select a file to view", subtitle: "Click a file in the tree to preview its contents")
@@ -212,6 +272,7 @@ struct FileBrowserView: View {
             treeVersion += 1
         } else {
             selectedNodeId = node.id
+            selectedFile = node
             loadFileContent(node)
         }
     }
@@ -284,6 +345,22 @@ struct FileBrowserView: View {
         contentCache[node.id] = (content: text, language: language)
     }
 
+    // MARK: - Save
+
+    private func saveFile(content: String, to path: String) {
+        do {
+            try content.write(toFile: path, atomically: true, encoding: .utf8)
+            // Update cache so the viewer shows the saved content
+            if let file = selectedFile {
+                let lang = FileTreeNode.detectLanguage(from: file.name)
+                contentCache[file.id] = (content: content, language: lang)
+                currentContent = content
+            }
+        } catch {
+            print("FileBrowserView: failed to save file: \(error)")
+        }
+    }
+
     // MARK: - Lifecycle
 
     private func loadRoot() {
@@ -297,6 +374,7 @@ struct FileBrowserView: View {
     private func resetAll() {
         rootNodes = []
         selectedNodeId = nil
+        selectedFile = nil
         searchText = ""
         contentCache = [:]
         currentContent = nil
@@ -304,6 +382,9 @@ struct FileBrowserView: View {
         currentFileName = nil
         isTruncated = false
         isBinary = false
+        isEditMode = false
+        showDiff = false
+        editedContent = ""
         treeVersion += 1
     }
 }
