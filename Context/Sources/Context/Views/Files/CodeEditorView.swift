@@ -6,7 +6,6 @@ import AppKit
 struct CodeEditorView: NSViewRepresentable {
     @Binding var content: String
     let language: String?
-    let filePath: String?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)

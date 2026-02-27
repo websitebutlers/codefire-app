@@ -176,11 +176,10 @@ struct FileBrowserView: View {
                     if isEditMode {
                         CodeEditorView(
                             content: $editedContent,
-                            language: currentLanguage,
-                            filePath: selectedFile?.fullPath.path
+                            language: currentLanguage
                         )
                     } else if showDiff, let path = selectedFile?.fullPath.path {
-                        DiffViewerView(filePath: path, originalContent: content)
+                        DiffViewerView(filePath: path)
                     } else {
                         CodeViewerView(content: content, language: currentLanguage)
                     }

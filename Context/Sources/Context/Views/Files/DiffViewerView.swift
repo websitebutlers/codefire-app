@@ -4,7 +4,6 @@ import SwiftUI
 
 struct DiffViewerView: View {
     let filePath: String
-    let originalContent: String
 
     @State private var diffLines: [DiffLine] = []
     @State private var isLoading = true
