@@ -25,6 +25,7 @@ class AppState: ObservableObject {
         case sessions = "Sessions"
         case dashboard = "Details"
         case visualize = "Visualize"
+        case recordings = "Recordings"
 
         var icon: String {
             switch self {
@@ -40,6 +41,7 @@ class AppState: ObservableObject {
             case .sessions: return "clock"
             case .dashboard: return "info.circle"
             case .visualize: return "chart.dots.scatter"
+            case .recordings: return "waveform"
             }
         }
     }

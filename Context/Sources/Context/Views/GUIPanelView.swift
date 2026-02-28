@@ -172,6 +172,8 @@ struct GUIPanelView: View {
                                 ImageStudioView()
                             case .visualize:
                                 VisualizerView()
+                            case .recordings:
+                                RecordingsView()
                             case .browser:
                                 EmptyView() // Handled above in ZStack
                             }
