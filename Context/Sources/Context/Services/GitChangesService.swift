@@ -71,6 +71,7 @@ class GitChangesService: ObservableObject {
     @Published var currentBranch: String = ""
     @Published var isLoading: Bool = false
     @Published var isGitRepo: Bool = false
+    @Published var selectedFileDiff: (file: GitFileChange, lines: [DiffLine])?
 
     private var projectPath: String?
 
@@ -150,6 +151,28 @@ class GitChangesService: ObservableObject {
             await refresh()
         }
         return success
+    }
+
+    func loadDiff(for file: GitFileChange) {
+        guard let path = projectPath else { return }
+        Task {
+            let diffOutput = await Task.detached {
+                GitChangesService.diffFile(at: path, filePath: file.path, staged: file.isStaged)
+            }.value
+            let lines = DiffViewerView.parseDiffStatic(diffOutput)
+            self.selectedFileDiff = (file: file, lines: lines)
+        }
+    }
+
+    func clearDiff() {
+        selectedFileDiff = nil
+    }
+
+    nonisolated static func diffFile(at repoPath: String, filePath: String, staged: Bool) -> String {
+        var args = ["diff", "--no-color"]
+        if staged { args.append("--staged") }
+        args.append(contentsOf: ["--", filePath])
+        return runGit(args, at: repoPath) ?? ""
     }
 
     // MARK: - Static Parsers

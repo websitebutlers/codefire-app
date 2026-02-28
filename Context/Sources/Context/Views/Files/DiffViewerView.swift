@@ -110,33 +110,46 @@ struct DiffViewerView: View {
     // MARK: - Parse Diff
 
     private func parseDiff(_ diff: String) -> [DiffLine] {
+        Self.parseDiffStatic(diff)
+    }
+
+    /// Static parser usable from other views (e.g. GitChangesView).
+    static func parseDiffStatic(_ diff: String) -> [DiffLine] {
         guard !diff.isEmpty else { return [] }
 
         var lines: [DiffLine] = []
         let rawLines = diff.components(separatedBy: "\n")
+        var oldLine = 0
+        var newLine = 0
 
         for rawLine in rawLines {
             if rawLine.hasPrefix("@@") {
-                // Hunk header
+                // Parse hunk header: @@ -old,count +new,count @@
+                let parts = rawLine.components(separatedBy: " ")
+                if parts.count >= 3 {
+                    let oldPart = parts[1].dropFirst() // remove "-"
+                    let newPart = parts[2].dropFirst() // remove "+"
+                    oldLine = Int(oldPart.components(separatedBy: ",").first ?? "0") ?? 0
+                    newLine = Int(newPart.components(separatedBy: ",").first ?? "0") ?? 0
+                }
                 lines.append(DiffLine(type: .header, text: rawLine, prefix: " "))
             } else if rawLine.hasPrefix("+") && !rawLine.hasPrefix("+++") {
-                // Addition
                 let text = String(rawLine.dropFirst())
-                lines.append(DiffLine(type: .addition, text: text, prefix: "+"))
+                lines.append(DiffLine(type: .addition, text: text, prefix: "+", newLineNumber: newLine))
+                newLine += 1
             } else if rawLine.hasPrefix("-") && !rawLine.hasPrefix("---") {
-                // Deletion
                 let text = String(rawLine.dropFirst())
-                lines.append(DiffLine(type: .deletion, text: text, prefix: "-"))
+                lines.append(DiffLine(type: .deletion, text: text, prefix: "-", oldLineNumber: oldLine))
+                oldLine += 1
             } else if rawLine.hasPrefix("diff ") || rawLine.hasPrefix("index ") ||
                         rawLine.hasPrefix("---") || rawLine.hasPrefix("+++") {
-                // File header lines - skip these for cleaner display
                 continue
             } else if rawLine.hasPrefix(" ") {
-                // Context line
                 let text = String(rawLine.dropFirst())
-                lines.append(DiffLine(type: .context, text: text, prefix: " "))
+                lines.append(DiffLine(type: .context, text: text, prefix: " ", oldLineNumber: oldLine, newLineNumber: newLine))
+                oldLine += 1
+                newLine += 1
             } else if !rawLine.isEmpty {
-                // Other lines (like "\ No newline at end of file")
                 lines.append(DiffLine(type: .context, text: rawLine, prefix: " "))
             }
         }
@@ -158,6 +171,8 @@ struct DiffLine {
     let type: LineType
     let text: String
     let prefix: String
+    var oldLineNumber: Int?
+    var newLineNumber: Int?
 
     var backgroundColor: Color {
         switch type {

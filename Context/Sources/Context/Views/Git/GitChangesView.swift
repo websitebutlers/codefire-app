@@ -450,6 +450,101 @@ struct GitChangesView: View {
     // MARK: - File Row
 
     private func fileRow(_ file: GitFileChange, isStaged: Bool) -> some View {
+        VStack(spacing: 0) {
+        fileRowContent(file, isStaged: isStaged)
+            .onTapGesture {
+                if gitService.selectedFileDiff?.file.id == file.id {
+                    gitService.clearDiff()
+                } else {
+                    gitService.loadDiff(for: file)
+                }
+            }
+
+        // Inline diff panel
+        if gitService.selectedFileDiff?.file.id == file.id,
+           let diffData = gitService.selectedFileDiff {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text(diffData.file.path)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Button {
+                        gitService.clearDiff()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color(nsColor: .separatorColor).opacity(0.1))
+
+                if diffData.lines.isEmpty {
+                    Text("No changes to display")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                        .padding(8)
+                } else {
+                    ScrollView([.horizontal, .vertical]) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(diffData.lines.enumerated()), id: \.offset) { _, line in
+                                diffLineView(line)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 300)
+                }
+            }
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(nsColor: .separatorColor).opacity(0.3), lineWidth: 0.5)
+            )
+            .padding(.top, 4)
+        }
+        }
+    }
+
+    private func diffLineView(_ line: DiffLine) -> some View {
+        HStack(spacing: 0) {
+            // Old line number
+            Text(line.oldLineNumber.map { "\($0)" } ?? "")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.tertiary)
+                .frame(width: 32, alignment: .trailing)
+                .padding(.trailing, 2)
+
+            // New line number
+            Text(line.newLineNumber.map { "\($0)" } ?? "")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.tertiary)
+                .frame(width: 32, alignment: .trailing)
+                .padding(.trailing, 4)
+
+            // Prefix
+            Text(line.prefix)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(line.prefixColor)
+                .frame(width: 14, alignment: .center)
+
+            // Content
+            Text(line.text)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(line.textColor)
+                .textSelection(.enabled)
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 0.5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(line.backgroundColor)
+    }
+
+    private func fileRowContent(_ file: GitFileChange, isStaged: Bool) -> some View {
         HStack(spacing: 8) {
             // Status icon
             Image(systemName: file.status.icon)

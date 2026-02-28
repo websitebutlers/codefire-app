@@ -872,6 +872,49 @@ class MCPServer {
                     ]
                 ]
             ],
+            // Storage Inspection
+            [
+                "name": "browser_get_cookies",
+                "description": "Get cookies for the current page, including httpOnly cookies not visible to JavaScript. Useful for debugging authentication, session management, and tracking. Requires Context.app browser.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "domain": ["type": "string", "description": "Filter cookies by domain substring (e.g. 'example.com')"],
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ]
+                ]
+            ],
+            [
+                "name": "browser_get_storage",
+                "description": "Read localStorage or sessionStorage contents. Returns item count, key-value pairs, and total size in bytes. Requires Context.app browser.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "type": ["type": "string", "enum": ["localStorage", "sessionStorage"], "description": "Which storage to read"],
+                        "prefix": ["type": "string", "description": "Only return keys starting with this prefix"],
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ],
+                    "required": ["type"]
+                ]
+            ],
+            [
+                "name": "browser_set_cookie",
+                "description": "Set a cookie on the current page. Useful for testing auth flows, spoofing sessions, or setting feature flags. Requires Context.app browser.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "name": ["type": "string", "description": "Cookie name"],
+                        "value": ["type": "string", "description": "Cookie value"],
+                        "domain": ["type": "string", "description": "Cookie domain (defaults to current page domain)"],
+                        "path": ["type": "string", "description": "Cookie path (defaults to '/')"],
+                        "max_age": ["type": "integer", "description": "Max age in seconds"],
+                        "secure": ["type": "boolean", "description": "Secure flag"],
+                        "same_site": ["type": "string", "enum": ["Strict", "Lax", "None"], "description": "SameSite attribute"],
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ],
+                    "required": ["name", "value"]
+                ]
+            ],
             // Context Engine
             [
                 "name": "context_search",
@@ -1000,6 +1043,9 @@ class MCPServer {
             case "browser_drag":       result = try browserDrag(args)
             case "browser_iframe":     result = try browserIframe(args)
             case "browser_clear_session": result = try browserClearSession(args)
+            case "browser_get_cookies": result = try browserGetCookies(args)
+            case "browser_get_storage": result = try browserGetStorage(args)
+            case "browser_set_cookie":  result = try browserSetCookie(args)
             case "context_search":     result = try contextSearch(args)
             case "generate_image":     result = try generateImage(args)
             case "edit_image":         result = try editImage(args)
@@ -1735,6 +1781,34 @@ class MCPServer {
         if let types = args["types"] as? [String] { cmdArgs["types"] = types }
         if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
         return try executeBrowserCommand(tool: "browser_clear_session", args: cmdArgs, timeout: 10.0)
+    }
+
+    func browserGetCookies(_ args: [String: Any]) throws -> String {
+        var cmdArgs: [String: Any] = [:]
+        if let domain = args["domain"] as? String { cmdArgs["domain"] = domain }
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        return try executeBrowserCommand(tool: "browser_get_cookies", args: cmdArgs)
+    }
+
+    func browserGetStorage(_ args: [String: Any]) throws -> String {
+        var cmdArgs: [String: Any] = [:]
+        cmdArgs["type"] = args["type"] as? String ?? "localStorage"
+        if let prefix = args["prefix"] as? String { cmdArgs["prefix"] = prefix }
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        return try executeBrowserCommand(tool: "browser_get_storage", args: cmdArgs)
+    }
+
+    func browserSetCookie(_ args: [String: Any]) throws -> String {
+        var cmdArgs: [String: Any] = [:]
+        cmdArgs["name"] = args["name"]
+        cmdArgs["value"] = args["value"]
+        if let domain = args["domain"] as? String { cmdArgs["domain"] = domain }
+        if let path = args["path"] as? String { cmdArgs["path"] = path }
+        if let maxAge = args["max_age"] as? Int { cmdArgs["max_age"] = maxAge }
+        if let secure = args["secure"] as? Bool { cmdArgs["secure"] = secure }
+        if let sameSite = args["same_site"] as? String { cmdArgs["same_site"] = sameSite }
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        return try executeBrowserCommand(tool: "browser_set_cookie", args: cmdArgs)
     }
 
     // MARK: - Browser Command Execution

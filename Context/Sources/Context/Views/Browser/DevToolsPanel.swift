@@ -9,6 +9,7 @@ struct DevToolsPanel: View {
         case styles = "Styles"
         case boxModel = "Box Model"
         case network = "Network"
+        case storage = "Storage"
 
         var icon: String {
             switch self {
@@ -16,6 +17,7 @@ struct DevToolsPanel: View {
             case .styles: return "paintbrush"
             case .boxModel: return "rectangle.center.inset.filled"
             case .network: return "antenna.radiowaves.left.and.right"
+            case .storage: return "externaldrive"
             }
         }
     }
@@ -26,6 +28,18 @@ struct DevToolsPanel: View {
     @State private var urlSearchText: String = ""
     @State private var statusFilter: StatusFilter = .any
     @State private var domainFilter: String?
+
+    // Storage tab state
+    enum StorageSubTab: String, CaseIterable {
+        case cookies = "Cookies"
+        case localStorage = "Local Storage"
+        case sessionStorage = "Session Storage"
+    }
+    @State private var storageSubTab: StorageSubTab = .cookies
+    @State private var storageCookies: [[String: Any]] = []
+    @State private var storageItems: [(key: String, value: String)] = []
+    @State private var storageSearchText: String = ""
+    @State private var isLoadingStorage: Bool = false
 
     enum StatusFilter: String, CaseIterable {
         case any = "Any"
@@ -61,6 +75,8 @@ struct DevToolsPanel: View {
                     boxModelTab
                 case .network:
                     networkTab
+                case .storage:
+                    storageTab
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -981,6 +997,194 @@ struct DevToolsPanel: View {
             }
         }
         .padding(.horizontal, 12)
+    }
+
+    // MARK: - Storage Tab
+
+    private var storageTab: some View {
+        VStack(spacing: 0) {
+            // Sub-tab picker + refresh
+            HStack(spacing: 6) {
+                Picker("", selection: $storageSubTab) {
+                    ForEach(StorageSubTab.allCases, id: \.self) { sub in
+                        Text(sub.rawValue).tag(sub)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 300)
+
+                TextField("Search...", text: $storageSearchText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 10))
+                    .frame(maxWidth: 140)
+
+                Spacer()
+
+                if isLoadingStorage {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .scaleEffect(0.7)
+                }
+
+                Button {
+                    loadStorageData()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10, weight: .medium))
+                        .frame(width: 26, height: 26)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+                .help("Refresh")
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+
+            Divider()
+
+            // Content
+            switch storageSubTab {
+            case .cookies:
+                storageCookiesView
+            case .localStorage, .sessionStorage:
+                storageKeyValueView
+            }
+        }
+        .onAppear { loadStorageData() }
+        .onChange(of: storageSubTab) { loadStorageData() }
+    }
+
+    private var storageCookiesView: some View {
+        Group {
+            if storageCookies.isEmpty {
+                emptyState(icon: "externaldrive", message: "No cookies found. Click refresh to load.")
+            } else {
+                let filtered = storageSearchText.isEmpty ? storageCookies : storageCookies.filter { cookie in
+                    let name = cookie["name"] as? String ?? ""
+                    let domain = cookie["domain"] as? String ?? ""
+                    return name.localizedCaseInsensitiveContains(storageSearchText) ||
+                           domain.localizedCaseInsensitiveContains(storageSearchText)
+                }
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(filtered.enumerated()), id: \.offset) { _, cookie in
+                            storageCookieRow(cookie)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func storageCookieRow(_ cookie: [String: Any]) -> some View {
+        let name = cookie["name"] as? String ?? ""
+        let value = cookie["value"] as? String ?? ""
+        let domain = cookie["domain"] as? String ?? ""
+        let httpOnly = cookie["httpOnly"] as? Bool ?? false
+        let secure = cookie["secure"] as? Bool ?? false
+
+        return HStack(spacing: 6) {
+            Text(name)
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(.accentColor)
+                .frame(width: 120, alignment: .leading)
+                .lineLimit(1)
+
+            Text(value)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer()
+
+            Text(domain)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .frame(width: 100, alignment: .trailing)
+
+            if httpOnly {
+                Text("H")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.orange)
+                    .help("HttpOnly")
+            }
+            if secure {
+                Text("S")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.green)
+                    .help("Secure")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 3)
+        .background(Color.clear)
+        .contentShape(Rectangle())
+    }
+
+    private var storageKeyValueView: some View {
+        Group {
+            if storageItems.isEmpty {
+                emptyState(icon: "externaldrive", message: "No items found. Click refresh to load.")
+            } else {
+                let filtered = storageSearchText.isEmpty ? storageItems : storageItems.filter { item in
+                    item.key.localizedCaseInsensitiveContains(storageSearchText) ||
+                    item.value.localizedCaseInsensitiveContains(storageSearchText)
+                }
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(filtered.enumerated()), id: \.offset) { _, item in
+                            HStack(spacing: 6) {
+                                Text(item.key)
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(.accentColor)
+                                    .frame(width: 150, alignment: .leading)
+                                    .lineLimit(1)
+
+                                Text(item.value)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                                    .textSelection(.enabled)
+
+                                Spacer()
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 3)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func loadStorageData() {
+        isLoadingStorage = true
+        Task {
+            switch storageSubTab {
+            case .cookies:
+                storageCookies = await tab.getCookies()
+            case .localStorage:
+                if let result = try? await tab.getStorage(type: "localStorage"),
+                   let items = result["items"] as? [String: Any] {
+                    storageItems = items.map { (key: $0.key, value: "\($0.value)") }
+                        .sorted { $0.key < $1.key }
+                } else {
+                    storageItems = []
+                }
+            case .sessionStorage:
+                if let result = try? await tab.getStorage(type: "sessionStorage"),
+                   let items = result["items"] as? [String: Any] {
+                    storageItems = items.map { (key: $0.key, value: "\($0.value)") }
+                        .sorted { $0.key < $1.key }
+                } else {
+                    storageItems = []
+                }
+            }
+            isLoadingStorage = false
+        }
     }
 
     // MARK: - Shared Components

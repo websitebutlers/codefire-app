@@ -138,6 +138,12 @@ class BrowserCommandExecutor: ObservableObject {
             return try await handleIframe(args)
         case "browser_clear_session":
             return try await handleClearSession(args)
+        case "browser_get_cookies":
+            return try await handleGetCookies(args)
+        case "browser_get_storage":
+            return try await handleGetStorage(args)
+        case "browser_set_cookie":
+            return try await handleSetCookie(args)
         default:
             throw BrowserCommandError.unknownTool(command.tool)
         }
@@ -496,6 +502,37 @@ class BrowserCommandExecutor: ObservableObject {
         let types = args["types"] as? [String] ?? []
         let result = try await tab.clearSessionData(types: types)
         return toJSON(result)
+    }
+
+    private func handleGetCookies(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        let domain = args["domain"] as? String
+        let cookies = await tab.getCookies(domain: domain)
+        return toJSON(["cookies": cookies, "count": cookies.count])
+    }
+
+    private func handleGetStorage(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        guard let type = args["type"] as? String else { throw BrowserCommandError.missingParam("type") }
+        let prefix = args["prefix"] as? String
+        let storage = try await tab.getStorage(type: type, prefix: prefix)
+        return toJSON(storage)
+    }
+
+    private func handleSetCookie(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        guard let name = args["name"] as? String else { throw BrowserCommandError.missingParam("name") }
+        guard let value = args["value"] as? String else { throw BrowserCommandError.missingParam("value") }
+        try await tab.setCookie(
+            name: name,
+            value: value,
+            domain: args["domain"] as? String,
+            path: args["path"] as? String ?? "/",
+            maxAge: args["max_age"] as? Int,
+            secure: args["secure"] as? Bool ?? false,
+            sameSite: args["same_site"] as? String
+        )
+        return toJSON(["set": true])
     }
 
     /// Map file extension to MIME type for uploads.

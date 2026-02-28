@@ -1172,6 +1172,70 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
         networkRequests.removeAll()
     }
 
+    // MARK: - Storage Inspection
+
+    /// Get all cookies, optionally filtered by domain. Uses Swift API to include httpOnly cookies.
+    @MainActor
+    func getCookies(domain: String? = nil) async -> [[String: Any]] {
+        let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
+        let filtered = domain == nil ? cookies : cookies.filter { $0.domain.contains(domain!) }
+        return filtered.map { cookie in
+            var dict: [String: Any] = [
+                "name": cookie.name,
+                "value": cookie.value,
+                "domain": cookie.domain,
+                "path": cookie.path,
+                "httpOnly": cookie.isHTTPOnly,
+                "secure": cookie.isSecure,
+            ]
+            if let expires = cookie.expiresDate {
+                dict["expires"] = ISO8601DateFormatter().string(from: expires)
+            }
+            return dict
+        }
+    }
+
+    /// Get localStorage or sessionStorage contents.
+    @MainActor
+    func getStorage(type: String, prefix: String? = nil) async throws -> [String: Any] {
+        let storageObj = type == "sessionStorage" ? "sessionStorage" : "localStorage"
+        let js = """
+            (function() {
+                var s = window.\(storageObj);
+                var items = {};
+                var count = s.length;
+                var totalSize = 0;
+                for (var i = 0; i < count; i++) {
+                    var key = s.key(i);
+                    \(prefix != nil ? "if (!key.startsWith('\(prefix!)')) continue;" : "")
+                    var val = s.getItem(key);
+                    items[key] = val;
+                    totalSize += key.length + (val ? val.length : 0);
+                }
+                return JSON.stringify({count: Object.keys(items).length, items: items, totalSize: totalSize});
+            })();
+        """
+        let result = try await webView.evaluateJavaScript(js) as? String ?? "{}"
+        guard let data = result.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return ["count": 0, "items": [:], "totalSize": 0] }
+        return parsed
+    }
+
+    /// Set a cookie via document.cookie.
+    @MainActor
+    func setCookie(name: String, value: String, domain: String? = nil, path: String = "/",
+                   maxAge: Int? = nil, secure: Bool = false, sameSite: String? = nil) async throws {
+        var parts = ["\(name)=\(value)", "path=\(path)"]
+        if let domain { parts.append("domain=\(domain)") }
+        if let maxAge { parts.append("max-age=\(maxAge)") }
+        if secure { parts.append("secure") }
+        if let sameSite { parts.append("SameSite=\(sameSite)") }
+        let cookieStr = parts.joined(separator: "; ")
+        let js = "document.cookie = '\(cookieStr.replacingOccurrences(of: "'", with: "\\'"))';"
+        _ = try await webView.evaluateJavaScript(js)
+    }
+
     // MARK: - DevTools Element Picker
 
     /// Inject an overlay that highlights hovered elements and captures clicks.
