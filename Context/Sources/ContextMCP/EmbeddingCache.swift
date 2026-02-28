@@ -3,7 +3,7 @@ import Foundation
 /// LRU cache for query embedding vectors. Avoids redundant OpenRouter API calls
 /// for repeated or similar queries within the same MCP session.
 final class EmbeddingCache {
-    private var cache: [String: (vector: [Float], timestamp: Date)] = [:]
+    private var cache: [String: [Float]] = [:]
     private var accessOrder: [String] = []
     private let maxEntries: Int
 
@@ -14,7 +14,7 @@ final class EmbeddingCache {
     /// Get a cached embedding vector for the given query, or nil if not cached.
     func get(_ query: String) -> [Float]? {
         let key = normalize(query)
-        guard let entry = cache[key] else { return nil }
+        guard let vector = cache[key] else { return nil }
 
         // Move to end of access order (most recently used)
         if let idx = accessOrder.firstIndex(of: key) {
@@ -22,7 +22,7 @@ final class EmbeddingCache {
             accessOrder.append(key)
         }
 
-        return entry.vector
+        return vector
     }
 
     /// Store an embedding vector for the given query.
@@ -37,7 +37,7 @@ final class EmbeddingCache {
             }
         }
 
-        cache[key] = (vector: vector, timestamp: Date())
+        cache[key] = vector
         if let idx = accessOrder.firstIndex(of: key) {
             accessOrder.remove(at: idx)
         }
