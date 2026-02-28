@@ -177,7 +177,8 @@ class BrowserCommandExecutor: ObservableObject {
 
     private func handleSnapshot(_ args: [String: Any]) async throws -> String {
         let tab = try resolveTab(args)
-        let tree = try await tab.snapshotAccessibilityTree()
+        let maxSize = args["max_size"] as? Int ?? 102_400
+        let tree = try await tab.snapshotAccessibilityTree(maxBytes: maxSize)
         return sanitizeBrowserContent(tree)
     }
 
@@ -305,7 +306,7 @@ class BrowserCommandExecutor: ObservableObject {
         }
         let result = try await tab.clickElement(ref: ref)
         if let error = result["error"] as? String, error == "not_found" {
-            throw BrowserCommandError.refNotFound(ref)
+            throw refNotFoundError(ref: ref, tab: tab)
         }
         return toJSON(result)
     }
@@ -321,7 +322,7 @@ class BrowserCommandExecutor: ObservableObject {
         let clear = args["clear"] as? Bool ?? true
         let result = try await tab.typeText(ref: ref, text: text, clear: clear)
         if let error = result["error"] as? String {
-            if error == "not_found" { throw BrowserCommandError.refNotFound(ref) }
+            if error == "not_found" { throw refNotFoundError(ref: ref, tab: tab) }
             if error == "not_typeable" {
                 let tag = result["tag"] as? String ?? "unknown"
                 throw MCPBrowserError.notTypeable(ref: ref, tag: tag)
@@ -342,7 +343,7 @@ class BrowserCommandExecutor: ObservableObject {
         }
         let result = try await tab.selectOption(ref: ref, value: value, label: label)
         if let error = result["error"] as? String {
-            if error == "not_found" { throw BrowserCommandError.refNotFound(ref) }
+            if error == "not_found" { throw refNotFoundError(ref: ref, tab: tab) }
             if error == "not_select" {
                 let tag = result["tag"] as? String ?? "unknown"
                 throw MCPBrowserError.notSelect(ref: ref, tag: tag)
@@ -359,7 +360,7 @@ class BrowserCommandExecutor: ObservableObject {
         let amount = args["amount"] as? Int
         let result = try await tab.scrollPage(ref: ref, direction: direction, amount: amount)
         if let error = result["error"] as? String, error == "not_found" {
-            throw BrowserCommandError.refNotFound(ref ?? "unknown")
+            throw refNotFoundError(ref: ref ?? "unknown", tab: tab)
         }
         return toJSON(result)
     }
@@ -387,7 +388,7 @@ class BrowserCommandExecutor: ObservableObject {
         let modifiers = args["modifiers"] as? [String] ?? []
         let result = try await tab.pressKey(ref: ref, key: key, modifiers: modifiers)
         if let error = result["error"] as? String {
-            if error == "not_found" { throw BrowserCommandError.refNotFound(ref ?? "unknown") }
+            if error == "not_found" { throw refNotFoundError(ref: ref ?? "unknown", tab: tab) }
             if error == "no_focused_element" {
                 throw MCPBrowserError.noFocusedElement
             }
@@ -411,7 +412,7 @@ class BrowserCommandExecutor: ObservableObject {
         }
         let result = try await tab.hoverElement(ref: ref)
         if let error = result["error"] as? String, error == "not_found" {
-            throw BrowserCommandError.refNotFound(ref)
+            throw refNotFoundError(ref: ref, tab: tab)
         }
         return toJSON(result)
     }
@@ -447,7 +448,7 @@ class BrowserCommandExecutor: ObservableObject {
 
         let result = try await tab.uploadFile(ref: ref, fileData: base64, filename: filename, mimeType: mimeType)
         if let error = result["error"] as? String {
-            if error == "not_found" { throw BrowserCommandError.refNotFound(ref) }
+            if error == "not_found" { throw refNotFoundError(ref: ref, tab: tab) }
             if error == "not_file_input" {
                 let tag = result["tag"] as? String ?? "unknown"
                 throw MCPBrowserError.notFileInput(ref: ref, tag: tag)
@@ -466,8 +467,8 @@ class BrowserCommandExecutor: ObservableObject {
         }
         let result = try await tab.dragElement(fromRef: fromRef, toRef: toRef)
         if let error = result["error"] as? String {
-            if error == "source_not_found" { throw BrowserCommandError.refNotFound(fromRef) }
-            if error == "target_not_found" { throw BrowserCommandError.refNotFound(toRef) }
+            if error == "source_not_found" { throw refNotFoundError(ref: fromRef, tab: tab) }
+            if error == "target_not_found" { throw refNotFoundError(ref: toRef, tab: tab) }
         }
         return toJSON(result)
     }
@@ -477,7 +478,7 @@ class BrowserCommandExecutor: ObservableObject {
         let ref = args["ref"] as? String
         let result = try await tab.switchToIframe(ref: ref)
         if let error = result["error"] as? String {
-            if error == "not_found" { throw BrowserCommandError.refNotFound(ref ?? "unknown") }
+            if error == "not_found" { throw refNotFoundError(ref: ref ?? "unknown", tab: tab) }
             if error == "not_iframe" {
                 let tag = result["tag"] as? String ?? "unknown"
                 throw MCPBrowserError.notIframe(ref: ref ?? "unknown", tag: tag)
@@ -628,6 +629,12 @@ class BrowserCommandExecutor: ObservableObject {
 
     // MARK: - Helpers
 
+    /// Builds a refNotFound error with the tab's snapshot age for better recovery hints.
+    private func refNotFoundError(ref: String, tab: BrowserTab) -> BrowserCommandError {
+        let age = tab.lastSnapshotTime.map { Date().timeIntervalSince($0) }
+        return .refNotFound(ref: ref, snapshotAge: age)
+    }
+
     private func resolveTab(_ args: [String: Any]) throws -> BrowserTab {
         guard let vm = browserViewModel else { throw BrowserCommandError.noBrowser }
         if let tabId = args["tab_id"] as? String {
@@ -708,7 +715,7 @@ enum BrowserCommandError: LocalizedError {
     case tabNotFound(String)
     case missingParam(String)
     case unknownTool(String)
-    case refNotFound(String)
+    case refNotFound(ref: String, snapshotAge: TimeInterval?)
     case domainNotAllowed(String)
 
     var errorDescription: String? {
@@ -723,8 +730,13 @@ enum BrowserCommandError: LocalizedError {
             return "Missing required parameter: \(name)"
         case .unknownTool(let name):
             return "Unknown browser tool: \(name)"
-        case .refNotFound(let ref):
-            return "Element with ref '\(ref)' not found. The page may have changed — use browser_snapshot to get fresh refs."
+        case .refNotFound(let ref, let snapshotAge):
+            var msg = "Element with ref '\(ref)' not found."
+            if let age = snapshotAge, age > 30 {
+                msg += " Your snapshot is \(Int(age))s old and likely stale."
+            }
+            msg += " Steps to recover: 1) Use browser_snapshot to get fresh refs. 2) Use browser_wait to wait for dynamic content. 3) The element may be inside a shadow DOM or iframe — check browser_snapshot output."
+            return msg
         case .domainNotAllowed(let domain):
             let allowed = UserDefaults.standard.stringArray(forKey: "browserAllowedDomains") ?? []
             return "Domain '\(domain)' is not in the allowed list. Allowed: \(allowed.joined(separator: ", "))"

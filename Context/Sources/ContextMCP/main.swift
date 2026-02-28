@@ -635,7 +635,8 @@ class MCPServer {
                 "inputSchema": [
                     "type": "object",
                     "properties": [
-                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"],
+                        "max_size": ["type": "integer", "description": "Maximum response size in bytes (default: 102400 = 100KB). Set to 0 for unlimited. Large pages may be truncated with a hint to use browser_extract."]
                     ] as [String: Any]
                 ] as [String: Any]
             ],
@@ -1548,6 +1549,7 @@ class MCPServer {
     func browserSnapshot(_ args: [String: Any]) throws -> String {
         var cmdArgs: [String: Any] = [:]
         if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        if let maxSize = args["max_size"] as? Int { cmdArgs["max_size"] = maxSize }
         return try executeBrowserCommand(tool: "browser_snapshot", args: cmdArgs, timeout: 10.0)
     }
 

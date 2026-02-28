@@ -58,6 +58,9 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     @Published var inspectedBoxModel: BoxModelData?
     @Published var isElementPickerActive = false
 
+    // Snapshot tracking
+    @Published var lastSnapshotTime: Date?
+
     // Network monitoring
     @Published var networkRequests: [NetworkRequestEntry] = []
     @Published var isNetworkMonitorActive = false
@@ -145,6 +148,29 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
         )
         config.userContentController.addUserScript(consoleScript)
 
+        // Inject shadow DOM query helper (traverses shadow roots for interaction methods)
+        let shadowDOMScript = WKUserScript(
+            source: """
+            (function() {
+                window.__ctxQueryShadow = function(root, selector) {
+                    var result = root.querySelector(selector);
+                    if (result) return result;
+                    var elements = root.querySelectorAll('*');
+                    for (var i = 0; i < elements.length; i++) {
+                        if (elements[i].shadowRoot) {
+                            result = window.__ctxQueryShadow(elements[i].shadowRoot, selector);
+                            if (result) return result;
+                        }
+                    }
+                    return null;
+                };
+            })();
+            """,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        config.userContentController.addUserScript(shadowDOMScript)
+
         self.webView = WKWebView(frame: .zero, configuration: config)
         super.init()
 
@@ -198,7 +224,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     private func scopeJS(_ js: String) -> String {
         guard let ref = activeIframeRef else { return js }
         return """
-            const __frame = document.querySelector('[data-ax-ref="\(ref)"]');
+            const __frame = (window.__ctxQueryShadow || function(r,s){return r.querySelector(s)})(document, '[data-ax-ref="\(ref)"]');
             if (!__frame || !__frame.contentDocument) throw new Error('iframe_not_accessible');
             return await (async function(document, window) { \(js) })(__frame.contentDocument, __frame.contentWindow);
         """
@@ -208,10 +234,11 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
 
     /// Serialize the page's accessibility tree into compact structured text for LLM consumption.
     /// Runs in .defaultClient content world (invisible to page JS, bypasses CSP).
+    /// - Parameter maxBytes: Maximum UTF-8 byte size of the returned tree (default 100KB). Pass 0 for unlimited.
     @MainActor
-    func snapshotAccessibilityTree() async throws -> String {
+    func snapshotAccessibilityTree(maxBytes: Int = 102_400) async throws -> String {
         let js = scopeJS("try { return " + Self.accessibilityTreeJS + " } catch(e) { return 'ERROR: ' + e.message; }")
-        return try await withCheckedThrowingContinuation { continuation in
+        let raw: String = try await withCheckedThrowingContinuation { continuation in
             webView.callAsyncJavaScript(
                 js,
                 arguments: [:],
@@ -226,6 +253,17 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
                 }
             }
         }
+
+        lastSnapshotTime = Date()
+
+        guard maxBytes > 0, raw.utf8.count > maxBytes else { return raw }
+
+        // Truncate to maxBytes on a UTF-8 boundary
+        var truncated = raw
+        while truncated.utf8.count > maxBytes {
+            truncated = String(truncated.dropLast(truncated.count / 10 + 1))
+        }
+        return truncated + "\n[Truncated at \(maxBytes / 1024)KB. Use browser_extract with a CSS selector for targeted content.]"
     }
 
     /// Extract text content from an element by CSS selector.
@@ -263,7 +301,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     @MainActor
     func clickElement(ref: String) async throws -> [String: Any] {
         let js = scopeJS("""
-            const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+            const el = (window.__ctxQueryShadow || function(r,s){return r.querySelector(s)})(document, '[data-ax-ref="' + ref + '"]');
             if (!el) return { error: "not_found" };
             el.scrollIntoView({block: 'center', behavior: 'instant'});
             el.focus();
@@ -296,7 +334,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     @MainActor
     func typeText(ref: String, text: String, clear: Bool = true) async throws -> [String: Any] {
         let js = scopeJS("""
-            const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+            const el = (window.__ctxQueryShadow || function(r,s){return r.querySelector(s)})(document, '[data-ax-ref="' + ref + '"]');
             if (!el) return { error: "not_found" };
             const tag = el.tagName;
             const editable = (tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable);
@@ -340,7 +378,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     @MainActor
     func selectOption(ref: String, value: String?, label: String?) async throws -> [String: Any] {
         let js = scopeJS("""
-            const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+            const el = (window.__ctxQueryShadow || function(r,s){return r.querySelector(s)})(document, '[data-ax-ref="' + ref + '"]');
             if (!el) return { error: "not_found" };
             if (el.tagName !== 'SELECT') return { error: "not_select", tag: el.tagName };
 
@@ -385,7 +423,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     func scrollPage(ref: String?, direction: String?, amount: Int?) async throws -> [String: Any] {
         let js = scopeJS("""
             if (ref) {
-                const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+                const el = (window.__ctxQueryShadow || function(r,s){return r.querySelector(s)})(document, '[data-ax-ref="' + ref + '"]');
                 if (!el) return { error: "not_found" };
                 el.scrollIntoView({block: 'center', behavior: 'instant'});
             } else {
@@ -473,7 +511,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     func pressKey(ref: String?, key: String, modifiers: [String]) async throws -> [String: Any] {
         let js = scopeJS("""
             const el = ref
-                ? document.querySelector('[data-ax-ref="' + ref + '"]')
+                ? (window.__ctxQueryShadow || function(r,s){return r.querySelector(s)})(document, '[data-ax-ref="' + ref + '"]')
                 : document.activeElement;
             if (!el) return { error: ref ? "not_found" : "no_focused_element" };
 
@@ -583,7 +621,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     @MainActor
     func hoverElement(ref: String) async throws -> [String: Any] {
         let js = scopeJS("""
-            const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+            const el = (window.__ctxQueryShadow || function(r,s){return r.querySelector(s)})(document, '[data-ax-ref="' + ref + '"]');
             if (!el) return { error: "not_found" };
             el.scrollIntoView({block: 'center', behavior: 'instant'});
             el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: false, cancelable: false, view: window}));
@@ -615,7 +653,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     @MainActor
     func uploadFile(ref: String, fileData: String, filename: String, mimeType: String) async throws -> [String: Any] {
         let js = scopeJS("""
-            const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+            const el = (window.__ctxQueryShadow || function(r,s){return r.querySelector(s)})(document, '[data-ax-ref="' + ref + '"]');
             if (!el) return { error: "not_found" };
             if (el.tagName !== 'INPUT' || el.type !== 'file') return { error: "not_file_input", tag: el.tagName, type: el.type || '' };
 
@@ -651,9 +689,10 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     @MainActor
     func dragElement(fromRef: String, toRef: String) async throws -> [String: Any] {
         let js = scopeJS("""
-            const from = document.querySelector('[data-ax-ref="' + fromRef + '"]');
+            const __q = window.__ctxQueryShadow || function(r,s){return r.querySelector(s)};
+            const from = __q(document, '[data-ax-ref="' + fromRef + '"]');
             if (!from) return { error: "source_not_found" };
-            const to = document.querySelector('[data-ax-ref="' + toRef + '"]');
+            const to = __q(document, '[data-ax-ref="' + toRef + '"]');
             if (!to) return { error: "target_not_found" };
 
             const dt = new DataTransfer();
@@ -695,7 +734,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
         if let ref = ref {
             // Validate the iframe exists and is accessible
             let js = """
-                const el = document.querySelector('[data-ax-ref="' + ref + '"]');
+                const el = (window.__ctxQueryShadow || function(r,s){return r.querySelector(s)})(document, '[data-ax-ref="' + ref + '"]');
                 if (!el) return { error: "not_found" };
                 if (el.tagName !== 'IFRAME') return { error: "not_iframe", tag: el.tagName };
                 try {
