@@ -319,6 +319,56 @@ class ClaudeService: ObservableObject {
         }
     }
 
+    // MARK: - Recording Task Extraction
+
+    func extractTasksFromRecording(
+        transcript: String
+    ) async -> [(title: String, description: String?, priority: Int)]? {
+        let prompt = """
+        Analyze this meeting transcript and extract actionable tasks, decisions, and follow-ups.
+        Look for:
+        - Action items assigned to people
+        - Decisions that require follow-up work
+        - Problems discussed that need fixing
+        - Ideas or features mentioned for implementation
+        - Deadlines or time-sensitive items
+
+        Return ONLY a JSON array with no other text. Each item should have:
+        - "title": short task title (under 80 chars)
+        - "description": brief description of what needs to be done
+        - "priority": 0 (none), 1 (low), 2 (medium), 3 (high), 4 (urgent)
+
+        If no tasks found, return an empty array: []
+
+        Meeting transcript:
+        \(transcript)
+        """
+
+        guard let raw = await generate(prompt: prompt) else { return nil }
+
+        // Parse the JSON response — strip markdown code fences if present
+        var jsonStr = raw
+        if jsonStr.hasPrefix("```") {
+            let lines = jsonStr.components(separatedBy: "\n")
+            let filtered = lines.filter { !$0.hasPrefix("```") }
+            jsonStr = filtered.joined(separator: "\n")
+        }
+
+        guard let data = jsonStr.data(using: .utf8),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+        else {
+            lastError = "Could not parse AI response as JSON"
+            return nil
+        }
+
+        return array.compactMap { item in
+            guard let title = item["title"] as? String, !title.isEmpty else { return nil }
+            let desc = item["description"] as? String
+            let priority = item["priority"] as? Int ?? 0
+            return (title: title, description: desc, priority: min(max(priority, 0), 4))
+        }
+    }
+
     // MARK: - Core Execution
 
     private func generate(prompt: String) async -> String? {
