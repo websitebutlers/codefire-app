@@ -298,6 +298,201 @@ class MCPConnectionStatus {
     }
 }
 
+// MARK: - Query Preprocessor (duplicated from Context module — ContextMCP cannot import it)
+
+/// Preprocesses search queries to improve result quality.
+/// Classifies queries, expands synonyms, strips filler words, and selects adaptive weights.
+struct QueryPreprocessor {
+
+    enum QueryType {
+        case symbol   // looks like a function/class name
+        case concept  // natural language question about behavior
+        case pattern  // looking for a code pattern
+    }
+
+    struct ProcessedQuery {
+        let originalQuery: String
+        let tokenizedQuery: String       // cleaned for embedding
+        let expandedTerms: [String]      // additional FTS terms (concept queries only)
+        let queryType: QueryType
+        let semanticWeight: Float        // 0-1
+        let keywordWeight: Float         // 0-1
+    }
+
+    // MARK: - Public API
+
+    static func process(_ query: String) -> ProcessedQuery {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return ProcessedQuery(
+                originalQuery: query,
+                tokenizedQuery: "",
+                expandedTerms: [],
+                queryType: .pattern,
+                semanticWeight: 0.70,
+                keywordWeight: 0.30
+            )
+        }
+
+        let queryType = classify(trimmed)
+        let tokenized = tokenize(trimmed)
+        let expanded = queryType == .concept ? expand(trimmed) : []
+        let weights = selectWeights(queryType)
+
+        return ProcessedQuery(
+            originalQuery: query,
+            tokenizedQuery: tokenized,
+            expandedTerms: expanded,
+            queryType: queryType,
+            semanticWeight: weights.semantic,
+            keywordWeight: weights.keyword
+        )
+    }
+
+    // MARK: - Classification
+
+    /// Classify a query as symbol, concept, or pattern based on heuristics.
+    static func classify(_ query: String) -> QueryType {
+        let words = query.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+
+        // Single word or 2 words that look like code identifiers → symbol
+        if words.count <= 2 {
+            let allCodeLike = words.allSatisfy { isCodeToken($0) }
+            if allCodeLike { return .symbol }
+        }
+
+        // Contains code operators → likely symbol or pattern
+        let codeOperators: [Character] = [".", "(", ")", "<", ">", "_"]
+        let hasCodeOps = query.contains(where: { codeOperators.contains($0) })
+        if hasCodeOps && words.count <= 3 { return .symbol }
+
+        // Question words → concept
+        let questionWords = ["how", "where", "what", "why", "when", "which", "find", "show", "list", "get"]
+        if let first = words.first?.lowercased(), questionWords.contains(first) {
+            return .concept
+        }
+
+        // Longer queries without code tokens → concept
+        if words.count >= 4 && !hasCodeOps {
+            return .concept
+        }
+
+        // Default: pattern (balanced blend)
+        return .pattern
+    }
+
+    // MARK: - Tokenization
+
+    /// Strip filler words from queries 4+ words long, preserve code tokens.
+    static func tokenize(_ query: String) -> String {
+        let words = query.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        guard words.count >= 4 else { return query }
+
+        let fillerWords: Set<String> = [
+            "the", "a", "an", "is", "are", "was", "were", "be", "been",
+            "of", "in", "to", "for", "with", "on", "at", "from", "by",
+            "that", "which", "this", "these", "those", "it", "its",
+            "do", "does", "did", "has", "have", "had"
+        ]
+
+        let filtered = words.filter { word in
+            // Always keep code tokens
+            if isCodeToken(word) { return true }
+            // Strip filler words
+            return !fillerWords.contains(word.lowercased())
+        }
+
+        // Don't strip everything — keep at least 2 words
+        if filtered.count < 2 { return query }
+        return filtered.joined(separator: " ")
+    }
+
+    // MARK: - Query Expansion
+
+    /// Expand concept queries with related programming terms.
+    static func expand(_ query: String) -> [String] {
+        let lowered = query.lowercased()
+        var expansions: [String] = []
+
+        for (_, terms) in synonymMap {
+            // Check if any term from this group appears in the query
+            let matched = terms.first { lowered.contains($0) }
+            if matched != nil {
+                // Add all other terms from this group as expansions
+                for term in terms {
+                    if !lowered.contains(term) {
+                        expansions.append(term)
+                    }
+                }
+            }
+        }
+
+        return Array(expansions.prefix(15))
+    }
+
+    // MARK: - Weight Selection
+
+    private static func selectWeights(_ type: QueryType) -> (semantic: Float, keyword: Float) {
+        switch type {
+        case .symbol:  return (semantic: 0.40, keyword: 0.60)
+        case .concept: return (semantic: 0.85, keyword: 0.15)
+        case .pattern: return (semantic: 0.70, keyword: 0.30)
+        }
+    }
+
+    // MARK: - Helpers
+
+    /// Check if a word looks like a code identifier.
+    private static func isCodeToken(_ word: String) -> Bool {
+        // Contains dots, underscores, parens, or angle brackets
+        if word.contains(".") || word.contains("_") || word.contains("(") || word.contains("<") {
+            return true
+        }
+        // camelCase detection: lowercase letter followed by uppercase
+        let chars = Array(word)
+        for i in 1..<chars.count {
+            if chars[i-1].isLowercase && chars[i].isUppercase { return true }
+        }
+        return false
+    }
+
+    // MARK: - Synonym Map
+
+    /// Static map of related programming concepts for query expansion.
+    static let synonymMap: [String: [String]] = [
+        "auth":       ["auth", "authentication", "login", "signin", "signout", "logout", "session", "credential", "token", "jwt", "oauth"],
+        "database":   ["database", "db", "sql", "query", "migration", "schema", "table", "column", "record", "model"],
+        "api":        ["api", "endpoint", "route", "handler", "request", "response", "rest", "controller"],
+        "ui":         ["ui", "view", "component", "layout", "render", "display", "screen", "widget", "interface"],
+        "error":      ["error", "exception", "throw", "catch", "fail", "crash", "bug", "issue"],
+        "test":       ["test", "spec", "assert", "expect", "mock", "stub", "fixture", "unittest"],
+        "network":    ["network", "http", "fetch", "request", "url", "socket", "websocket", "connection"],
+        "storage":    ["storage", "cache", "persist", "save", "store", "disk", "file", "write", "read"],
+        "config":     ["config", "configuration", "settings", "preferences", "options", "environment", "env"],
+        "nav":        ["navigation", "navigate", "route", "router", "redirect", "link", "path"],
+        "state":      ["state", "store", "redux", "context", "provider", "observable", "published", "binding"],
+        "style":      ["style", "css", "theme", "color", "font", "margin", "padding", "layout"],
+        "async":      ["async", "await", "promise", "future", "concurrent", "parallel", "dispatch", "queue", "thread"],
+        "parse":      ["parse", "decode", "deserialize", "json", "xml", "serialize", "encode", "format"],
+        "validate":   ["validate", "validation", "check", "verify", "sanitize", "constraint", "rule"],
+        "security":   ["security", "encrypt", "decrypt", "hash", "salt", "password", "permission", "authorize"],
+        "deploy":     ["deploy", "build", "ci", "cd", "pipeline", "release", "publish", "ship"],
+        "git":        ["git", "commit", "branch", "merge", "rebase", "push", "pull", "clone", "diff", "status"],
+        "image":      ["image", "photo", "picture", "thumbnail", "avatar", "icon", "graphic", "media"],
+        "notify":     ["notification", "notify", "alert", "push", "email", "sms", "message", "toast"],
+        "search":     ["search", "find", "filter", "query", "lookup", "index", "match"],
+        "log":        ["log", "logging", "debug", "trace", "print", "monitor", "analytics", "telemetry"],
+        "payment":    ["payment", "pay", "charge", "invoice", "billing", "subscription", "stripe", "checkout"],
+        "user":       ["user", "account", "profile", "member", "role", "permission"],
+        "upload":     ["upload", "download", "transfer", "import", "export", "attach", "file"],
+        "schedule":   ["schedule", "cron", "timer", "interval", "recurring", "background", "job", "task", "queue"],
+        "embed":      ["embed", "embedding", "vector", "similarity", "semantic", "cosine"],
+        "chunk":      ["chunk", "split", "segment", "tokenize", "partition", "slice"],
+        "browser":    ["browser", "webview", "wkwebview", "tab", "page", "dom", "javascript"],
+        "process":    ["process", "spawn", "exec", "shell", "command", "terminal", "subprocess"],
+    ]
+}
+
 // MARK: - MCP Server
 
 class MCPServer {
@@ -306,6 +501,7 @@ class MCPServer {
     let detectedProjectName: String?
     let workingDirectory: String
     let connectionStatus: MCPConnectionStatus
+    let embeddingCache = EmbeddingCache()
 
     init(db: DatabaseQueue) {
         self.db = db
@@ -2446,16 +2642,31 @@ class MCPServer {
             ])
         }
 
-        // --- Step 1: FTS5 keyword search (always works, no API call needed) ---
+        // --- Step 1: Preprocess query ---
 
-        var results: [(path: String, chunk: CodeChunk, score: Float)] = []
+        let processed = QueryPreprocessor.process(query)
 
-        let ftsQuery = query
+        // --- Step 2: FTS5 keyword search (always works, no API call needed) ---
+
+        // Build FTS query from original terms + expanded terms (OR'd)
+        var allTerms = query
             .replacingOccurrences(of: "\"", with: "\"\"")
+            .replacingOccurrences(of: ":", with: " ")
             .components(separatedBy: .whitespaces)
             .filter { !$0.isEmpty }
-            .map { "\"\($0)\"" }
-            .joined(separator: " OR ")
+
+        // Add expanded terms from preprocessor
+        for term in processed.expandedTerms {
+            let cleaned = term.replacingOccurrences(of: "\"", with: "\"\"")
+            if !allTerms.contains(where: { $0.caseInsensitiveCompare(cleaned) == .orderedSame }) {
+                allTerms.append(cleaned)
+            }
+        }
+
+        let ftsQuery = allTerms.map { "\"\($0)\"" }.joined(separator: " OR ")
+
+        // Dictionary keyed by chunk ID for merging: (path, chunk, ftsScore, semanticScore)
+        var ftsScores: [String: (path: String, chunk: CodeChunk, score: Float)] = [:]
 
         if !ftsQuery.isEmpty {
             let ftsRows: [(CodeChunk, String, Double)] = (try? db.read { conn in
@@ -2488,11 +2699,11 @@ class MCPServer {
             let maxRank = ftsRows.map { abs($0.2) }.max() ?? 1.0
             for (chunk, path, rank) in ftsRows {
                 let normalizedScore = Float(abs(rank) / max(maxRank, 0.001))
-                results.append((path, chunk, normalizedScore))
+                ftsScores[chunk.id] = (path, chunk, normalizedScore)
             }
         }
 
-        // --- Step 2: Semantic search (optional — requires API key + embeddings) ---
+        // --- Step 3: Semantic search (optional — requires API key + embeddings) ---
 
         let appDefaults = UserDefaults(suiteName: "com.context.app")
         let apiKey = appDefaults?.string(forKey: "openRouterAPIKey")
@@ -2509,6 +2720,8 @@ class MCPServer {
             embeddingStatus = hasUnembedded ? "in_progress" : "complete"
         }
 
+        var semanticScores: [String: (path: String, chunk: CodeChunk, score: Float)] = [:]
+
         if hasApiKey {
             // Check if any chunks have embeddings before attempting semantic search
             let hasEmbeddings = (try? db.read { conn in
@@ -2517,8 +2730,20 @@ class MCPServer {
 
             if hasEmbeddings {
                 let model = appDefaults?.string(forKey: "embeddingModel") ?? "openai/text-embedding-3-small"
+                let embeddingQuery = processed.tokenizedQuery.isEmpty ? query : processed.tokenizedQuery
 
-                if let queryVector = try? embedQuery(query: query, apiKey: apiKey!, model: model) {
+                // Check embedding cache first
+                let queryVector: [Float]?
+                if let cached = self.embeddingCache.get(embeddingQuery) {
+                    queryVector = cached
+                } else if let fetched = try? self.embedQuery(query: embeddingQuery, apiKey: apiKey!, model: model) {
+                    self.embeddingCache.set(embeddingQuery, vector: fetched)
+                    queryVector = fetched
+                } else {
+                    queryVector = nil
+                }
+
+                if let queryVector = queryVector {
                     // Load chunks WITH embeddings only
                     let chunks: [(CodeChunk, String)] = (try? db.read { conn in
                         var sql = """
@@ -2543,31 +2768,133 @@ class MCPServer {
                         }
                     }) ?? []
 
-                    // Compute cosine similarity and merge with FTS results
-                    let existingIds = Set(results.map { $0.chunk.id })
-
                     for (chunk, path) in chunks {
                         guard let vector = chunk.embeddingVector else { continue }
-                        let sim = cosineSimilarity(queryVector, vector)
-                        if sim > 0.3 {
-                            if existingIds.contains(chunk.id) {
-                                // Boost FTS result with semantic score
-                                if let idx = results.firstIndex(where: { $0.chunk.id == chunk.id }) {
-                                    results[idx].score = (0.3 * results[idx].score) + (0.7 * sim)
-                                }
-                            } else {
-                                results.append((path, chunk, sim))
-                            }
+                        let sim = self.cosineSimilarity(queryVector, vector)
+                        if sim > 0.15 {
+                            semanticScores[chunk.id] = (path, chunk, sim)
                         }
                     }
                 }
             }
         }
 
-        // --- Step 3: Sort, format, return ---
+        // --- Step 4: Merge results using adaptive weights ---
 
-        results.sort { $0.score > $1.score }
-        let topResults = results.prefix(min(limit, 30))
+        let semWeight = processed.semanticWeight
+        let kwWeight = processed.keywordWeight
+        let allChunkIds = Set(ftsScores.keys).union(semanticScores.keys)
+
+        var merged: [(path: String, chunk: CodeChunk, score: Float)] = []
+
+        for chunkId in allChunkIds {
+            let fts = ftsScores[chunkId]
+            let sem = semanticScores[chunkId]
+
+            let path: String
+            let chunk: CodeChunk
+            let score: Float
+
+            if let fts = fts, let sem = sem {
+                // Found in both — combine with adaptive weights
+                path = fts.path
+                chunk = fts.chunk
+                score = (kwWeight * fts.score) + (semWeight * sem.score)
+            } else if let fts = fts {
+                // FTS only
+                path = fts.path
+                chunk = fts.chunk
+                score = kwWeight * fts.score
+            } else if let sem = sem {
+                // Semantic only
+                path = sem.path
+                chunk = sem.chunk
+                score = semWeight * sem.score
+            } else {
+                continue
+            }
+
+            merged.append((path, chunk, score))
+        }
+
+        // --- Step 5: Apply chunk importance multipliers ---
+
+        for i in 0..<merged.count {
+            var multiplier: Float = 1.0
+
+            // Type multiplier
+            switch merged[i].chunk.chunkType {
+            case "function": multiplier *= 1.0
+            case "class":    multiplier *= 1.0
+            case "doc":      multiplier *= 0.9
+            case "block":    multiplier *= 0.7
+            case "header":   multiplier *= 0.5
+            case "commit":   multiplier *= 0.6
+            default:         multiplier *= 0.8
+            }
+
+            // File path multiplier
+            let pathLower = merged[i].path.lowercased()
+            if pathLower.contains("test") || pathLower.contains("spec") || pathLower.contains("mock") {
+                multiplier *= 0.6
+            }
+            if pathLower.contains("generated") || pathLower.contains("build") || pathLower.contains("vendor") {
+                multiplier *= 0.3
+            }
+
+            // Visibility boost: public/export/open in first 200 chars
+            let contentPrefix = String(merged[i].chunk.content.prefix(200)).lowercased()
+            if contentPrefix.contains("public ") || contentPrefix.contains("export ") || contentPrefix.contains("open ") {
+                multiplier *= 1.2
+            }
+
+            merged[i].score *= multiplier
+        }
+
+        // --- Step 6: Apply dynamic threshold ---
+
+        merged.sort { $0.score > $1.score }
+
+        let threshold: Float
+        if merged.count >= 2 {
+            let topN = Array(merged.prefix(5))
+            let scores = topN.map { $0.score }
+            let mean = scores.reduce(0, +) / Float(scores.count)
+            let variance = scores.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Float(max(scores.count - 1, 1))
+            let stddev = sqrt(variance)
+            threshold = max(mean - stddev, 0.05)
+        } else {
+            threshold = 0.05
+        }
+
+        let filtered = merged.filter { $0.score >= threshold }
+
+        // --- Step 7: Result consolidation — max 2 chunks per file ---
+
+        var fileChunkCounts: [String: Int] = [:]
+        var fileExtraCounts: [String: Int] = [:]
+        var consolidated: [(path: String, chunk: CodeChunk, score: Float)] = []
+
+        for item in filtered {
+            let count = fileChunkCounts[item.path, default: 0]
+            if count < 2 {
+                consolidated.append(item)
+                fileChunkCounts[item.path] = count + 1
+            } else {
+                fileExtraCounts[item.path, default: 0] += 1
+            }
+        }
+
+        let topResults = consolidated.prefix(min(limit, 30))
+
+        // --- Step 8: Format output ---
+
+        let queryTypeStr: String
+        switch processed.queryType {
+        case .symbol:  queryTypeStr = "symbol"
+        case .concept: queryTypeStr = "concept"
+        case .pattern: queryTypeStr = "pattern"
+        }
 
         let formatted: [[String: Any]] = topResults.map { item in
             var result: [String: Any] = [
@@ -2582,11 +2909,16 @@ class MCPServer {
             if let start = item.chunk.startLine, let end = item.chunk.endLine {
                 result["lines"] = "\(start)-\(end)"
             }
+            let moreInFile = fileExtraCounts[item.path, default: 0]
+            if moreInFile > 0 {
+                result["more_in_file"] = moreInFile
+            }
             return result
         }
 
         return formatJSON([
             "results": formatted,
+            "query_type": queryTypeStr,
             "index_status": indexStatus,
             "embedding_status": embeddingStatus,
             "total_chunks": state?.totalChunks ?? 0
