@@ -19,6 +19,7 @@ struct TaskItem: Codable, Identifiable, FetchableRecord, MutablePersistableRecor
     var isGlobal: Bool = false
     var gmailThreadId: String?
     var gmailMessageId: String?
+    var recordingId: String?
 
     static let databaseTableName = "taskItems"
 

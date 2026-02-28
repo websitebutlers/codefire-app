@@ -400,6 +400,25 @@ class DatabaseService {
             }
         }
 
+        migrator.registerMigration("v18_createRecordings") { db in
+            try db.create(table: "recordings") { t in
+                t.primaryKey("id", .text)
+                t.column("projectId", .text).notNull()
+                    .references("projects", onDelete: .cascade)
+                t.column("title", .text).notNull()
+                t.column("audioPath", .text).notNull()
+                t.column("duration", .double).notNull().defaults(to: 0)
+                t.column("transcript", .text)
+                t.column("status", .text).notNull().defaults(to: "recording")
+                t.column("errorMessage", .text)
+                t.column("createdAt", .datetime).notNull()
+            }
+
+            try db.alter(table: "taskItems") { t in
+                t.add(column: "recordingId", .text)
+            }
+        }
+
         return migrator
     }
 }
