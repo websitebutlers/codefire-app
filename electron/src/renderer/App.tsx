@@ -1,15 +1,7 @@
 export default function App() {
   return (
-    <div style={{
-      height: '100vh',
-      backgroundColor: '#171717',
-      color: '#f5f5f5',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    }}>
-      <h1 style={{ fontSize: '24px', fontWeight: 600, color: '#f97316' }}>
+    <div className="h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] flex items-center justify-center">
+      <h1 className="text-xl font-semibold text-codefire-orange">
         CodeFire
       </h1>
     </div>
