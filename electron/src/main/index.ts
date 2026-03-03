@@ -3,6 +3,7 @@ import path from 'path'
 import { getDatabase, closeDatabase } from './database/connection'
 import { registerAllHandlers } from './ipc'
 import { WindowManager } from './windows/WindowManager'
+import { TerminalService } from './services/TerminalService'
 
 process.env.DIST_ELECTRON = path.join(__dirname, '..')
 process.env.DIST = path.join(process.env.DIST_ELECTRON, '../dist')
@@ -10,12 +11,13 @@ process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL
   ? path.join(process.env.DIST_ELECTRON, '../public')
   : process.env.DIST
 
-// Initialize database and window manager
+// Initialize database, window manager, and terminal service
 const db = getDatabase()
 const windowManager = WindowManager.getInstance()
+const terminalService = new TerminalService()
 
-// Register all IPC handlers (including window management)
-registerAllHandlers(db, windowManager)
+// Register all IPC handlers (including window and terminal management)
+registerAllHandlers(db, windowManager, terminalService)
 
 app.whenReady().then(() => {
   windowManager.createMainWindow()
@@ -40,5 +42,6 @@ app.on('activate', () => {
 })
 
 app.on('before-quit', () => {
+  terminalService.killAll()
   closeDatabase()
 })

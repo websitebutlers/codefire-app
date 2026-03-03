@@ -1,0 +1,196 @@
+import { useState, useEffect, useCallback } from 'react'
+import TerminalTab from './TerminalTab'
+
+interface TerminalPanelProps {
+  /** Project ID, used as a prefix for terminal session IDs */
+  projectId: string
+  /** Filesystem path for the project, used as the shell's cwd */
+  projectPath: string
+}
+
+interface TabInfo {
+  id: string
+  label: string
+}
+
+let tabCounter = 0
+
+function createTabId(projectId: string): string {
+  tabCounter++
+  return `${projectId}-term-${tabCounter}`
+}
+
+/**
+ * Terminal panel with a tab bar for managing multiple terminal sessions.
+ *
+ * - Sits on the left side of the project window
+ * - Each tab is a separate PTY session
+ * - "+" button adds a new tab
+ * - Tabs can be closed via middle-click or context menu
+ * - First tab is created automatically on mount
+ */
+export default function TerminalPanel({ projectId, projectPath }: TerminalPanelProps) {
+  const [tabs, setTabs] = useState<TabInfo[]>([])
+  const [activeTabId, setActiveTabId] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    tabId: string
+  } | null>(null)
+
+  // ─── Create a new terminal tab ──────────────────────────────────────────
+  const addTab = useCallback(async () => {
+    const id = createTabId(projectId)
+    const label = `Terminal ${tabs.length + 1}`
+
+    // Tell main process to create the PTY
+    await window.api.invoke('terminal:create', id, projectPath)
+
+    setTabs((prev) => [...prev, { id, label }])
+    setActiveTabId(id)
+  }, [projectId, projectPath, tabs.length])
+
+  // ─── Close a terminal tab ──────────────────────────────────────────────
+  const closeTab = useCallback(
+    async (tabId: string) => {
+      // Kill the PTY in main process
+      await window.api.invoke('terminal:kill', tabId)
+
+      setTabs((prev) => {
+        const remaining = prev.filter((t) => t.id !== tabId)
+
+        // If we're closing the active tab, switch to the last remaining tab
+        if (activeTabId === tabId) {
+          const newActive = remaining.length > 0 ? remaining[remaining.length - 1].id : null
+          setActiveTabId(newActive)
+        }
+
+        return remaining
+      })
+    },
+    [activeTabId]
+  )
+
+  // ─── Create first tab on mount ──────────────────────────────────────────
+  useEffect(() => {
+    addTab()
+
+    // Cleanup: kill all terminals when panel unmounts
+    return () => {
+      // We can't use async in cleanup, so fire-and-forget
+      tabs.forEach((tab) => {
+        window.api.invoke('terminal:kill', tab.id).catch(() => {})
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ─── Context menu close handler ─────────────────────────────────────────
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null)
+    if (contextMenu) {
+      document.addEventListener('click', handleClick)
+      return () => document.removeEventListener('click', handleClick)
+    }
+  }, [contextMenu])
+
+  // ─── Listen for PTY exit to update tabs ─────────────────────────────────
+  useEffect(() => {
+    const removeListener = window.api.on(
+      'terminal:exit',
+      (id: unknown) => {
+        // Optionally auto-close the tab or just let the user see the exit message
+        // For now, keep the tab open so the user sees the exit message
+      }
+    )
+    return removeListener
+  }, [])
+
+  return (
+    <div className="flex flex-col h-full bg-[#171717]">
+      {/* ─── Tab Bar ───────────────────────────────────────────────────────── */}
+      <div className="flex items-center h-9 bg-[#0a0a0a] border-b border-[#262626] select-none shrink-0">
+        <div className="flex-1 flex items-center overflow-x-auto scrollbar-none">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              className={`
+                flex items-center gap-1.5 px-3 h-9 text-xs font-medium whitespace-nowrap
+                border-r border-[#262626] transition-colors
+                ${
+                  tab.id === activeTabId
+                    ? 'bg-[#171717] text-[#e5e5e5]'
+                    : 'bg-[#0a0a0a] text-[#737373] hover:text-[#a3a3a3] hover:bg-[#0f0f0f]'
+                }
+              `}
+              onClick={() => setActiveTabId(tab.id)}
+              onAuxClick={(e) => {
+                // Middle-click to close
+                if (e.button === 1) {
+                  e.preventDefault()
+                  closeTab(tab.id)
+                }
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setContextMenu({ x: e.clientX, y: e.clientY, tabId: tab.id })
+              }}
+            >
+              <span className="text-[#f97316] text-[10px]">&#9654;</span>
+              <span>{tab.label}</span>
+              {tabs.length > 1 && (
+                <span
+                  className="ml-1 text-[#525252] hover:text-[#e5e5e5] cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    closeTab(tab.id)
+                  }}
+                >
+                  &times;
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Add tab button */}
+        <button
+          className="flex items-center justify-center w-9 h-9 text-[#737373] hover:text-[#e5e5e5] hover:bg-[#1a1a1a] transition-colors"
+          onClick={addTab}
+          title="New Terminal"
+        >
+          <span className="text-lg leading-none">+</span>
+        </button>
+      </div>
+
+      {/* ─── Terminal Content ──────────────────────────────────────────────── */}
+      <div className="flex-1 min-h-0 relative">
+        {tabs.map((tab) => (
+          <TerminalTab
+            key={tab.id}
+            terminalId={tab.id}
+            isActive={tab.id === activeTabId}
+          />
+        ))}
+      </div>
+
+      {/* ─── Context Menu ──────────────────────────────────────────────────── */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-[#1a1a1a] border border-[#333333] rounded shadow-lg py-1 min-w-[120px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            className="w-full px-3 py-1.5 text-xs text-left text-[#e5e5e5] hover:bg-[#2a2a2a] transition-colors"
+            onClick={() => {
+              closeTab(contextMenu.tabId)
+              setContextMenu(null)
+            }}
+          >
+            Close Terminal
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}

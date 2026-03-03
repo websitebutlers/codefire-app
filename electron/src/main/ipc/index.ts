@@ -5,9 +5,15 @@ import { registerNoteHandlers } from './note-handlers'
 import { registerSessionHandlers } from './session-handlers'
 import { registerClientHandlers } from './client-handlers'
 import { registerWindowHandlers } from './window-handlers'
+import { registerTerminalHandlers } from './terminal-handlers'
 import type { WindowManager } from '../windows/WindowManager'
+import type { TerminalService } from '../services/TerminalService'
 
-export function registerAllHandlers(db: Database.Database, windowManager?: WindowManager) {
+export function registerAllHandlers(
+  db: Database.Database,
+  windowManager?: WindowManager,
+  terminalService?: TerminalService
+) {
   registerProjectHandlers(db)
   registerTaskHandlers(db)
   registerNoteHandlers(db)
@@ -15,5 +21,8 @@ export function registerAllHandlers(db: Database.Database, windowManager?: Windo
   registerClientHandlers(db)
   if (windowManager) {
     registerWindowHandlers(windowManager)
+  }
+  if (terminalService) {
+    registerTerminalHandlers(terminalService)
   }
 }

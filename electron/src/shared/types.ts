@@ -42,6 +42,15 @@ export type WindowChannel =
   | 'window:getProjectWindows'
   | 'window:focusMain'
 
+/** Channels that use ipcMain.handle (request-response) */
+export type TerminalHandleChannel = 'terminal:create' | 'terminal:kill'
+
+/** Channels that use ipcRenderer.send (fire-and-forget, renderer → main) */
+export type TerminalSendChannel = 'terminal:write' | 'terminal:resize'
+
+/** Channels that use webContents.send (main → renderer) */
+export type TerminalReceiveChannel = 'terminal:data' | 'terminal:exit'
+
 export type IpcChannel =
   | ProjectChannel
   | TaskChannel
@@ -50,6 +59,7 @@ export type IpcChannel =
   | SessionChannel
   | ClientChannel
   | WindowChannel
+  | TerminalHandleChannel
 
 // ─── Electron API ────────────────────────────────────────────────────────────
 
