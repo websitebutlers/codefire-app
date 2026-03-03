@@ -44,6 +44,14 @@ export type WindowChannel =
 
 export type DiscoveryChannel = 'discovery:scanProjects' | 'discovery:importSessions'
 
+export type GitChannel =
+  | 'git:status'
+  | 'git:diff'
+  | 'git:log'
+  | 'git:stage'
+  | 'git:unstage'
+  | 'git:commit'
+
 /** Channels that use ipcMain.handle (request-response) */
 export type TerminalHandleChannel = 'terminal:create' | 'terminal:kill'
 
@@ -63,6 +71,7 @@ export type IpcChannel =
   | WindowChannel
   | TerminalHandleChannel
   | DiscoveryChannel
+  | GitChannel
 
 // ─── Electron API ────────────────────────────────────────────────────────────
 

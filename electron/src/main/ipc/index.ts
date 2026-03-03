@@ -7,13 +7,16 @@ import { registerClientHandlers } from './client-handlers'
 import { registerWindowHandlers } from './window-handlers'
 import { registerTerminalHandlers } from './terminal-handlers'
 import { registerDiscoveryHandlers } from './discovery-handlers'
+import { registerGitHandlers } from './git-handlers'
 import type { WindowManager } from '../windows/WindowManager'
 import type { TerminalService } from '../services/TerminalService'
+import type { GitService } from '../services/GitService'
 
 export function registerAllHandlers(
   db: Database.Database,
   windowManager?: WindowManager,
-  terminalService?: TerminalService
+  terminalService?: TerminalService,
+  gitService?: GitService
 ) {
   registerProjectHandlers(db)
   registerTaskHandlers(db)
@@ -26,5 +29,8 @@ export function registerAllHandlers(
   }
   if (terminalService) {
     registerTerminalHandlers(terminalService)
+  }
+  if (gitService) {
+    registerGitHandlers(gitService)
   }
 }

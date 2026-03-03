@@ -153,4 +153,32 @@ export const api = {
       invoke('window:getProjectWindows') as Promise<string[]>,
     focusMain: () => invoke('window:focusMain') as Promise<void>,
   },
+
+  git: {
+    status: (projectPath: string) =>
+      invoke('git:status', projectPath) as Promise<{
+        branch: string
+        files: Array<{ status: string; path: string }>
+        isClean: boolean
+      }>,
+    diff: (projectPath: string, options?: { staged?: boolean; file?: string }) =>
+      invoke('git:diff', projectPath, options) as Promise<string>,
+    log: (projectPath: string, options?: { limit?: number; file?: string }) =>
+      invoke('git:log', projectPath, options) as Promise<
+        Array<{
+          hash: string
+          author: string
+          email: string
+          date: string
+          subject: string
+          body: string
+        }>
+      >,
+    stage: (projectPath: string, files: string[]) =>
+      invoke('git:stage', projectPath, files) as Promise<void>,
+    unstage: (projectPath: string, files: string[]) =>
+      invoke('git:unstage', projectPath, files) as Promise<void>,
+    commit: (projectPath: string, message: string) =>
+      invoke('git:commit', projectPath, message) as Promise<{ hash: string }>,
+  },
 }

@@ -4,6 +4,7 @@ import { getDatabase, closeDatabase } from './database/connection'
 import { registerAllHandlers } from './ipc'
 import { WindowManager } from './windows/WindowManager'
 import { TerminalService } from './services/TerminalService'
+import { GitService } from './services/GitService'
 
 process.env.DIST_ELECTRON = path.join(__dirname, '..')
 process.env.DIST = path.join(process.env.DIST_ELECTRON, '../dist')
@@ -11,13 +12,14 @@ process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL
   ? path.join(process.env.DIST_ELECTRON, '../public')
   : process.env.DIST
 
-// Initialize database, window manager, and terminal service
+// Initialize database, window manager, terminal service, and git service
 const db = getDatabase()
 const windowManager = WindowManager.getInstance()
 const terminalService = new TerminalService()
+const gitService = new GitService()
 
-// Register all IPC handlers (including window and terminal management)
-registerAllHandlers(db, windowManager, terminalService)
+// Register all IPC handlers (including window, terminal, and git management)
+registerAllHandlers(db, windowManager, terminalService, gitService)
 
 app.whenReady().then(() => {
   windowManager.createMainWindow()
