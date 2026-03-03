@@ -4,6 +4,10 @@ import type { Project } from '@shared/models'
 import { api } from '@renderer/lib/api'
 import TerminalPanel from '@renderer/components/Terminal/TerminalPanel'
 import TabBar from '@renderer/components/TabBar/TabBar'
+import DashboardView from '@renderer/views/DashboardView'
+import SessionsView from '@renderer/views/SessionsView'
+import TasksView from '@renderer/views/TasksView'
+import NotesView from '@renderer/views/NotesView'
 
 interface ProjectLayoutProps {
   projectId: string
@@ -73,6 +77,27 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
     )
   }
 
+  // ─── View renderer ─────────────────────────────────────────────────────────
+  function renderActiveView(tab: string, pid: string, onTabChange: (t: string) => void) {
+    switch (tab) {
+      case 'Dashboard':
+        return <DashboardView projectId={pid} onTabChange={onTabChange} />
+      case 'Sessions':
+        return <SessionsView projectId={pid} />
+      case 'Tasks':
+        return <TasksView projectId={pid} />
+      case 'Notes':
+        return <NotesView projectId={pid} />
+      default:
+        return (
+          <div className="flex-1 p-4 overflow-y-auto">
+            <h2 className="text-title text-neutral-300">{tab}</h2>
+            <p className="text-sm text-neutral-600 mt-1">Coming soon</p>
+          </div>
+        )
+    }
+  }
+
   // ─── Main layout ───────────────────────────────────────────────────────────
   return (
     <div className="h-screen w-screen overflow-hidden bg-neutral-900">
@@ -94,10 +119,9 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
             <div className="flex flex-col h-full">
               <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
-              {/* Active view placeholder */}
-              <div className="flex-1 p-4 overflow-y-auto">
-                <h2 className="text-title text-neutral-300">{activeTab}</h2>
-                <p className="text-sm text-neutral-600 mt-1">Coming soon</p>
+              {/* Active view */}
+              <div className="flex-1 overflow-hidden">
+                {renderActiveView(activeTab, projectId, setActiveTab)}
               </div>
             </div>
           </Panel>
