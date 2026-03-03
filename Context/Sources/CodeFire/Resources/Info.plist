@@ -10,6 +10,17 @@
     <string>CodeFire</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>codefire</string>
+            </array>
+            <key>CFBundleURLName</key>
+            <string>com.codefire.deeplink</string>
+        </dict>
+    </array>
     <key>LSUIElement</key>
     <false/>
     <key>NSMicrophoneUsageDescription</key>

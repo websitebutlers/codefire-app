@@ -63,6 +63,15 @@ struct CodeFireApp: App {
     @StateObject private var notificationService: SystemNotificationService
     @StateObject private var updateService = UpdateService.shared
 
+    @State private var deepLinkResult: DeepLinkResult?
+    @State private var showDeepLinkSheet = false
+
+    /// Result of a deep link installation attempt.
+    private enum DeepLinkResult {
+        case success(CLIProvider)
+        case failure(String)
+    }
+
     init() {
         // Register as a foreground GUI app. Without this, a bare SPM executable
         // isn't recognized by macOS as a real app — it won't become key/foreground,
@@ -219,6 +228,36 @@ struct CodeFireApp: App {
                         }
                     }
                 }
+                .onOpenURL { url in
+                    handleDeepLink(url)
+                }
+                .sheet(isPresented: $showDeepLinkSheet) {
+                    VStack(spacing: 16) {
+                        if case .success(let cli) = deepLinkResult {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 48))
+                                .foregroundColor(.green)
+                            Text("MCP Configured")
+                                .font(.headline)
+                            Text("CodeFire is now connected to \(cli.displayName).")
+                            Text("Restart your CLI session to activate.")
+                                .foregroundColor(.secondary)
+                        } else if case .failure(let message) = deepLinkResult {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 48))
+                                .foregroundColor(.red)
+                            Text("Configuration Failed")
+                                .font(.headline)
+                            Text(message)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Button("Done") { showDeepLinkSheet = false }
+                            .keyboardShortcut(.defaultAction)
+                    }
+                    .padding(32)
+                    .frame(width: 360)
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1400, height: 900)
@@ -235,5 +274,51 @@ struct CodeFireApp: App {
             SettingsView(settings: appSettings)
                 .environmentObject(contextEngine)
         }
+    }
+
+    // MARK: - Deep Link Handling
+
+    /// Handle codefire:// deep links for one-click MCP onboarding.
+    /// Format: codefire://install-mcp?client=claude
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme == "codefire",
+              url.host == "install-mcp",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let clientParam = components.queryItems?.first(where: { $0.name == "client" })?.value,
+              let cli = CLIProvider(rawValue: clientParam) else {
+            return
+        }
+
+        let injector = ContextInjector()
+        // Use the current project path if available, otherwise empty string
+        let projectPath = appState.currentProject?.path ?? ""
+
+        do {
+            // For Claude Code, prefer the `claude mcp add` command
+            if cli == .claude {
+                let binaryPath = ContextInjector.mcpBinaryPath
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+                process.arguments = ["claude", "mcp", "add", "codefire", binaryPath]
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = FileHandle.nullDevice
+                try process.run()
+                process.waitUntilExit()
+
+                if process.terminationStatus == 0 {
+                    deepLinkResult = .success(cli)
+                } else {
+                    // Fall back to file-based config
+                    _ = try injector.installMCP(for: cli, projectPath: projectPath)
+                    deepLinkResult = .success(cli)
+                }
+            } else {
+                _ = try injector.installMCP(for: cli, projectPath: projectPath)
+                deepLinkResult = .success(cli)
+            }
+        } catch {
+            deepLinkResult = .failure(error.localizedDescription)
+        }
+        showDeepLinkSheet = true
     }
 }
