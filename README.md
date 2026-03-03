@@ -19,7 +19,7 @@
 Your AI coding agent forgets everything between sessions. CodeFire fixes that. It auto-discovers your projects, tracks tasks and sessions, monitors live coding activity, and exposes project data back to your AI via MCP — creating a feedback loop where your agent knows what you're working on and can act on it.
 
 <p align="center">
-  <img src="assets/screenshot-01.jpg" alt="CodeFire — Planner view with Kanban board, task tracking, and email integration" width="100%">
+  <img src="assets/screenshot-01.png" alt="CodeFire — Planner view with Kanban board, task tracking, and email integration" width="100%">
 </p>
 
 ## Features
@@ -29,8 +29,8 @@ Your AI coding agent forgets everything between sessions. CodeFire fixes that. I
 **Task tracking with Kanban board** — Drag-and-drop Kanban board (Todo / In Progress / Done) per project and globally. Tasks can be created manually, extracted from emails, or created programmatically by your AI agent through the MCP server. Priority levels, labels, notes, and full task history.
 
 <p align="center">
-  <img src="assets/screenshot-02.jpg" alt="Integrated terminal with project planner" width="100%">
-  <br><em>Integrated terminal alongside the project planner</em>
+  <img src="assets/screenshot-02.png" alt="Task board with integrated terminal" width="100%">
+  <br><em>Integrated terminal alongside the task board</em>
 </p>
 
 **Live session monitoring** — Real-time mission control for active Claude Code sessions. Watches the session JSONL file and displays token usage, cost tracking, tools invoked, files touched, and a live activity feed.
@@ -38,7 +38,7 @@ Your AI coding agent forgets everything between sessions. CodeFire fixes that. I
 **Session history** — Parses and indexes all past Claude Code sessions. Browse conversations, review tool usage patterns, and track costs over time.
 
 <p align="center">
-  <img src="assets/screenshot-10.jpg" alt="Session history with cost tracking" width="100%">
+  <img src="assets/screenshot-09.png" alt="Session history with cost tracking" width="100%">
   <br><em>Session history with cost tracking and tool usage stats</em>
 </p>
 
@@ -47,28 +47,28 @@ Your AI coding agent forgets everything between sessions. CodeFire fixes that. I
 **Task launcher & dev tools** — One-click actions for common workflows: code review, debugging, writing tests, refactoring, documentation, and security audits. Detects your project's package manager and provides quick-launch buttons for dev, build, test, and lint commands.
 
 <p align="center">
-  <img src="assets/screenshot-07.jpg" alt="Task launcher and cost tracker" width="100%">
+  <img src="assets/screenshot-10.png" alt="Task launcher and cost tracker" width="100%">
   <br><em>Task launcher, dev tools, and per-project cost tracking</em>
 </p>
 
-**Session memory** — Browse and manage Claude Code's memory files and project-specific patterns. Structured knowledge that persists across sessions.
+**GitHub & Git integration** — See commits, staged changes, diffs, open PRs, and CI status. Full git visibility without leaving the app.
 
 <p align="center">
-  <img src="assets/screenshot-06.jpg" alt="Session memory viewer" width="100%">
-  <br><em>Session memory with structured project knowledge</em>
+  <img src="assets/screenshot-07.png" alt="Git integration" width="100%">
+  <br><em>Git integration with commits, staged changes, and diffs</em>
 </p>
 
 **Notes** — Per-project and global notes with a rich editor. Pin important notes, search across all notes, and use them to persist context between sessions.
 
 <p align="center">
-  <img src="assets/screenshot-03.jpg" alt="Project notes" width="100%">
+  <img src="assets/screenshot-04.png" alt="Project notes" width="100%">
   <br><em>Per-project notes with pinning and search</em>
 </p>
 
 **AI image generation** — Built-in image studio for generating images with AI. Supports prompt-based generation with configurable aspect ratios and sizes.
 
 <p align="center">
-  <img src="assets/screenshot-09.jpg" alt="AI image generation" width="100%">
+  <img src="assets/screenshot-08.png" alt="AI image generation" width="100%">
   <br><em>Built-in AI image generation</em>
 </p>
 
