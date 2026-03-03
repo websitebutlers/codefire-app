@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Context Injector
 
-/// Manages the integration surface between Context.app and Claude Code.
+/// Manages the integration surface between CodeFire and Claude Code.
 /// Handles two responsibilities:
 /// 1. Injecting/removing a managed section in a project's CLAUDE.md file
 /// 2. Writing an MCP configuration file that Claude Code can reference
@@ -20,15 +20,15 @@ class ContextInjector {
         }
     }
 
-    /// Markers used to identify the Context.app-managed section in CLAUDE.md
-    static let sectionStart = "<!-- Context.app managed section -->"
-    static let sectionEnd = "<!-- End Context.app section -->"
+    /// Markers used to identify the CodeFire-managed section in CLAUDE.md
+    static let sectionStart = "<!-- CodeFire managed section -->"
+    static let sectionEnd = "<!-- End CodeFire section -->"
 
     /// The content injected between the markers
     private static let managedContent = """
-    # Context
-    This project uses Context.app for session memory.
-    Use the `context` MCP tools to retrieve project history,
+    # CodeFire
+    This project uses CodeFire for session memory.
+    Use the `codefire` MCP tools to retrieve project history,
     active tasks, patterns, and codebase structure when needed.
     """
 
@@ -42,7 +42,7 @@ class ContextInjector {
 
     // MARK: - CLAUDE.md Management
 
-    /// Add or update the Context.app managed section in the project's CLAUDE.md.
+    /// Add or update the CodeFire managed section in the project's CLAUDE.md.
     /// If CLAUDE.md exists, the managed section is found and replaced (or appended).
     /// If CLAUDE.md does not exist, a new file is created with just the managed section.
     func updateClaudeMD(for project: Project) throws {
@@ -76,7 +76,7 @@ class ContextInjector {
         }
     }
 
-    /// Remove the Context.app managed section from the project's CLAUDE.md.
+    /// Remove the CodeFire managed section from the project's CLAUDE.md.
     /// If the file becomes empty (or whitespace-only) after removal, delete it.
     func removeClaudeMDSection(for project: Project) throws {
         let projectPath = project.path
@@ -113,7 +113,7 @@ class ContextInjector {
     // MARK: - MCP Configuration
 
     /// Write the MCP configuration file that Claude Code can reference.
-    /// Creates ~/Library/Application Support/Context/mcp-config.json
+    /// Creates ~/Library/Application Support/CodeFire/mcp-config.json
     ///
     /// Note: The transport bridge (connecting this config to the in-process MCPServer)
     /// is a future enhancement. For now this writes the structural config.
@@ -121,7 +121,7 @@ class ContextInjector {
         let appSupportURL = fileManager.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
-        ).first!.appendingPathComponent("Context", isDirectory: true)
+        ).first!.appendingPathComponent("CodeFire", isDirectory: true)
 
         try fileManager.createDirectory(
             at: appSupportURL,
@@ -132,10 +132,10 @@ class ContextInjector {
 
         let config: [String: Any] = [
             "mcpServers": [
-                "context-app": [
-                    "command": "context-mcp-bridge",
+                "codefire": [
+                    "command": "codefire-mcp-bridge",
                     "args": [] as [String],
-                    "description": "Context.app - Session memory and project intelligence for Claude Code"
+                    "description": "CodeFire - Session memory and project intelligence for Claude Code"
                 ]
             ]
         ]
@@ -149,23 +149,23 @@ class ContextInjector {
 
     // MARK: - Per-CLI MCP Installation
 
-    /// The deployed ContextMCP binary path.
+    /// The deployed CodeFireMCP binary path.
     static var mcpBinaryPath: String {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask
         ).first!
         return appSupport
-            .appendingPathComponent("Context/bin/ContextMCP")
+            .appendingPathComponent("CodeFire/bin/CodeFireMCP")
             .path
     }
 
     /// Install MCP config for a specific CLI provider.
-    /// Merge-safe: parses existing config and only adds/updates the context-tasks entry.
+    /// Merge-safe: parses existing config and only adds/updates the codefire entry.
     /// Returns the path where the config was written.
     func installMCP(for cli: CLIProvider, projectPath: String) throws -> String {
         let binaryPath = Self.mcpBinaryPath
         guard fileManager.fileExists(atPath: binaryPath) else {
-            throw InjectorError.fileOperationFailed("ContextMCP binary not found at \(binaryPath)")
+            throw InjectorError.fileOperationFailed("CodeFireMCP binary not found at \(binaryPath)")
         }
 
         let configPath: String
@@ -200,7 +200,7 @@ class ContextInjector {
 
         var config = readJSONDict(at: path)
         var servers = config[topKey] as? [String: Any] ?? [:]
-        servers["context-tasks"] = serverEntry
+        servers["codefire"] = serverEntry
         config[topKey] = servers
         try writeJSON(config, to: path)
     }
@@ -216,15 +216,15 @@ class ContextInjector {
 
         let section = """
 
-        [mcp_servers.context-tasks]
+        [mcp_servers.codefire]
         command = "\(escapedPath)"
         args = []
         """
 
         if fileManager.fileExists(atPath: path) {
             var content = try String(contentsOfFile: path, encoding: .utf8)
-            // Remove existing context-tasks section if present
-            let pattern = #"\[mcp_servers\.context-tasks\][^\[]*"#
+            // Remove existing codefire section if present
+            let pattern = #"\[mcp_servers\.codefire\][^\[]*"#
             if let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) {
                 content = regex.stringByReplacingMatches(
                     in: content,
@@ -263,7 +263,7 @@ class ContextInjector {
 
     // MARK: - Per-CLI Instruction File Management
 
-    /// Write the Context.app managed section to the appropriate instruction file for this CLI.
+    /// Write the CodeFire managed section to the appropriate instruction file for this CLI.
     func updateInstructionFile(for cli: CLIProvider, projectPath: String) throws {
         guard !projectPath.isEmpty else { throw InjectorError.projectPathMissing }
 

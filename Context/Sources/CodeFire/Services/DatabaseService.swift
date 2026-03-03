@@ -11,16 +11,16 @@ class DatabaseService {
         let appSupportURL = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
-        ).first!.appendingPathComponent("Context", isDirectory: true)
+        ).first!.appendingPathComponent("CodeFire", isDirectory: true)
 
         try FileManager.default.createDirectory(
             at: appSupportURL,
             withIntermediateDirectories: true
         )
 
-        let dbPath = appSupportURL.appendingPathComponent("context.db").path
+        let dbPath = appSupportURL.appendingPathComponent("codefire.db").path
         var config = Configuration()
-        config.busyMode = .timeout(5.0) // Wait up to 5s for locks (cross-process access with ContextMCP)
+        config.busyMode = .timeout(5.0) // Wait up to 5s for locks (cross-process access with CodeFireMCP)
         dbQueue = try DatabaseQueue(path: dbPath, configuration: config)
 
         // Enable WAL mode for concurrent cross-process access

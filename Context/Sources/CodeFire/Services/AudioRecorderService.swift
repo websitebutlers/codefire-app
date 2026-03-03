@@ -224,7 +224,7 @@ class AudioRecorderService: NSObject, ObservableObject {
             in: .userDomainMask
         ).first!
         return appSupport
-            .appendingPathComponent("Context/recordings", isDirectory: true)
+            .appendingPathComponent("CodeFire/recordings", isDirectory: true)
             .appendingPathComponent(projectId, isDirectory: true)
     }
 

@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "context-tasks": {
-      "command": "/Users/nicknorris/Library/Application Support/Context/bin/ContextMCP"
+    "codefire": {
+      "command": "/Users/nicknorris/Library/Application Support/CodeFire/bin/CodeFireMCP"
     }
   }
 }

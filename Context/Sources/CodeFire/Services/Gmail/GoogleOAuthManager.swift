@@ -144,7 +144,7 @@ class GoogleOAuthManager: NSObject, ObservableObject {
 
 /// Ephemeral HTTP server on 127.0.0.1 that captures the Google OAuth callback.
 /// Google's Desktop OAuth client type requires loopback redirects — custom URL
-/// schemes like context-app:// are not allowed.
+/// schemes like codefire:// are not allowed.
 private class LoopbackOAuthServer {
     private var serverFd: Int32 = -1
 

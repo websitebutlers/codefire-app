@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 import WebKit
 
-/// Observes the browserCommands table for pending commands from ContextMCP,
+/// Observes the browserCommands table for pending commands from CodeFireMCP,
 /// executes them against the WKWebView browser, and writes results back.
 @MainActor
 class BrowserCommandExecutor: ObservableObject {
@@ -35,7 +35,7 @@ class BrowserCommandExecutor: ObservableObject {
     // MARK: - Polling
 
     private func startPolling() {
-        // Poll every 100ms for pending commands from ContextMCP (cross-process writes)
+        // Poll every 100ms for pending commands from CodeFireMCP (cross-process writes)
         pollTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 await self?.pollForCommands()
@@ -865,7 +865,7 @@ enum BrowserCommandError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noBrowser:
-            return "Browser is not available. Make sure a project window with the browser tab is open in Context.app."
+            return "Browser is not available. Make sure a project window with the browser tab is open in CodeFire."
         case .noActiveTab:
             return "No active browser tab. Use browser_tab_open to open a tab first."
         case .tabNotFound(let id):

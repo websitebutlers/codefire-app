@@ -3,16 +3,16 @@ import GRDB
 
 // MARK: - Database Access
 
-/// Opens the same database used by the Context app.
+/// Opens the same database used by the CodeFire app.
 func openDatabase() throws -> DatabaseQueue {
     let appSupportURL = FileManager.default.urls(
         for: .applicationSupportDirectory,
         in: .userDomainMask
-    ).first!.appendingPathComponent("Context", isDirectory: true)
+    ).first!.appendingPathComponent("CodeFire", isDirectory: true)
 
-    let dbPath = appSupportURL.appendingPathComponent("context.db").path
+    let dbPath = appSupportURL.appendingPathComponent("codefire.db").path
     guard FileManager.default.fileExists(atPath: dbPath) else {
-        throw MCPError(message: "Context database not found at \(dbPath). Launch Context.app first.")
+        throw MCPError(message: "CodeFire database not found at \(dbPath). Launch CodeFire first.")
     }
     var config = Configuration()
     config.busyMode = .timeout(5.0) // Wait up to 5s for locks (cross-process access)
@@ -255,7 +255,7 @@ struct AnyCodable: Codable {
 
 // MARK: - MCP Connection Status
 
-/// Writes a status file so the Context GUI can show an MCP connection indicator.
+/// Writes a status file so the CodeFire GUI can show an MCP connection indicator.
 class MCPConnectionStatus {
     let statusDir: URL
     let statusFile: URL
@@ -265,7 +265,7 @@ class MCPConnectionStatus {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
-        ).first!.appendingPathComponent("Context/mcp-connections", isDirectory: true)
+        ).first!.appendingPathComponent("CodeFire/mcp-connections", isDirectory: true)
         statusDir = appSupport
         pid = ProcessInfo.processInfo.processIdentifier
         statusFile = appSupport.appendingPathComponent("\(pid).json")
@@ -298,7 +298,7 @@ class MCPConnectionStatus {
     }
 }
 
-// MARK: - Query Preprocessor (duplicated from Context module — ContextMCP cannot import it)
+// MARK: - Query Preprocessor (duplicated from CodeFire module — CodeFireMCP cannot import it)
 
 /// Preprocesses search queries to improve result quality.
 /// Classifies queries, expands synonyms, strips filler words, and selects adaptive weights.
@@ -539,9 +539,9 @@ class MCPServer {
 
         // Log detected project to stderr for debugging
         if let name = foundName {
-            FileHandle.standardError.write("ContextMCP: detected project '\(name)' from \(cwd)\n".data(using: .utf8)!)
+            FileHandle.standardError.write("CodeFireMCP: detected project '\(name)' from \(cwd)\n".data(using: .utf8)!)
         } else {
-            FileHandle.standardError.write("ContextMCP: no project matched for \(cwd)\n".data(using: .utf8)!)
+            FileHandle.standardError.write("CodeFireMCP: no project matched for \(cwd)\n".data(using: .utf8)!)
         }
 
         // Register connection
@@ -600,7 +600,7 @@ class MCPServer {
             return successResponse(id: req.id, result: [
                 "protocolVersion": "2024-11-05",
                 "capabilities": ["tools": [:]],
-                "serverInfo": ["name": "context-tasks", "version": "1.0.0"]
+                "serverInfo": ["name": "codefire", "version": "1.0.0"]
             ])
 
         case "notifications/initialized":
@@ -631,7 +631,7 @@ class MCPServer {
             ],
             [
                 "name": "list_projects",
-                "description": "List all projects tracked by Context",
+                "description": "List all projects tracked by CodeFire",
                 "inputSchema": [
                     "type": "object",
                     "properties": [:] as [String: Any]
@@ -816,7 +816,7 @@ class MCPServer {
             // MARK: - Browser Tools
             [
                 "name": "browser_navigate",
-                "description": "Navigate the browser to a URL. Opens a new tab if none are open. Waits for page load to complete. Requires Context.app to be running.",
+                "description": "Navigate the browser to a URL. Opens a new tab if none are open. Waits for page load to complete. Requires CodeFire to be running.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -827,7 +827,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_snapshot",
-                "description": "Get the accessibility tree of the current page as compact structured text. Returns ARIA roles, labels, and interactive element refs. This is the primary tool for understanding page content and structure. Requires Context.app to be running.",
+                "description": "Get the accessibility tree of the current page as compact structured text. Returns ARIA roles, labels, and interactive element refs. This is the primary tool for understanding page content and structure. Requires CodeFire to be running.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -838,7 +838,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_extract",
-                "description": "Extract text content from a page element using a CSS selector. Returns the text content of the first matching element. Requires Context.app to be running.",
+                "description": "Extract text content from a page element using a CSS selector. Returns the text content of the first matching element. Requires CodeFire to be running.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -850,7 +850,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_list_tabs",
-                "description": "List all open browser tabs with their URLs, titles, and loading state. Requires Context.app to be running.",
+                "description": "List all open browser tabs with their URLs, titles, and loading state. Requires CodeFire to be running.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [:] as [String: Any]
@@ -858,7 +858,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_console_logs",
-                "description": "Get JavaScript console log entries (log, warn, error, info) from a browser tab. Useful for debugging web applications. Requires Context.app to be running.",
+                "description": "Get JavaScript console log entries (log, warn, error, info) from a browser tab. Useful for debugging web applications. Requires CodeFire to be running.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -869,7 +869,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_screenshot",
-                "description": "Take a PNG screenshot of the current page. Returns the file path so you can read the image. Requires Context.app to be running.",
+                "description": "Take a PNG screenshot of the current page. Returns the file path so you can read the image. Requires CodeFire to be running.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -879,7 +879,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_tab_open",
-                "description": "Open a new browser tab. Optionally navigate to a URL. Requires Context.app to be running.",
+                "description": "Open a new browser tab. Optionally navigate to a URL. Requires CodeFire to be running.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -889,7 +889,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_tab_close",
-                "description": "Close a browser tab by its ID. Requires Context.app to be running.",
+                "description": "Close a browser tab by its ID. Requires CodeFire to be running.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -900,7 +900,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_tab_switch",
-                "description": "Switch the active browser tab to the specified tab. Requires Context.app to be running.",
+                "description": "Switch the active browser tab to the specified tab. Requires CodeFire to be running.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -912,7 +912,7 @@ class MCPServer {
             // Phase 2: Interaction tools
             [
                 "name": "browser_click",
-                "description": "Click an element by its ref from browser_snapshot. Automatically scrolls into view first. Requires Context.app to be running with the browser tab visible.",
+                "description": "Click an element by its ref from browser_snapshot. Automatically scrolls into view first. Requires CodeFire to be running with the browser tab visible.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -924,7 +924,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_type",
-                "description": "Type text into an input or textarea element by ref. Clears existing content by default. Works with React and other framework-controlled inputs. Requires Context.app to be running with the browser tab visible.",
+                "description": "Type text into an input or textarea element by ref. Clears existing content by default. Works with React and other framework-controlled inputs. Requires CodeFire to be running with the browser tab visible.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -938,7 +938,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_select",
-                "description": "Select an option from a <select> dropdown by value or visible label text. On mismatch, returns all available options. Requires Context.app to be running with the browser tab visible.",
+                "description": "Select an option from a <select> dropdown by value or visible label text. On mismatch, returns all available options. Requires CodeFire to be running with the browser tab visible.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -952,7 +952,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_scroll",
-                "description": "Scroll the page by direction/amount, or scroll a specific element into view. Returns scroll position info. Requires Context.app to be running with the browser tab visible.",
+                "description": "Scroll the page by direction/amount, or scroll a specific element into view. Returns scroll position info. Requires CodeFire to be running with the browser tab visible.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -965,7 +965,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_wait",
-                "description": "Wait for an element to appear on the page. Use after clicking something that triggers async loading. Accepts ref or CSS selector. Returns found status, not an error on timeout. Requires Context.app to be running with the browser tab visible.",
+                "description": "Wait for an element to appear on the page. Use after clicking something that triggers async loading. Accepts ref or CSS selector. Returns found status, not an error on timeout. Requires CodeFire to be running with the browser tab visible.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -979,7 +979,7 @@ class MCPServer {
             // Phase 3: JS execution, keyboard, hover
             [
                 "name": "browser_press",
-                "description": "Press a key or key combination. Targets a specific element by ref, or the currently focused element if no ref is provided. Handles Enter (submits forms), Tab (moves focus), Escape, arrow keys, and any single character. Requires Context.app to be running with the browser tab visible.",
+                "description": "Press a key or key combination. Targets a specific element by ref, or the currently focused element if no ref is provided. Handles Enter (submits forms), Tab (moves focus), Escape, arrow keys, and any single character. Requires CodeFire to be running with the browser tab visible.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -993,7 +993,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_eval",
-                "description": "Execute JavaScript on the page and return the result. The expression runs inside an async function body, so use 'return' to return values and 'await' for promises. Use for reading page state, calling APIs, or handling edge cases other tools can't cover. Requires Context.app to be running with the browser tab visible.",
+                "description": "Execute JavaScript on the page and return the result. The expression runs inside an async function body, so use 'return' to return values and 'await' for promises. Use for reading page state, calling APIs, or handling edge cases other tools can't cover. Requires CodeFire to be running with the browser tab visible.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -1005,7 +1005,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_hover",
-                "description": "Hover over an element by ref. Dispatches mouseenter and mouseover events. Useful for dropdown menus, tooltips, and hover-state UI that requires mouse presence. Scrolls element into view first. Requires Context.app to be running with the browser tab visible.",
+                "description": "Hover over an element by ref. Dispatches mouseenter and mouseover events. Useful for dropdown menus, tooltips, and hover-state UI that requires mouse presence. Scrolls element into view first. Requires CodeFire to be running with the browser tab visible.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -1018,7 +1018,7 @@ class MCPServer {
             // Phase 4: Upload, drag, iframe, session
             [
                 "name": "browser_upload",
-                "description": "Set a file on an <input type='file'> element. Reads the file from disk, encodes it, and assigns it to the input. Triggers change and input events. Requires Context.app to be running with the browser tab visible.",
+                "description": "Set a file on an <input type='file'> element. Reads the file from disk, encodes it, and assigns it to the input. Triggers change and input events. Requires CodeFire to be running with the browser tab visible.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -1031,7 +1031,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_drag",
-                "description": "Drag an element to a target element using HTML5 drag and drop events. Dispatches the full drag event sequence: dragstart, drag, dragenter, dragover, drop, dragend. Requires Context.app to be running with the browser tab visible.",
+                "description": "Drag an element to a target element using HTML5 drag and drop events. Dispatches the full drag event sequence: dragstart, drag, dragenter, dragover, drop, dragend. Requires CodeFire to be running with the browser tab visible.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -1044,7 +1044,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_iframe",
-                "description": "Switch execution context to an iframe for subsequent commands (snapshot, click, type, etc.), or back to the main frame. Call with a ref to enter an iframe, or without ref to return to main frame. Only same-origin iframes are accessible. Use browser_snapshot to see available iframes. Requires Context.app to be running with the browser tab visible.",
+                "description": "Switch execution context to an iframe for subsequent commands (snapshot, click, type, etc.), or back to the main frame. Call with a ref to enter an iframe, or without ref to return to main frame. Only same-origin iframes are accessible. Use browser_snapshot to see available iframes. Requires CodeFire to be running with the browser tab visible.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -1055,7 +1055,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_clear_session",
-                "description": "Clear browsing data (cookies, cache, localStorage). Useful for resetting login state, clearing cached data, or testing fresh page loads. Clears all data by default. Requires Context.app to be running.",
+                "description": "Clear browsing data (cookies, cache, localStorage). Useful for resetting login state, clearing cached data, or testing fresh page loads. Clears all data by default. Requires CodeFire to be running.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -1071,7 +1071,7 @@ class MCPServer {
             // Storage Inspection
             [
                 "name": "browser_get_cookies",
-                "description": "Get cookies for the current page, including httpOnly cookies not visible to JavaScript. Useful for debugging authentication, session management, and tracking. Requires Context.app browser.",
+                "description": "Get cookies for the current page, including httpOnly cookies not visible to JavaScript. Useful for debugging authentication, session management, and tracking. Requires CodeFire browser.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -1082,7 +1082,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_get_storage",
-                "description": "Read localStorage or sessionStorage contents. Returns item count, key-value pairs, and total size in bytes. Requires Context.app browser.",
+                "description": "Read localStorage or sessionStorage contents. Returns item count, key-value pairs, and total size in bytes. Requires CodeFire browser.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -1095,7 +1095,7 @@ class MCPServer {
             ],
             [
                 "name": "browser_set_cookie",
-                "description": "Set a cookie on the current page. Useful for testing auth flows, spoofing sessions, or setting feature flags. Requires Context.app browser.",
+                "description": "Set a cookie on the current page. Useful for testing auth flows, spoofing sessions, or setting feature flags. Requires CodeFire browser.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -1286,7 +1286,7 @@ class MCPServer {
             // MARK: - Image Generation Tools
             [
                 "name": "generate_image",
-                "description": "Generate an image from a text prompt using AI (Gemini 3.1 Flash). Returns the file path of the generated image saved to the project's assets/generated/ directory. Requires OpenRouter API key configured in Context app settings.",
+                "description": "Generate an image from a text prompt using AI (Gemini 3.1 Flash). Returns the file path of the generated image saved to the project's assets/generated/ directory. Requires OpenRouter API key configured in CodeFire settings.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -2592,7 +2592,7 @@ class MCPServer {
         _ = try? db.write { db in
             try BrowserCommand.deleteOne(db, key: commandId)
         }
-        throw MCPError(message: "Browser command timed out after \(Int(timeout))s. Is Context.app running with the browser tab visible?")
+        throw MCPError(message: "Browser command timed out after \(Int(timeout))s. Is CodeFire running with the browser tab visible?")
     }
 
     // MARK: - Context Engine
@@ -2705,7 +2705,7 @@ class MCPServer {
 
         // --- Step 3: Semantic search (optional — requires API key + embeddings) ---
 
-        let appDefaults = UserDefaults(suiteName: "com.context.app")
+        let appDefaults = UserDefaults(suiteName: "com.codefire.app")
         let apiKey = appDefaults?.string(forKey: "openRouterAPIKey")
         let hasApiKey = apiKey != nil && !apiKey!.isEmpty
 
@@ -2932,7 +2932,7 @@ class MCPServer {
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Context App", forHTTPHeaderField: "X-Title")
+        request.setValue("CodeFire", forHTTPHeaderField: "X-Title")
         request.timeoutInterval = 15
 
         let body: [String: Any] = ["model": model, "input": query]
@@ -3013,12 +3013,12 @@ class MCPServer {
     // MARK: - Image Generation Tools
 
     private func callOpenRouterImageGeneration(messages: [[String: Any]], aspectRatio: String, imageSize: String) throws -> (imageData: Data, responseText: String?) {
-        let appDefaults = UserDefaults(suiteName: "com.context.app")
+        let appDefaults = UserDefaults(suiteName: "com.codefire.app")
         let apiKey = appDefaults?.string(forKey: "openRouterAPIKey")
             ?? UserDefaults.standard.string(forKey: "openRouterAPIKey")
             ?? ""
         guard !apiKey.isEmpty else {
-            throw MCPError(message: "OpenRouter API key not configured. Set it in Context app Settings > Context Engine.")
+            throw MCPError(message: "OpenRouter API key not configured. Set it in CodeFire Settings > Context Engine.")
         }
 
         let body: [String: Any] = [
@@ -3039,7 +3039,7 @@ class MCPServer {
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Context App", forHTTPHeaderField: "X-Title")
+        request.setValue("CodeFire", forHTTPHeaderField: "X-Title")
         request.httpBody = bodyData
         request.timeoutInterval = 120
 
@@ -3157,7 +3157,7 @@ class MCPServer {
             saveDir = URL(fileURLWithPath: projectPath).appendingPathComponent("assets/generated", isDirectory: true)
         } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-                .appendingPathComponent("Context/generated-images", isDirectory: true)
+                .appendingPathComponent("CodeFire/generated-images", isDirectory: true)
             saveDir = appSupport
         }
 

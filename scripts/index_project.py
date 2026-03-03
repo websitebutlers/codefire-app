@@ -2,7 +2,7 @@
 """
 Full project indexer for Context Engine.
 Replicates the Swift CodeChunker + EmbeddingClient pipeline in Python
-to populate the context.db with real embeddings.
+to populate the codefire.db with real embeddings.
 
 Usage:
     python3 scripts/index_project.py                    # Index project detected from CWD
@@ -13,7 +13,7 @@ import json, struct, sqlite3, subprocess, os, re, hashlib, uuid, time, urllib.re
 
 # ── Config ──────────────────────────────────────────────────────────────
 
-DB_PATH = os.path.expanduser("~/Library/Application Support/Context/context.db")
+DB_PATH = os.path.expanduser("~/Library/Application Support/CodeFire/codefire.db")
 EMBEDDING_MODEL = "openai/text-embedding-3-small"
 BATCH_SIZE = 20
 MAX_CONTENT_CHARS = 30000  # Truncate chunks exceeding embedding token limit
@@ -23,13 +23,13 @@ MAX_CONTENT_CHARS = 30000  # Truncate chunks exceeding embedding token limit
 def get_api_key():
     result = subprocess.run(
         ["plutil", "-extract", "openRouterAPIKey", "raw",
-         os.path.expanduser("~/Library/Preferences/com.context.app.plist")],
+         os.path.expanduser("~/Library/Preferences/com.codefire.app.plist")],
         capture_output=True, text=True
     )
     key = result.stdout.strip()
     if not key:
         print("ERROR: No OpenRouter API key found.")
-        print("Set it in Context.app > Settings > Context Engine.")
+        print("Set it in CodeFire > Settings > Context Engine.")
         sys.exit(1)
     return key
 
@@ -290,7 +290,7 @@ def embed_batch(texts, api_key):
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "X-Title": "Context App"
+            "X-Title": "CodeFire"
         }
     )
     resp = json.loads(urllib.request.urlopen(req, timeout=60).read())
@@ -308,7 +308,7 @@ def main():
     api_key = get_api_key()
 
     print("=" * 60)
-    print("Context Engine — Full Project Indexer")
+    print("CodeFire Engine — Full Project Indexer")
     print("=" * 60)
 
     conn = sqlite3.connect(DB_PATH)

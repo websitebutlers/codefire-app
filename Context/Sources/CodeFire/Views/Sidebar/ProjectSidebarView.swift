@@ -21,7 +21,7 @@ struct ProjectSidebarView: View {
                 Image(systemName: "rectangle.grid.1x2.fill")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.accentColor)
-                Text("Context")
+                Text("CodeFire")
                     .font(.system(size: 13, weight: .bold))
                 Spacer()
             }

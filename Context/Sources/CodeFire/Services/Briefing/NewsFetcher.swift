@@ -81,7 +81,7 @@ enum NewsFetcher {
             guard let url = URL(string: urlString) else { continue }
 
             var request = URLRequest(url: url)
-            request.setValue("Context/1.0", forHTTPHeaderField: "User-Agent")
+            request.setValue("CodeFire/1.0", forHTTPHeaderField: "User-Agent")
 
             do {
                 let (data, _) = try await URLSession.shared.data(for: request)

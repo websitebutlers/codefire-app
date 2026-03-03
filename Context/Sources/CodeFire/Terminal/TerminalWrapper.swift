@@ -109,7 +109,7 @@ final class FocusableTerminalView: LocalProcessTerminalView {
 
         let fileName = "clipboard-\(Int(Date().timeIntervalSince1970)).png"
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("context-paste", isDirectory: true)
+            .appendingPathComponent("codefire-paste", isDirectory: true)
 
         try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 

@@ -20,7 +20,7 @@ class MCPConnectionMonitor: ObservableObject {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
-        ).first!.appendingPathComponent("Context/mcp-connections", isDirectory: true)
+        ).first!.appendingPathComponent("CodeFire/mcp-connections", isDirectory: true)
         statusDir = appSupport
     }
 

@@ -851,7 +851,7 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
 
         let dir = FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask
-        ).first!.appendingPathComponent("Context/browser-screenshots", isDirectory: true)
+        ).first!.appendingPathComponent("CodeFire/browser-screenshots", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         let filename = "screenshot-\(ISO8601DateFormatter().string(from: Date())).png"

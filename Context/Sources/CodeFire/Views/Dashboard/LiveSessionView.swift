@@ -104,7 +104,7 @@ struct LiveSessionView: View {
                         .foregroundColor(.secondary)
                 }
 
-                Text("Context")
+                Text("CodeFire")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.secondary)
             }

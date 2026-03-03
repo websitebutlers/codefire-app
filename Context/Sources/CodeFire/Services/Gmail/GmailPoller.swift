@@ -383,7 +383,7 @@ class GmailPoller: ObservableObject {
             in: .userDomainMask
         ).first!
         return appSupport
-            .appendingPathComponent("Context/email-attachments", isDirectory: true)
+            .appendingPathComponent("CodeFire/email-attachments", isDirectory: true)
             .appendingPathComponent(messageId, isDirectory: true)
     }
 

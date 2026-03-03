@@ -732,7 +732,7 @@ struct TaskDetailView: View {
                     guard let data = data else { return }
                     let fileName = "task-img-\(Int(Date().timeIntervalSince1970)).png"
                     let dir = FileManager.default.temporaryDirectory
-                        .appendingPathComponent("context-task-images", isDirectory: true)
+                        .appendingPathComponent("codefire-task-images", isDirectory: true)
                     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                     let fileURL = dir.appendingPathComponent(fileName)
                     if let rep = NSBitmapImageRep(data: data),

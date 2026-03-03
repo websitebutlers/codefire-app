@@ -76,7 +76,7 @@ class TranscriptionService: ObservableObject {
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first!
-        return appSupport.appendingPathComponent("Context/whisper-models", isDirectory: true)
+        return appSupport.appendingPathComponent("CodeFire/whisper-models", isDirectory: true)
     }
 
     enum TranscriptionError: LocalizedError {

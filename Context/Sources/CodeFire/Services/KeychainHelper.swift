@@ -13,7 +13,7 @@ enum KeychainHelper {
         let dir = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
-        ).first!.appendingPathComponent("Context", isDirectory: true)
+        ).first!.appendingPathComponent("CodeFire", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent(".credentials.json")
     }()

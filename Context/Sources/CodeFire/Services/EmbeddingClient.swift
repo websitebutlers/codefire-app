@@ -91,7 +91,7 @@ final class EmbeddingClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Context App", forHTTPHeaderField: "X-Title")
+        request.setValue("CodeFire", forHTTPHeaderField: "X-Title")
         request.timeoutInterval = 30
 
         let body: [String: Any] = [

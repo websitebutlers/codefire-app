@@ -83,7 +83,7 @@ class MCPServer {
                 ]
             ],
             "serverInfo": [
-                "name": "context-app",
+                "name": "codefire",
                 "version": "1.0.0"
             ]
         ]

@@ -425,7 +425,7 @@ struct BrowserView: View {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
-        ).first!.appendingPathComponent("Context/browser-screenshots", isDirectory: true)
+        ).first!.appendingPathComponent("CodeFire/browser-screenshots", isDirectory: true)
 
         do {
             try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)

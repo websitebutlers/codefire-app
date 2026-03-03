@@ -83,7 +83,7 @@ actor ImageGenerationService {
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Context App", forHTTPHeaderField: "X-Title")
+        request.setValue("CodeFire", forHTTPHeaderField: "X-Title")
         request.httpBody = bodyData
         request.timeoutInterval = 120 // Image generation can take 10-30s
 
@@ -219,7 +219,7 @@ actor ImageGenerationService {
             let appSupport = FileManager.default.urls(
                 for: .applicationSupportDirectory,
                 in: .userDomainMask
-            ).first!.appendingPathComponent("Context/generated-images", isDirectory: true)
+            ).first!.appendingPathComponent("CodeFire/generated-images", isDirectory: true)
             saveDir = appSupport
         } else {
             saveDir = URL(fileURLWithPath: projectPath)

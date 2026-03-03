@@ -199,7 +199,7 @@ class ClaudeService: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Context App", forHTTPHeaderField: "X-Title")
+        request.setValue("CodeFire", forHTTPHeaderField: "X-Title")
         request.timeoutInterval = 60
 
         let body: [String: Any] = [
