@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Home, Settings, FolderOpen, Plus } from 'lucide-react'
 import type { Project, Client } from '@shared/models'
 import { api } from '@renderer/lib/api'
 import SidebarItem from './SidebarItem'
 import ClientGroup from './ClientGroup'
 import ProjectItem from './ProjectItem'
+import SettingsModal from '@renderer/components/Settings/SettingsModal'
 
 type NavView = 'planner' | 'sessions'
 
@@ -13,32 +14,26 @@ export default function Sidebar() {
   const [projects, setProjects] = useState<Project[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
+  const [showSettings, setShowSettings] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-
-    async function load() {
-      try {
-        const [projectList, clientList] = await Promise.all([
-          api.projects.list(),
-          api.clients.list(),
-        ])
-        if (!cancelled) {
-          setProjects(projectList)
-          setClients(clientList)
-        }
-      } catch (err) {
-        console.error('Failed to load sidebar data:', err)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    load()
-    return () => {
-      cancelled = true
+  const load = useCallback(async () => {
+    try {
+      const [projectList, clientList] = await Promise.all([
+        api.projects.list(),
+        api.clients.list(),
+      ])
+      setProjects(projectList)
+      setClients(clientList)
+    } catch (err) {
+      console.error('Failed to load sidebar data:', err)
+    } finally {
+      setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
 
   // Group projects by client
   const clientProjectMap = new Map<string, Project[]>()
@@ -62,6 +57,23 @@ export default function Sidebar() {
 
   const handleProjectClick = (_projectId: string) => {
     // Window opening is handled inside ProjectItem
+  }
+
+  async function handleOpenFolder() {
+    // Use Electron's dialog via IPC — we need to add a handler for this
+    // For now, fall back to prompt
+    const folderPath = window.prompt('Enter project folder path:')
+    if (!folderPath) return
+    const name = folderPath.split('/').filter(Boolean).pop() ?? folderPath
+    await api.projects.create({ name, path: folderPath })
+    load()
+  }
+
+  async function handleAddGroup() {
+    const name = window.prompt('Client / group name:')
+    if (!name?.trim()) return
+    await api.clients.create({ name: name.trim() })
+    load()
   }
 
   return (
@@ -137,7 +149,7 @@ export default function Sidebar() {
               </>
             )}
 
-            {/* Ungrouped projects (no client) that aren't in recent */}
+            {/* Ungrouped projects (no client) when no recent */}
             {ungrouped.length > 0 && recentProjects.length === 0 && (
               <div>
                 {ungrouped.map((project) => (
@@ -163,9 +175,10 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* Bottom toolbar — Settings, Open Folder, + Group */}
+      {/* Bottom toolbar */}
       <div className="flex items-center gap-1 px-2 py-2 border-t border-neutral-800/60">
         <button
+          onClick={() => setShowSettings(true)}
           className="
             p-1.5 rounded text-neutral-600 hover:text-neutral-300
             hover:bg-white/[0.04] transition-colors duration-100
@@ -175,6 +188,7 @@ export default function Sidebar() {
           <Settings size={14} />
         </button>
         <button
+          onClick={handleOpenFolder}
           className="
             flex items-center gap-1.5 px-2 py-1 rounded text-[11px]
             text-neutral-500 hover:text-neutral-300 hover:bg-white/[0.04]
@@ -187,6 +201,7 @@ export default function Sidebar() {
         </button>
         <div className="flex-1" />
         <button
+          onClick={handleAddGroup}
           className="
             flex items-center gap-1 px-2 py-1 rounded text-[11px]
             text-neutral-500 hover:text-neutral-300 hover:bg-white/[0.04]
@@ -198,6 +213,9 @@ export default function Sidebar() {
           <span>Group</span>
         </button>
       </div>
+
+      {/* Settings Modal */}
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   )
 }

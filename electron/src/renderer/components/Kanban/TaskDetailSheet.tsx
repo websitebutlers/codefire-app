@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { X, Calendar, Tag, MessageSquare, Send } from 'lucide-react'
-import type { TaskItem } from '@shared/models'
+import { useState, useEffect, useCallback } from 'react'
+import { X, Calendar, Tag, MessageSquare, Send, FolderOpen } from 'lucide-react'
+import type { TaskItem, Project } from '@shared/models'
+import { api } from '@renderer/lib/api'
 import { useTaskNotes } from '@renderer/hooks/useTasks'
 
 interface TaskDetailSheetProps {
@@ -36,6 +37,18 @@ function parseLabels(labels: string | null): string[] {
   }
 }
 
+function parseTags(tags: string | null): string[] {
+  if (!tags) return []
+  const trimmed = tags.trim()
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean)
+    } catch { /* fall through */ }
+  }
+  return trimmed.split(',').map((t) => t.trim()).filter(Boolean)
+}
+
 export default function TaskDetailSheet({
   task,
   onClose,
@@ -45,10 +58,25 @@ export default function TaskDetailSheet({
   const { notes, addNote } = useTaskNotes(task?.id ?? null)
   const [noteInput, setNoteInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [labelInput, setLabelInput] = useState('')
+
+  // Fetch projects for the assignment dropdown
+  const fetchProjects = useCallback(async () => {
+    try {
+      const list = await api.projects.list()
+      setProjects(list)
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => {
+    fetchProjects()
+  }, [fetchProjects])
 
   if (!task) return null
 
   const labels = parseLabels(task.labels)
+  const currentProject = projects.find((p) => p.id === task.projectId)
 
   const handleAddNote = async () => {
     const content = noteInput.trim()
@@ -60,6 +88,29 @@ export default function TaskDetailSheet({
     } finally {
       setSending(false)
     }
+  }
+
+  const handleAssignProject = async (projectId: string) => {
+    // We need to update the task's projectId via the API
+    // The update endpoint may not support projectId directly, so we use raw invoke
+    await window.api.invoke('tasks:update', task.id, { projectId })
+    // Also unset isGlobal if assigning to a real project
+    if (projectId !== '__global__') {
+      await window.api.invoke('tasks:update', task.id, { isGlobal: false })
+    }
+  }
+
+  const handleAddLabel = () => {
+    const trimmed = labelInput.trim()
+    if (!trimmed) return
+    const newLabels = [...labels, trimmed]
+    onUpdate(task.id, { labels: newLabels })
+    setLabelInput('')
+  }
+
+  const handleRemoveLabel = (label: string) => {
+    const newLabels = labels.filter((l) => l !== label)
+    onUpdate(task.id, { labels: newLabels })
   }
 
   return (
@@ -83,11 +134,49 @@ export default function TaskDetailSheet({
           <div className="text-sm text-neutral-200">{task.title}</div>
         </div>
 
+        {/* Project Assignment */}
+        <div>
+          <label className="text-xs text-neutral-500 block mb-1">
+            <FolderOpen size={10} className="inline mr-1" />
+            Project
+          </label>
+          <select
+            className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5
+                       text-sm text-neutral-200 focus:outline-none focus:border-codefire-orange/50"
+            value={task.projectId}
+            onChange={(e) => handleAssignProject(e.target.value)}
+          >
+            <option value="__global__">Global (Planner)</option>
+            {projects.map((p) => {
+              const tags = parseTags(p.tags)
+              const tagStr = tags.length > 0 ? ` [${tags.join(', ')}]` : ''
+              return (
+                <option key={p.id} value={p.id}>
+                  {p.name}{tagStr}
+                </option>
+              )
+            })}
+          </select>
+          {currentProject && currentProject.id !== '__global__' && (
+            <div className="flex items-center gap-1 mt-1">
+              <span className="text-[10px] text-neutral-500">{currentProject.name}</span>
+              {parseTags(currentProject.tags).map((tag) => (
+                <span
+                  key={tag}
+                  className="text-[9px] px-1 py-px rounded bg-neutral-800 text-neutral-500"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Status */}
         <div>
           <label className="text-xs text-neutral-500 block mb-1">Status</label>
           <select
-            className="w-full bg-neutral-800 border border-neutral-700 rounded-cf px-2 py-1.5
+            className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5
                        text-sm text-neutral-200 focus:outline-none focus:border-codefire-orange/50"
             value={task.status}
             onChange={(e) => onUpdate(task.id, { status: e.target.value })}
@@ -102,7 +191,7 @@ export default function TaskDetailSheet({
         <div>
           <label className="text-xs text-neutral-500 block mb-1">Priority</label>
           <select
-            className="w-full bg-neutral-800 border border-neutral-700 rounded-cf px-2 py-1.5
+            className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5
                        text-sm text-neutral-200 focus:outline-none focus:border-codefire-orange/50"
             value={task.priority}
             onChange={(e) => onUpdate(task.id, { priority: Number(e.target.value) })}
@@ -116,22 +205,41 @@ export default function TaskDetailSheet({
         </div>
 
         {/* Labels */}
-        {labels.length > 0 && (
-          <div>
-            <label className="text-xs text-neutral-500 block mb-1">Labels</label>
-            <div className="flex flex-wrap gap-1">
-              {labels.map((label) => (
-                <span
-                  key={label}
-                  className="text-xs px-1.5 py-0.5 rounded bg-neutral-700 text-neutral-400 border border-neutral-600/50"
+        <div>
+          <label className="text-xs text-neutral-500 block mb-1">
+            <Tag size={10} className="inline mr-1" />
+            Labels
+          </label>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {labels.map((label) => (
+              <span
+                key={label}
+                className="text-xs px-1.5 py-0.5 rounded bg-neutral-700 text-neutral-400 border border-neutral-600/50 flex items-center gap-1"
+              >
+                {label}
+                <button
+                  onClick={() => handleRemoveLabel(label)}
+                  className="text-neutral-600 hover:text-neutral-300 leading-none"
                 >
-                  <Tag size={10} className="inline mr-1" />
-                  {label}
-                </span>
-              ))}
-            </div>
+                  &times;
+                </button>
+              </span>
+            ))}
           </div>
-        )}
+          <div className="flex gap-1">
+            <input
+              className="flex-1 bg-neutral-800 border border-neutral-700 rounded px-2 py-1
+                         text-xs text-neutral-200 placeholder-neutral-500
+                         focus:outline-none focus:border-codefire-orange/50"
+              placeholder="Add label..."
+              value={labelInput}
+              onChange={(e) => setLabelInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleAddLabel()
+              }}
+            />
+          </div>
+        </div>
 
         {/* Description */}
         {task.description && (
@@ -167,7 +275,7 @@ export default function TaskDetailSheet({
             {notes.map((note) => (
               <div
                 key={note.id}
-                className="bg-neutral-800/50 rounded-cf p-2 border border-neutral-700/30"
+                className="bg-neutral-800/50 rounded p-2 border border-neutral-700/30"
               >
                 <p className="text-xs text-neutral-300 whitespace-pre-wrap">{note.content}</p>
                 <div className="flex items-center justify-between mt-1.5">
@@ -186,7 +294,7 @@ export default function TaskDetailSheet({
           {/* Add note input */}
           <div className="flex gap-1.5">
             <input
-              className="flex-1 bg-neutral-800 border border-neutral-700 rounded-cf px-2 py-1.5
+              className="flex-1 bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5
                          text-xs text-neutral-200 placeholder-neutral-500
                          focus:outline-none focus:border-codefire-orange/50"
               placeholder="Add a note..."
@@ -198,7 +306,7 @@ export default function TaskDetailSheet({
               disabled={sending}
             />
             <button
-              className="px-2 py-1.5 bg-codefire-orange/20 text-codefire-orange rounded-cf
+              className="px-2 py-1.5 bg-codefire-orange/20 text-codefire-orange rounded
                          hover:bg-codefire-orange/30 transition-colors disabled:opacity-50"
               onClick={handleAddNote}
               disabled={!noteInput.trim() || sending}

@@ -24,8 +24,10 @@ export default function RecentEmails() {
       const result = await api.gmail.listRecentEmails()
       setEmails(result)
       setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load emails')
+    } catch {
+      // Gmail handler may not be registered if OAuth credentials aren't configured
+      // Silently show empty state instead of error
+      setEmails([])
     } finally {
       setLoading(false)
     }

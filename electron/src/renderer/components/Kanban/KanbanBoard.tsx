@@ -93,13 +93,13 @@ export default function KanbanBoard({
   }
 
   return (
-    <div className="flex gap-3 h-full">
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="flex-1 grid grid-cols-3 gap-3 min-h-0">
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="flex h-full p-3 gap-3">
+        <div className="flex-1 grid grid-cols-3 gap-3 min-h-0 min-w-0">
           {COLUMNS.map((col) => (
             <KanbanColumn
               key={col.id}
@@ -112,22 +112,21 @@ export default function KanbanBoard({
             />
           ))}
         </div>
-      </DndContext>
 
-      {selectedTask && (
-        <TaskDetailSheet
-          task={selectedTask}
-          onClose={() => setSelectedTask(null)}
-          onUpdate={async (id, data) => {
-            await onUpdateTask(id, data)
-            // Refresh selected task data
-            const tasks = [...todoTasks, ...inProgressTasks, ...doneTasks]
-            const updated = tasks.find((t) => t.id === id)
-            if (updated) setSelectedTask({ ...updated, ...data } as TaskItem)
-          }}
-          onDelete={onDeleteTask}
-        />
-      )}
-    </div>
+        {selectedTask && (
+          <TaskDetailSheet
+            task={selectedTask}
+            onClose={() => setSelectedTask(null)}
+            onUpdate={async (id, data) => {
+              await onUpdateTask(id, data)
+              const tasks = [...todoTasks, ...inProgressTasks, ...doneTasks]
+              const updated = tasks.find((t) => t.id === id)
+              if (updated) setSelectedTask({ ...updated, ...data } as TaskItem)
+            }}
+            onDelete={onDeleteTask}
+          />
+        )}
+      </div>
+    </DndContext>
   )
 }
