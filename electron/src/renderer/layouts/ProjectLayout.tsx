@@ -15,6 +15,7 @@ import RulesView from '@renderer/views/RulesView'
 import GitView from '@renderer/views/GitView'
 import ImagesView from '@renderer/views/ImagesView'
 import RecordingsView from '@renderer/views/RecordingsView'
+import BrowserView from '@renderer/views/BrowserView'
 
 interface ProjectLayoutProps {
   projectId: string
@@ -109,6 +110,8 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
         return <ImagesView projectId={pid} />
       case 'Recordings':
         return <RecordingsView projectId={pid} />
+      case 'Browser':
+        return <BrowserView projectId={pid} />
       default:
         return (
           <div className="flex-1 p-4 overflow-y-auto">
