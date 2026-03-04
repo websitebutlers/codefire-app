@@ -439,7 +439,7 @@ private struct GmailSettingsTab: View {
                                 .font(.system(size: 11))
                                 .frame(minWidth: 160)
 
-                            Picker("Client", selection: $newClientId) {
+                            Picker("Group", selection: $newClientId) {
                                 Text("None").tag(nil as String?)
                                 ForEach(clients) { client in
                                     Text(client.name).tag(client.id as String?)

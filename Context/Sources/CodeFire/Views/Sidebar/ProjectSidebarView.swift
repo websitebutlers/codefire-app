@@ -90,7 +90,7 @@ struct ProjectSidebarView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "plus")
                             .font(.system(size: 10, weight: .semibold))
-                        Text("Client")
+                        Text("Group")
                             .font(.system(size: 11, weight: .medium))
                     }
                     .foregroundColor(.secondary)
@@ -268,7 +268,7 @@ struct ProjectSidebarView: View {
                 editingTagText = project.tagsArray.first ?? ""
                 editingTagProjectId = project.id
             }
-            Menu("Set Client") {
+            Menu("Set Group") {
                 Button("None") {
                     appState.updateProjectClient(project, clientId: nil)
                 }
@@ -359,10 +359,10 @@ struct NewClientSheet: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("New Client")
+            Text("New Group")
                 .font(.system(size: 15, weight: .semibold))
 
-            TextField("Client name", text: $name)
+            TextField("Group name", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 13))
                 .frame(width: 260)
