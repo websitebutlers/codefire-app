@@ -97,7 +97,7 @@ struct TaskLauncherView: View {
     private func launchPreset(_ preset: TaskPreset) {
         let prompt = preset.prompt(for: appState.currentProject)
         let escaped = prompt.replacingOccurrences(of: "\"", with: "\\\"")
-        let command = "\(appSettings.preferredCLI.command) \"\(escaped)\""
+        let command = "\(appSettings.commandWithArgs(for: appSettings.preferredCLI)) \"\(escaped)\""
 
         NotificationCenter.default.post(
             name: .launchTask,
@@ -115,7 +115,7 @@ struct TaskLauncherView: View {
         guard !trimmed.isEmpty else { return }
 
         let escaped = trimmed.replacingOccurrences(of: "\"", with: "\\\"")
-        let command = "\(appSettings.preferredCLI.command) \"\(escaped)\""
+        let command = "\(appSettings.commandWithArgs(for: appSettings.preferredCLI)) \"\(escaped)\""
         let shortTitle = String(trimmed.prefix(20)) + (trimmed.count > 20 ? "..." : "")
 
         NotificationCenter.default.post(

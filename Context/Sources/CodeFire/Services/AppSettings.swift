@@ -70,6 +70,22 @@ class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(githubRepo, forKey: "githubRepo") }
     }
 
+    // CLI Extra Args (per-CLI, keyed by CLIProvider.rawValue)
+    @Published var cliExtraArgs: [String: String] {
+        didSet {
+            if let data = try? JSONEncoder().encode(cliExtraArgs) {
+                UserDefaults.standard.set(data, forKey: "cliExtraArgs")
+            }
+        }
+    }
+
+    /// Returns the CLI command with any user-configured extra arguments appended.
+    func commandWithArgs(for cli: CLIProvider) -> String {
+        let args = cliExtraArgs[cli.rawValue]?.trimmingCharacters(in: .whitespaces) ?? ""
+        if args.isEmpty { return cli.command }
+        return "\(cli.command) \(args)"
+    }
+
     // Briefing
     @Published var briefingStalenessHours: Double {
         didSet { UserDefaults.standard.set(briefingStalenessHours, forKey: "briefingStalenessHours") }
@@ -113,6 +129,10 @@ class AppSettings: ObservableObject {
         self.demoMode = defaults.object(forKey: "demoMode") as? Bool ?? false
         self.checkForUpdates = defaults.object(forKey: "checkForUpdates") as? Bool ?? true
         self.githubRepo = defaults.string(forKey: "githubRepo") ?? "websitebutlers/codefire-app"
+
+        self.cliExtraArgs = defaults.data(forKey: "cliExtraArgs")
+            .flatMap { try? JSONDecoder().decode([String: String].self, from: $0) }
+            ?? [:]
 
         self.briefingStalenessHours = defaults.object(forKey: "briefingStalenessHours") as? Double ?? 6.0
 

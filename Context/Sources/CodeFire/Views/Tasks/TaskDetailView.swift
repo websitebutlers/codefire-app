@@ -637,7 +637,7 @@ struct TaskDetailView: View {
             object: nil,
             userInfo: [
                 LaunchTaskKey.title: "Task: \(title)",
-                LaunchTaskKey.command: "claude \"\(escaped)\"",
+                LaunchTaskKey.command: "\(settings.commandWithArgs(for: .claude)) \"\(escaped)\"",
                 LaunchTaskKey.projectId: appState.currentProject?.id ?? ""
             ]
         )

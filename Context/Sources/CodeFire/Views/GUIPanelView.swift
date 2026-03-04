@@ -278,7 +278,7 @@ struct GUIPanelView: View {
                 isGenerating: appState.isProfileGenerating,
                 hasProfile: appState.projectProfile != nil
             )
-            MCPIndicator(connections: mcpMonitor.connections, currentProjectId: appState.currentProject?.id)
+            MCPIndicator(connections: mcpMonitor.connections, currentProjectId: appState.currentProject?.id, projectPath: appState.currentProject?.path)
         }
     }
 
@@ -368,6 +368,9 @@ struct TabButton: View {
 struct MCPIndicator: View {
     let connections: [MCPConnection]
     let currentProjectId: String?
+    var projectPath: String? = nil
+
+    @State private var setupResult: String?
 
     /// Connections matching the currently selected project.
     private var projectConnections: [MCPConnection] {
@@ -384,22 +387,38 @@ struct MCPIndicator: View {
     }
 
     var body: some View {
+        Group {
         if connections.isEmpty {
-            // No MCP connections — show disconnected state
-            HStack(spacing: 5) {
-                Image(systemName: "antenna.radiowaves.left.and.right.slash")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary.opacity(0.5))
-                Text("MCP")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.secondary.opacity(0.5))
+            // No MCP connections — click to setup
+            Menu {
+                Section("Setup MCP Server") {
+                    ForEach(CLIProvider.allCases) { cli in
+                        Button {
+                            installMCP(for: cli)
+                        } label: {
+                            Label(cli.displayName, systemImage: cli.iconName)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.5))
+                    Text("MCP")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary.opacity(0.5))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color(nsColor: .separatorColor).opacity(0.12))
+                )
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color(nsColor: .separatorColor).opacity(0.12))
-            )
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
         } else {
             Menu {
                 Section("MCP Connections (\(connections.count))") {
@@ -442,6 +461,46 @@ struct MCPIndicator: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+        }
+        } // Group
+        .alert("MCP Setup", isPresented: Binding(
+            get: { setupResult != nil },
+            set: { if !$0 { setupResult = nil } }
+        )) {
+            Button("OK") { setupResult = nil }
+        } message: {
+            Text(setupResult ?? "")
+        }
+    }
+
+    // MARK: - MCP Install
+
+    private func installMCP(for cli: CLIProvider) {
+        // For Claude Code, prefer the `claude mcp add` command
+        if cli == .claude {
+            let binaryPath = ContextInjector.mcpBinaryPath
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = ["claude", "mcp", "add", "codefire", binaryPath]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            do {
+                try process.run()
+                process.waitUntilExit()
+                if process.terminationStatus == 0 {
+                    setupResult = "MCP configured for \(cli.displayName). Restart your CLI session to activate."
+                    return
+                }
+            } catch {}
+        }
+
+        // File-based config for other CLIs (or as Claude fallback)
+        let injector = ContextInjector()
+        do {
+            let path = try injector.installMCP(for: cli, projectPath: projectPath ?? "")
+            setupResult = "MCP configured for \(cli.displayName) at \(path)"
+        } catch {
+            setupResult = "Failed: \(error.localizedDescription)"
         }
     }
 

@@ -41,7 +41,7 @@ struct CLIQuickLaunchView: View {
         Menu {
             if installed {
                 Button("Launch \(cli.displayName)") {
-                    onLaunchCLI(cli.displayName, cli.command)
+                    onLaunchCLI(cli.displayName, appSettings.commandWithArgs(for: cli))
                 }
             }
 

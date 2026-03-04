@@ -3,6 +3,7 @@ import GRDB
 
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var appSettings: AppSettings
     @EnvironmentObject var liveMonitor: LiveSessionMonitor
     @State private var sessions: [Session] = []
     @State private var sessionCount: Int = 0
@@ -32,7 +33,7 @@ struct DashboardView: View {
                             object: nil,
                             userInfo: [
                                 LaunchTaskKey.title: "Claude",
-                                LaunchTaskKey.command: "claude",
+                                LaunchTaskKey.command: appSettings.commandWithArgs(for: .claude),
                                 LaunchTaskKey.projectId: appState.currentProject?.id ?? ""
                             ]
                         )
@@ -47,7 +48,7 @@ struct DashboardView: View {
                             object: nil,
                             userInfo: [
                                 LaunchTaskKey.title: "Claude (Resume)",
-                                LaunchTaskKey.command: "claude --continue",
+                                LaunchTaskKey.command: "\(appSettings.commandWithArgs(for: .claude)) --continue",
                                 LaunchTaskKey.projectId: appState.currentProject?.id ?? ""
                             ]
                         )

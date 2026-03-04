@@ -136,6 +136,17 @@ private struct GeneralSettingsTab: View {
                 Text("Used for task launcher and quick-launch buttons")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
+
+                TextField("Extra arguments", text: Binding(
+                    get: { settings.cliExtraArgs[settings.preferredCLI.rawValue] ?? "" },
+                    set: { settings.cliExtraArgs[settings.preferredCLI.rawValue] = $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 12, design: .monospaced))
+
+                Text("e.g. --dangerously-skip-permissions — added to all launch commands for \(settings.preferredCLI.displayName)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
             }
         }
         .formStyle(.grouped)

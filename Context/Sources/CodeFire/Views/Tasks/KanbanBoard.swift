@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct KanbanBoard: View {
     var globalMode: Bool = false
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var appSettings: AppSettings
     @State private var todoTasks: [TaskItem] = []
     @State private var inProgressTasks: [TaskItem] = []
     @State private var doneTasks: [TaskItem] = []
@@ -264,7 +265,7 @@ struct KanbanBoard: View {
             object: nil,
             userInfo: [
                 LaunchTaskKey.title: "Task: \(task.title)",
-                LaunchTaskKey.command: "claude \"\(escaped)\"",
+                LaunchTaskKey.command: "\(appSettings.commandWithArgs(for: .claude)) \"\(escaped)\"",
                 LaunchTaskKey.projectId: appState.currentProject?.id ?? ""
             ]
         )

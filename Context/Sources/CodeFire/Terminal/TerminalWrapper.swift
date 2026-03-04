@@ -193,6 +193,15 @@ struct TerminalWrapper: NSViewRepresentable {
             // from the embedded terminal without "nested session" errors.
             env.removeValue(forKey: "CLAUDECODE")
             env.removeValue(forKey: "CLAUDE_CODE")
+
+            // For zsh: suppress `compdef` errors that occur when plugins call
+            // compdef before compinit runs in .zshrc. Injects a temp .zshenv
+            // with a no-op compdef, then resets ZDOTDIR so normal dotfiles load.
+            let shellName = URL(fileURLWithPath: shell).lastPathComponent
+            if shellName == "zsh", let zdotdir = Coordinator.setupZshCompdefFix() {
+                env["ZDOTDIR"] = zdotdir
+            }
+
             let envStrings = env.map { "\($0.key)=\($0.value)" }
 
             // Use "-zsh" as execName for proper login shell convention.
@@ -215,6 +224,34 @@ struct TerminalWrapper: NSViewRepresentable {
 
         func sendText(_ text: String) {
             terminalView?.send(txt: text)
+        }
+
+        /// Creates a temporary ZDOTDIR with a .zshenv that defines compdef as a no-op,
+        /// then resets ZDOTDIR to $HOME so all other zsh dotfiles load normally.
+        private static func setupZshCompdefFix() -> String? {
+            let tempDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("codefire-zsh", isDirectory: true)
+            let zshenv = tempDir.appendingPathComponent(".zshenv")
+
+            // Only write once — the file is the same for all terminals
+            if FileManager.default.fileExists(atPath: zshenv.path) {
+                return tempDir.path
+            }
+
+            let script = """
+            # CodeFire: suppress compdef errors until compinit runs in .zshrc
+            compdef() { : }
+            ZDOTDIR="$HOME"
+            [[ -f "$ZDOTDIR/.zshenv" ]] && source "$ZDOTDIR/.zshenv"
+            """
+
+            do {
+                try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+                try script.write(to: zshenv, atomically: true, encoding: .utf8)
+                return tempDir.path
+            } catch {
+                return nil
+            }
         }
     }
 
