@@ -58,6 +58,7 @@ struct ProjectSidebarView: View {
                         }
                     }
                 }
+                .padding(.horizontal, 4)
                 .padding(.bottom, 8)
             }
 
@@ -100,6 +101,7 @@ struct ProjectSidebarView: View {
                 }
                 .buttonStyle(.plain)
             }
+            .padding(.horizontal, 4)
         }
         .frame(width: 200)
         .background(Color(nsColor: .windowBackgroundColor))
