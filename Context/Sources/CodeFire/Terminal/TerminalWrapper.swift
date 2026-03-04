@@ -75,7 +75,7 @@ final class FocusableTerminalView: LocalProcessTerminalView {
 
     /// Shell-escape a file path (wrap in single quotes, escape inner quotes).
     private func escapedPath(_ path: String) -> String {
-        if path.rangeOfCharacter(from: .init(charactersIn: " '\"\\()&|;<>$!#")) != nil {
+        if path.rangeOfCharacter(from: .init(charactersIn: " '\"\\()&|;<>$!#`")) != nil {
             let escaped = path.replacingOccurrences(of: "'", with: "'\\''")
             return "'\(escaped)'"
         }
