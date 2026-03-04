@@ -2,17 +2,24 @@ import SwiftUI
 import GRDB
 
 struct HomeView: View {
+    @EnvironmentObject var settings: AppSettings
+
     var body: some View {
         VSplitView {
             KanbanBoard(globalMode: true)
                 .frame(minHeight: 200)
-            HSplitView {
+            if settings.gmailSyncEnabled {
+                HSplitView {
+                    ProjectTaskSummary()
+                        .frame(minWidth: 200)
+                    RecentEmailsView()
+                        .frame(minWidth: 200)
+                }
+                .frame(minHeight: 150)
+            } else {
                 ProjectTaskSummary()
-                    .frame(minWidth: 200)
-                RecentEmailsView()
-                    .frame(minWidth: 200)
+                    .frame(minWidth: 200, minHeight: 150)
             }
-            .frame(minHeight: 150)
         }
     }
 }
