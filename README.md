@@ -12,6 +12,7 @@
 <p align="center">
   <a href="https://github.com/websitebutlers/codefire-app/releases/latest"><img src="https://img.shields.io/badge/download-macOS-orange?style=flat-square" alt="Download"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/signed_%26_notarized-Apple-green?style=flat-square" alt="Signed & Notarized">
 </p>
 
 ---
@@ -42,7 +43,7 @@ Your AI coding agent forgets everything between sessions. CodeFire fixes that. I
   <br><em>Session history with cost tracking and tool usage stats</em>
 </p>
 
-**Built-in terminal** — Tabbed terminal emulator (SwiftTerm) embedded in each project window. Launch Claude Code sessions, run commands, manage multiple tabs — all without leaving the app.
+**Built-in terminal** — Tabbed terminal emulator (SwiftTerm) embedded in each project window. Launch Claude Code sessions, run commands, manage multiple tabs — all without leaving the app. Drag-and-drop files to insert paths, Cmd+V to paste images as file paths.
 
 **Task launcher & dev tools** — One-click actions for common workflows: code review, debugging, writing tests, refactoring, documentation, and security audits. Detects your project's package manager and provides quick-launch buttons for dev, build, test, and lint commands.
 
@@ -72,18 +73,22 @@ Your AI coding agent forgets everything between sessions. CodeFire fixes that. I
   <br><em>Built-in AI image generation</em>
 </p>
 
-**And more** — GitHub integration (PRs, CI, commits, issues), CLAUDE.md editor, file browser, built-in browser with screenshot capture, Gmail integration with auto-task creation, semantic code search, chat with Claude using full project context, and agent monitoring.
+**CLI configuration** — Per-CLI extra arguments (e.g. `--dangerously-skip-permissions`) configurable in Settings. Applied automatically to all launch commands for your preferred CLI.
+
+**And more** — GitHub integration (PRs, CI, commits, issues), CLAUDE.md editor, file browser, built-in browser with screenshot capture, Gmail integration with auto-task creation, semantic code search, chat using full project context, daily AI briefings, audio recording with transcription, and agent monitoring.
 
 ## MCP Server
 
 CodeFire includes a companion MCP server (`CodeFireMCP`) that exposes your project data to any AI coding tool. When configured, your agent can:
 
-- List and manage tasks (create, update status, add notes)
-- Read project notes and search across them
-- Access the codebase profile and file tree
-- Query session history
-- Navigate and interact with web pages
-- Generate images
+- **Tasks** — Create, update, list tasks and add progress notes
+- **Notes** — Read, create, search project notes
+- **Code search** — Semantic search across your indexed codebase (functions, classes, commits)
+- **Sessions** — Query session history and cost data
+- **Browser** — Navigate pages, take screenshots, click elements, fill forms, monitor network requests
+- **Images** — Generate and edit images with AI
+- **Git** — View status, diffs, logs, stage files, and commit
+- **Environment** — Detect running services, read env files
 
 This creates a powerful loop: you manage work in CodeFire, and your AI has full awareness of that work during coding sessions.
 
@@ -91,11 +96,11 @@ This creates a powerful loop: you manage work in CodeFire, and your AI has full 
 
 ### 1. Download
 
-Grab `CodeFire.app` from [GitHub Releases](https://github.com/websitebutlers/codefire-app/releases/latest) and drag it to your Applications folder.
+Grab `CodeFire.zip` from [GitHub Releases](https://github.com/websitebutlers/codefire-app/releases/latest), unzip, and drag `CodeFire.app` to your Applications folder. The app is signed with Developer ID and notarized by Apple — no Gatekeeper warnings.
 
 ### 2. Connect your CLI
 
-Click one button in the app to install the MCP server, or configure it manually:
+Click the **MCP** indicator in the top-right corner of any project view and select your CLI to auto-configure, or set it up manually:
 
 <details>
 <summary><strong>Claude Code</strong></summary>
@@ -172,6 +177,13 @@ Your AI agent now has persistent memory, task tracking, and project intelligence
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex CLI](https://github.com/openai/codex), or [OpenCode](https://github.com/sst/opencode)
 - [GitHub CLI](https://cli.github.com/) (`gh`) for the GitHub tab (optional)
 
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd + ,` | Settings |
+| `Cmd + Shift + H` | Show Planner window |
+
 ## Building from Source
 
 ```bash
@@ -179,6 +191,14 @@ git clone https://github.com/websitebutlers/codefire-app.git
 cd codefire-app
 bash scripts/package-app.sh
 cp -r build/CodeFire.app /Applications/
+```
+
+The package script builds both targets, assembles the `.app` bundle, and handles code signing + notarization. To build without signing (for local development):
+
+```bash
+cd Context
+swift build -c release
+# Binary at .build/release/CodeFire
 ```
 
 ## Architecture
@@ -197,7 +217,7 @@ CodeFire is a pure Swift Package Manager project with two executable targets:
 | [GRDB.swift](https://github.com/groue/GRDB.swift) | SQLite database (shared between app and MCP server) |
 | [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) | Terminal emulator |
 
-No Electron. No web views (except the built-in browser). No node_modules. The entire app is ~16MB.
+No Electron. No web views (except the built-in browser). No node_modules. The entire app is ~32MB.
 
 ### Data Storage
 
