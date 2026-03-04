@@ -197,7 +197,7 @@ struct ProjectSidebarView: View {
                 Circle()
                     .fill(Color.secondary.opacity(0.3))
                     .frame(width: 8, height: 8)
-                Text("Ungrouped")
+                Text("Recent Projects")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.secondary)
                     .textCase(.uppercase)
@@ -205,6 +205,7 @@ struct ProjectSidebarView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
+            .help("Projects discovered from Claude Code history (~/.claude/projects/)")
 
             ForEach(projects) { project in
                 projectRow(project: project)
