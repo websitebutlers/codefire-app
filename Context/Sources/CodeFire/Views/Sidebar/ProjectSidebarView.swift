@@ -66,6 +66,22 @@ struct ProjectSidebarView: View {
             // Bottom actions
             HStack(spacing: 0) {
                 Button {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 32)
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Settings")
+
+                Divider()
+                    .frame(height: 16)
+
+                Button {
                     openFolderPicker()
                 } label: {
                     HStack(spacing: 4) {
