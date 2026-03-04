@@ -37,8 +37,7 @@ export default function HomeView() {
   const openCount =
     todoTasks.length + inProgressTasks.length
 
-  // Use home directory for the general-purpose terminal
-  const homePath = process.env.HOME || process.env.USERPROFILE || '/'
+  const homePath = window.api.homePath
 
   return (
     <div className="flex flex-col h-full bg-neutral-900">

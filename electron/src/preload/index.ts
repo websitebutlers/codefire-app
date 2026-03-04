@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { homedir } from 'os'
 import type { IpcChannel } from '@shared/types'
 
 contextBridge.exposeInMainWorld('api', {
@@ -11,4 +12,5 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener(channel, subscription)
   },
   send: (channel: string, ...args: unknown[]) => ipcRenderer.send(channel, ...args),
+  homePath: homedir(),
 })

@@ -143,6 +143,7 @@ export interface ElectronAPI {
   invoke: (channel: IpcChannel, ...args: unknown[]) => Promise<unknown>
   on: (channel: string, callback: (...args: unknown[]) => void) => () => void
   send: (channel: string, ...args: unknown[]) => void
+  homePath: string
 }
 
 declare global {
