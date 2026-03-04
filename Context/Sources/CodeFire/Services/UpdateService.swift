@@ -120,16 +120,23 @@ class UpdateService: ObservableObject {
             let extractResult = try await runProcess("/usr/bin/ditto", arguments: ["-xk", tempURL.path, tempDir.path])
             guard extractResult == 0 else { throw UpdateError.extractFailed }
 
-            // 4. Remove quarantine
-            _ = try? await runProcess("/usr/bin/xattr", arguments: ["-d", "-r", "com.apple.quarantine", tempDir.path])
-
-            // 5. Find the .app in extracted contents
+            // 4. Find the .app in extracted contents
             let contents = try FileManager.default.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil)
             guard let newApp = contents.first(where: { $0.pathExtension == "app" }) else {
                 throw UpdateError.noAppInZip
             }
 
-            // 6. Create helper script and launch it
+            // 5. Validate .app filename contains only safe characters
+            let appName = newApp.lastPathComponent
+            let safeChars = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-_ "))
+            guard appName.unicodeScalars.allSatisfy({ safeChars.contains($0) }) else {
+                throw UpdateError.suspiciousAppName
+            }
+
+            // 6. Remove quarantine from validated .app only (not entire temp dir)
+            _ = try? await runProcess("/usr/bin/xattr", arguments: ["-d", "-r", "com.apple.quarantine", newApp.path])
+
+            // 7. Create helper script and launch it
             guard let currentAppURL = currentAppURL() else {
                 throw UpdateError.cannotLocateCurrentApp
             }
@@ -142,17 +149,17 @@ class UpdateService: ObservableObject {
                 sleep 0.5
             done
             # Replace old app with new
-            rm -rf "\(currentAppURL.path)"
-            mv "\(newApp.path)" "\(currentAppURL.path)"
+            rm -rf "\(shellEscape(currentAppURL.path))"
+            mv "\(shellEscape(newApp.path))" "\(shellEscape(currentAppURL.path))"
             # Launch updated app
-            open "\(currentAppURL.path)"
+            open "\(shellEscape(currentAppURL.path))"
             # Clean up
-            rm -rf "\(tempDir.path)"
+            rm -rf "\(shellEscape(tempDir.path))"
             """
             try scriptContent.write(to: helperScript, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helperScript.path)
 
-            // 7. Launch helper and quit
+            // 8. Launch helper and quit
             let helper = Process()
             helper.executableURL = URL(fileURLWithPath: "/bin/bash")
             helper.arguments = [helperScript.path]
@@ -167,6 +174,15 @@ class UpdateService: ObservableObject {
     }
 
     // MARK: - Helpers
+
+    /// Shell-escape a path for safe use in double-quoted bash strings.
+    private func shellEscape(_ path: String) -> String {
+        var result = path
+        for char in ["\\", "\"", "$", "`"] {
+            result = result.replacingOccurrences(of: char, with: "\\\(char)")
+        }
+        return result
+    }
 
     private func currentAppURL() -> URL? {
         // Walk up from the executable to find the .app bundle
@@ -210,6 +226,7 @@ class UpdateService: ObservableObject {
         case extractFailed
         case noAppInZip
         case cannotLocateCurrentApp
+        case suspiciousAppName
 
         var errorDescription: String? {
             switch self {
@@ -219,6 +236,7 @@ class UpdateService: ObservableObject {
             case .extractFailed: return "Failed to extract update"
             case .noAppInZip: return "No .app found in downloaded update"
             case .cannotLocateCurrentApp: return "Cannot locate current app bundle"
+            case .suspiciousAppName: return "Downloaded app has suspicious filename"
             }
         }
     }
