@@ -1023,8 +1023,9 @@ class MCPServer {
                     "type": "object",
                     "properties": [
                         "ref": ["type": "string", "description": "Element ref of the file input from browser_snapshot"],
-                        "path": ["type": "string", "description": "Absolute path to the file on disk"],
-                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                        "path": ["type": "string", "description": "Absolute path to the file on disk (must be within project directory)"],
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"],
+                        "project_id": ["type": "string", "description": "Project ID (auto-detected if omitted)"]
                     ],
                     "required": ["ref", "path"]
                 ]
@@ -1253,7 +1254,6 @@ class MCPServer {
                     "type": "object",
                     "properties": [
                         "file_name": ["type": "string", "description": "Environment file name (e.g. '.env', '.env.local')"],
-                        "show_values": ["type": "boolean", "description": "Show actual values instead of masked (default: false)"],
                         "project_id": ["type": "string", "description": "Project ID (auto-detected if omitted)"]
                     ],
                     "required": ["file_name"]
@@ -2111,6 +2111,15 @@ class MCPServer {
         guard let path = args["path"] as? String, !path.isEmpty else {
             throw MCPError(message: "path is required")
         }
+
+        // Validate file is within the project directory
+        let projectPath = try resolveProjectPath(args)
+        let resolvedFile = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        let resolvedProject = URL(fileURLWithPath: projectPath).resolvingSymlinksInPath().path
+        guard resolvedFile.hasPrefix(resolvedProject + "/") else {
+            throw MCPError(message: "Upload path must be within the project directory. Got: \(path)")
+        }
+
         var cmdArgs: [String: Any] = ["ref": ref, "path": path]
         if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
         return try executeBrowserCommand(tool: "browser_upload", args: cmdArgs, timeout: 10.0)
@@ -2481,8 +2490,6 @@ class MCPServer {
         guard let fileName = args["file_name"] as? String else {
             throw MCPError(message: "file_name is required")
         }
-        let showValues = args["show_values"] as? Bool ?? false
-
         let fullPath = (path as NSString).appendingPathComponent(fileName)
         guard FileManager.default.fileExists(atPath: fullPath) else {
             throw MCPError(message: "File not found: \(fileName)")
@@ -2501,15 +2508,10 @@ class MCPServer {
             let value = String(parts[1]).trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
 
             let displayValue: String
-            if showValues {
-                displayValue = value
+            if value.count <= 4 {
+                displayValue = String(repeating: "*", count: value.count)
             } else {
-                // Mask: show first 2 chars + asterisks
-                if value.count <= 4 {
-                    displayValue = String(repeating: "*", count: value.count)
-                } else {
-                    displayValue = String(value.prefix(2)) + String(repeating: "*", count: min(value.count - 2, 20))
-                }
+                displayValue = String(value.prefix(2)) + String(repeating: "*", count: min(value.count - 2, 20))
             }
             variables.append(["key": key, "value": displayValue])
         }
@@ -2518,7 +2520,7 @@ class MCPServer {
             "file": fileName,
             "variables": variables,
             "count": variables.count,
-            "values_masked": !showValues
+            "values_masked": true
         ] as [String: Any], options: [.prettyPrinted]),
            let str = String(data: data, encoding: .utf8) {
             return str
