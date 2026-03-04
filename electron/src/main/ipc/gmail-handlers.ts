@@ -1,7 +1,23 @@
 import { ipcMain } from 'electron'
 import type { GmailService } from '../services/GmailService'
 
+const GMAIL_CHANNELS = [
+  'gmail:listAccounts',
+  'gmail:authenticate',
+  'gmail:removeAccount',
+  'gmail:listRules',
+  'gmail:addRule',
+  'gmail:removeRule',
+  'gmail:pollEmails',
+  'gmail:listRecentEmails',
+] as const
+
 export function registerGmailHandlers(gmailService: GmailService) {
+  // Remove existing handlers if re-registering (e.g. after settings change)
+  for (const ch of GMAIL_CHANNELS) {
+    ipcMain.removeHandler(ch)
+  }
+
   ipcMain.handle('gmail:listAccounts', () => {
     return gmailService.listAccounts()
   })

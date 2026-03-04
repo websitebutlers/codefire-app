@@ -6,12 +6,6 @@ interface SettingsModalProps {
   onClose: () => void
 }
 
-const STORAGE_KEYS = {
-  openRouterKey: 'codefire_openrouter_key',
-  googleClientId: 'codefire_google_client_id',
-  googleClientSecret: 'codefire_google_client_secret',
-} as const
-
 export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [openRouterKey, setOpenRouterKey] = useState('')
   const [googleClientId, setGoogleClientId] = useState('')
@@ -21,31 +15,24 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   useEffect(() => {
     if (open) {
-      setOpenRouterKey(localStorage.getItem(STORAGE_KEYS.openRouterKey) ?? '')
-      setGoogleClientId(localStorage.getItem(STORAGE_KEYS.googleClientId) ?? '')
-      setGoogleClientSecret(localStorage.getItem(STORAGE_KEYS.googleClientSecret) ?? '')
+      // Load settings from main process config store
+      window.api.invoke('settings:get').then((settings: any) => {
+        setOpenRouterKey(settings.openRouterKey ?? '')
+        setGoogleClientId(settings.googleClientId ?? '')
+        setGoogleClientSecret(settings.googleClientSecret ?? '')
+      }).catch(() => {})
       setSaved(false)
     }
   }, [open])
 
   if (!open) return null
 
-  function handleSave() {
-    if (openRouterKey.trim()) {
-      localStorage.setItem(STORAGE_KEYS.openRouterKey, openRouterKey.trim())
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.openRouterKey)
-    }
-    if (googleClientId.trim()) {
-      localStorage.setItem(STORAGE_KEYS.googleClientId, googleClientId.trim())
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.googleClientId)
-    }
-    if (googleClientSecret.trim()) {
-      localStorage.setItem(STORAGE_KEYS.googleClientSecret, googleClientSecret.trim())
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.googleClientSecret)
-    }
+  async function handleSave() {
+    await window.api.invoke('settings:set', {
+      openRouterKey: openRouterKey.trim() || undefined,
+      googleClientId: googleClientId.trim() || undefined,
+      googleClientSecret: googleClientSecret.trim() || undefined,
+    })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -154,7 +141,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             </div>
 
             <p className="text-[10px] text-neutral-600 mt-2">
-              After saving, restart the app for Gmail changes to take effect.
+              Gmail will activate immediately after saving valid credentials.
             </p>
           </section>
 

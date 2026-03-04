@@ -7,6 +7,7 @@ import { TerminalService } from './services/TerminalService'
 import { GitService } from './services/GitService'
 import { GoogleOAuth } from './services/GoogleOAuth'
 import { GmailService } from './services/GmailService'
+import { readConfig } from './services/ConfigStore'
 
 process.env.DIST_ELECTRON = path.join(__dirname, '..')
 process.env.DIST = path.join(process.env.DIST_ELECTRON, '../dist')
@@ -20,10 +21,11 @@ const windowManager = WindowManager.getInstance()
 const terminalService = new TerminalService()
 const gitService = new GitService()
 
-// Initialize Gmail service (requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars)
+// Initialize Gmail service from config store or env vars
 let gmailService: GmailService | undefined
-const googleClientId = process.env.GOOGLE_CLIENT_ID
-const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET
+const config = readConfig()
+const googleClientId = config.googleClientId || process.env.GOOGLE_CLIENT_ID
+const googleClientSecret = config.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET
 if (googleClientId && googleClientSecret) {
   const oauth = new GoogleOAuth(googleClientId, googleClientSecret)
   gmailService = new GmailService(db, oauth)

@@ -17,6 +17,7 @@ import { registerRulesHandlers } from './rules-handlers'
 import { registerServiceHandlers } from './service-handlers'
 import { registerImageHandlers } from './image-handlers'
 import { registerRecordingHandlers } from './recording-handlers'
+import { registerSettingsHandlers } from './settings-handlers'
 import type { WindowManager } from '../windows/WindowManager'
 import type { TerminalService } from '../services/TerminalService'
 import type { GitService } from '../services/GitService'
@@ -65,4 +66,5 @@ export function registerAllHandlers(
   registerServiceHandlers()
   registerImageHandlers(db)
   registerRecordingHandlers(db)
+  registerSettingsHandlers(db)
 }

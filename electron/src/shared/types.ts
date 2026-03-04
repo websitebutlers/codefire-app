@@ -95,6 +95,8 @@ export type RecordingChannel =
   | 'recordings:saveAudio'
   | 'recordings:transcribe'
 
+export type SettingsChannel = 'settings:get' | 'settings:set'
+
 export type SearchChannel = 'search:query' | 'search:reindex'
 
 export type GmailChannel =
@@ -136,6 +138,7 @@ export type IpcChannel =
   | ServiceChannel
   | ImageChannel
   | RecordingChannel
+  | SettingsChannel
 
 // ─── Electron API ────────────────────────────────────────────────────────────
 
