@@ -310,35 +310,42 @@ struct GUIPanelView: View {
     private static let hiddenTabs: Set<AppState.GUITab> = [.visualize]
 
     private var tabBar: some View {
-        HStack(spacing: 2) {
-            ForEach(AppState.GUITab.allCases.filter { !Self.hiddenTabs.contains($0) }, id: \.self) { tab in
-                TabButton(tab: tab, isSelected: appState.selectedTab == tab) {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        appState.selectedTab = tab
+        GeometryReader { geometry in
+            let iconOnly = geometry.size.width < 600
+            HStack(spacing: 2) {
+                ForEach(AppState.GUITab.allCases.filter { !Self.hiddenTabs.contains($0) }, id: \.self) { tab in
+                    TabButton(tab: tab, isSelected: appState.selectedTab == tab, iconOnly: iconOnly) {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            appState.selectedTab = tab
+                        }
                     }
                 }
+                Spacer()
             }
-            Spacer()
         }
+        .frame(height: 32)
     }
 }
 
 struct TabButton: View {
     let tab: AppState.GUITab
     let isSelected: Bool
+    var iconOnly: Bool = false
     let action: () -> Void
 
     @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
+            HStack(spacing: iconOnly ? 0 : 5) {
                 Image(systemName: tab.icon)
                     .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
-                Text(tab.rawValue)
-                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                if !iconOnly {
+                    Text(tab.rawValue)
+                        .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, iconOnly ? 8 : 12)
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 6)
@@ -352,6 +359,7 @@ struct TabButton: View {
         .onHover { hovering in
             isHovering = hovering
         }
+        .help(iconOnly ? tab.rawValue : "")
     }
 }
 
