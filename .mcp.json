@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "codefire": {
-      "command": "/Users/nicknorris/Library/Application Support/CodeFire/bin/CodeFireMCP"
+      "command": "${HOME}/Library/Application Support/CodeFire/bin/CodeFireMCP"
     }
   }
 }
