@@ -1249,7 +1249,7 @@ class MCPServer {
             ],
             [
                 "name": "get_env_variables",
-                "description": "Parse and return variables from a specific environment file. Values are masked by default for security.",
+                "description": "Parse and return variables from a specific environment file. Values are always masked for security.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -2490,7 +2490,15 @@ class MCPServer {
         guard let fileName = args["file_name"] as? String else {
             throw MCPError(message: "file_name is required")
         }
+
+        // Validate file is within the project directory
         let fullPath = (path as NSString).appendingPathComponent(fileName)
+        let resolvedFile = URL(fileURLWithPath: fullPath).resolvingSymlinksInPath().path
+        let resolvedProject = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        guard resolvedFile.hasPrefix(resolvedProject + "/") else {
+            throw MCPError(message: "file_name must refer to a file within the project directory")
+        }
+
         guard FileManager.default.fileExists(atPath: fullPath) else {
             throw MCPError(message: "File not found: \(fileName)")
         }
