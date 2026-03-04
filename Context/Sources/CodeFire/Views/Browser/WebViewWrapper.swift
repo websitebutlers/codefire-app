@@ -24,7 +24,7 @@ struct WebViewWrapper: NSViewRepresentable {
             let host = challenge.protectionSpace.host
             if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
                let trust = challenge.protectionSpace.serverTrust,
-               (host == "localhost" || host == "127.0.0.1" || host.hasSuffix(".local")) {
+               (host == "localhost" || host == "127.0.0.1") {
                 completionHandler(.useCredential, URLCredential(trust: trust))
             } else {
                 completionHandler(.performDefaultHandling, nil)
