@@ -194,6 +194,7 @@ struct CodeFireApp: App {
                 .environmentObject(briefingService)
                 .environmentObject(updateService)
                 .accentColor(Color(red: 0.976, green: 0.451, blue: 0.086)) // CodeFire orange (#f97316)
+                .background(PlannerWindowTagger())
                 .onAppear {
                     NSApplication.shared.activate(ignoringOtherApps: true)
                     appState.loadProjects()
@@ -262,6 +263,19 @@ struct CodeFireApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1400, height: 900)
+        .commands {
+            CommandGroup(after: .windowList) {
+                Button("Show Planner") {
+                    if let plannerWindow = NSApp.windows.first(where: {
+                        $0.identifier?.rawValue == "codefire-planner"
+                    }) {
+                        plannerWindow.makeKeyAndOrderFront(nil)
+                    }
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                .keyboardShortcut("h", modifiers: [.command, .shift])
+            }
+        }
 
         WindowGroup(for: String.self) { $projectId in
             if let projectId {
@@ -276,6 +290,7 @@ struct CodeFireApp: App {
                 .environmentObject(contextEngine)
         }
     }
+
 
     // MARK: - Deep Link Handling
 
@@ -322,4 +337,18 @@ struct CodeFireApp: App {
         }
         showDeepLinkSheet = true
     }
+}
+
+// MARK: - Planner Window Tagger
+
+/// Tags the hosting NSWindow with a known identifier so "Show Planner" can find it.
+private struct PlannerWindowTagger: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            view.window?.identifier = NSUserInterfaceItemIdentifier("codefire-planner")
+        }
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }

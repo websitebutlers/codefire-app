@@ -253,7 +253,12 @@ struct KanbanBoard: View {
                 prompt += "\n- \(path)"
             }
         }
-        let escaped = prompt.replacingOccurrences(of: "\"", with: "\\\"")
+        let escaped = prompt
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "$", with: "\\$")
+            .replacingOccurrences(of: "`", with: "\\`")
+            .replacingOccurrences(of: "\n", with: "\\n")
         NotificationCenter.default.post(
             name: .launchTask,
             object: nil,
