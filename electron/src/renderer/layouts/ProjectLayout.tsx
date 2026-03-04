@@ -23,7 +23,7 @@ interface ProjectLayoutProps {
 
 export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
   const [project, setProject] = useState<Project | null>(null)
-  const [activeTab, setActiveTab] = useState('Dashboard')
+  const [activeTab, setActiveTab] = useState('Tasks')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -88,7 +88,7 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
   // ─── View renderer ─────────────────────────────────────────────────────────
   function renderActiveView(tab: string, pid: string, onTabChange: (t: string) => void) {
     switch (tab) {
-      case 'Dashboard':
+      case 'Details':
         return <DashboardView projectId={pid} onTabChange={onTabChange} />
       case 'Sessions':
         return <SessionsView projectId={pid} />

@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, nativeImage } from 'electron'
 import path from 'path'
 import { getDatabase, closeDatabase } from './database/connection'
 import { registerAllHandlers } from './ipc'
@@ -22,6 +22,15 @@ const gitService = new GitService()
 registerAllHandlers(db, windowManager, terminalService, gitService)
 
 app.whenReady().then(() => {
+  // Set dock icon on macOS
+  if (process.platform === 'darwin') {
+    const iconPath = path.join(__dirname, '../../resources/icon.png')
+    const icon = nativeImage.createFromPath(iconPath)
+    if (!icon.isEmpty()) {
+      app.dock.setIcon(icon)
+    }
+  }
+
   windowManager.createMainWindow()
 })
 

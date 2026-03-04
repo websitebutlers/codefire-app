@@ -11,9 +11,32 @@ export default defineConfig({
     electron({
       main: {
         entry: 'src/main/index.ts',
+        vite: {
+          resolve: {
+            alias: {
+              '@shared': path.resolve(__dirname, 'src/shared'),
+            },
+          },
+          build: {
+            outDir: 'dist-electron/main',
+            rollupOptions: {
+              external: ['better-sqlite3', 'node-pty'],
+            },
+          },
+        },
       },
       preload: {
         input: 'src/preload/index.ts',
+        vite: {
+          resolve: {
+            alias: {
+              '@shared': path.resolve(__dirname, 'src/shared'),
+            },
+          },
+          build: {
+            outDir: 'dist-electron/preload',
+          },
+        },
       },
     }),
   ],
