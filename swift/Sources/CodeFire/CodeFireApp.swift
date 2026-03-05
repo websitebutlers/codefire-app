@@ -274,6 +274,16 @@ struct CodeFireApp: App {
                     NSApp.activate(ignoringOtherApps: true)
                 }
                 .keyboardShortcut("h", modifiers: [.command, .shift])
+
+                Button("Agent Arena") {
+                    if let arenaWindow = NSApp.windows.first(where: {
+                        $0.identifier?.rawValue == "codefire-arena"
+                    }) {
+                        arenaWindow.makeKeyAndOrderFront(nil)
+                    }
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
             }
         }
 
@@ -284,6 +294,14 @@ struct CodeFireApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1200, height: 850)
+
+        Window("Agent Arena", id: "agent-arena") {
+            AgentArenaView()
+                .environmentObject(liveMonitor)
+                .background(ArenaWindowTagger())
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 600, height: 250)
 
         Settings {
             SettingsView(settings: appSettings)
