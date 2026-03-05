@@ -11,8 +11,8 @@
 
 <p align="center">
   <a href="https://github.com/websitebutlers/codefire-app/releases/latest"><img src="https://img.shields.io/badge/download-macOS-orange?style=flat-square" alt="Download macOS"></a>
-  <a href="https://github.com/websitebutlers/codefire-app/releases/latest"><img src="https://img.shields.io/badge/download-Windows-blue?style=flat-square" alt="Download Windows"></a>
-  <a href="https://github.com/websitebutlers/codefire-app/releases/latest"><img src="https://img.shields.io/badge/download-Linux-green?style=flat-square" alt="Download Linux"></a>
+  <a href="https://github.com/websitebutlers/codefire-app/releases/latest"><img src="https://img.shields.io/badge/download-Windows_(early_alpha)-yellow?style=flat-square" alt="Download Windows"></a>
+  <a href="https://github.com/websitebutlers/codefire-app/releases/latest"><img src="https://img.shields.io/badge/download-Linux_(early_alpha)-yellow?style=flat-square" alt="Download Linux"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square" alt="MIT License"></a>
 </p>
 
@@ -43,14 +43,24 @@ Your AI coding agent forgets everything between sessions. CodeFire fixes that. I
 
 | Platform | Download | Technology | Status |
 |----------|----------|-----------|--------|
-| **macOS** | [CodeFire-macOS.zip](https://github.com/websitebutlers/codefire-app/releases/latest/download/CodeFire-macOS.zip) | Swift / SwiftUI | Beta |
-| **Windows** | [CodeFire.Setup.exe](https://github.com/websitebutlers/codefire-app/releases/latest) | Electron / React | Alpha |
-| **Linux (AppImage)** | [CodeFire.AppImage](https://github.com/websitebutlers/codefire-app/releases/latest) | Electron / React | Alpha |
-| **Linux (deb)** | [codefire.deb](https://github.com/websitebutlers/codefire-app/releases/latest) | Electron / React | Alpha |
+| **macOS** | [CodeFire-macOS.zip](https://github.com/websitebutlers/codefire-app/releases/latest/download/CodeFire-macOS.zip) | Swift / SwiftUI | **Beta** — primary platform, actively developed |
+| **Windows** | [CodeFire.Setup.exe](https://github.com/websitebutlers/codefire-app/releases/latest) | Electron / React | **Early Alpha** — see note below |
+| **Linux (AppImage)** | [CodeFire.AppImage](https://github.com/websitebutlers/codefire-app/releases/latest) | Electron / React | **Early Alpha** — see note below |
+| **Linux (deb)** | [codefire.deb](https://github.com/websitebutlers/codefire-app/releases/latest) | Electron / React | **Early Alpha** — see note below |
 
 > **macOS:** Unzip and drag to Applications. Signed and notarized by Apple.
 > **Windows:** Run the installer. Requires Windows 10+.
 > **Linux:** `chmod +x CodeFire-*.AppImage && ./CodeFire-*.AppImage` or `sudo dpkg -i codefire-*.deb`
+
+### Windows & Linux — Early Alpha
+
+The Windows and Linux builds are **early alpha** and under active development. Expect missing features, rough edges, and bugs. The macOS Swift app is the primary platform and has the most complete feature set.
+
+**What works:** Core project management, task tracking, built-in terminal, settings panel, basic Git integration.
+
+**What's in progress:** MCP server integration, session monitoring, semantic search, and general stability improvements.
+
+**We're looking for contributors!** If you're a developer on Windows or Linux and want to help build out the Electron app, check the [open issues](https://github.com/websitebutlers/codefire-app/issues) or see [CONTRIBUTING.md](CONTRIBUTING.md) to get started. The Electron app lives in the [`electron/`](electron/) directory.
 
 ## Build from Source
 
