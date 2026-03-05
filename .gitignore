@@ -34,3 +34,12 @@ firebase-debug.log
 
 # Local Netlify folder
 .netlify
+
+# Electron
+electron/node_modules/
+electron/dist/
+electron/dist-electron/
+electron/.env
+electron/*.dmg
+electron/*.AppImage
+electron/*.exe
