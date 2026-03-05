@@ -37,7 +37,9 @@ registerAllHandlers(db, windowManager, terminalService, gitService, undefined, g
 app.whenReady().then(() => {
   // Set dock icon on macOS
   if (process.platform === 'darwin') {
-    const iconPath = path.join(__dirname, '../../resources/icon.png')
+    const iconPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'icon.png')
+      : path.join(__dirname, '../../resources/icon.png')
     const icon = nativeImage.createFromPath(iconPath)
     if (!icon.isEmpty()) {
       app.dock.setIcon(icon)
