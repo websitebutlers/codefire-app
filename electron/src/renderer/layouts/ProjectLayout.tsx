@@ -16,6 +16,7 @@ import GitView from '@renderer/views/GitView'
 import ImagesView from '@renderer/views/ImagesView'
 import RecordingsView from '@renderer/views/RecordingsView'
 import BrowserView from '@renderer/views/BrowserView'
+import AgentStatusBar from '@renderer/components/StatusBar/AgentStatusBar'
 
 interface ProjectLayoutProps {
   projectId: string
@@ -131,27 +132,32 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
       {isMac && <div className="drag-region h-7 flex-shrink-0" />}
 
       <div className="flex flex-col" style={{ height: isMac ? 'calc(100vh - 28px)' : '100vh' }}>
-        <Group orientation="horizontal" id="project-layout">
-          {/* Left panel: Terminal */}
-          <Panel id="terminal" defaultSize="35%" minSize="25%" maxSize="50%">
-            <TerminalPanel projectId={projectId} projectPath={project.path} />
-          </Panel>
+        <div className="flex-1 overflow-hidden">
+          <Group orientation="horizontal" id="project-layout">
+            {/* Left panel: Terminal */}
+            <Panel id="terminal" defaultSize="35%" minSize="25%" maxSize="50%">
+              <TerminalPanel projectId={projectId} projectPath={project.path} />
+            </Panel>
 
-          {/* Resize handle */}
-          <Separator className="w-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" />
+            {/* Resize handle */}
+            <Separator className="w-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" />
 
-          {/* Right panel: Tab bar + active view */}
-          <Panel id="gui">
-            <div className="flex flex-col h-full">
-              <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+            {/* Right panel: Tab bar + active view */}
+            <Panel id="gui">
+              <div className="flex flex-col h-full">
+                <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
-              {/* Active view */}
-              <div className="flex-1 overflow-hidden">
-                {renderActiveView(activeTab, projectId, setActiveTab)}
+                {/* Active view */}
+                <div className="flex-1 overflow-hidden">
+                  {renderActiveView(activeTab, projectId, setActiveTab)}
+                </div>
               </div>
-            </div>
-          </Panel>
-        </Group>
+            </Panel>
+          </Group>
+        </div>
+
+        {/* Status bar */}
+        <AgentStatusBar projectId={projectId} projectPath={project.path} />
       </div>
     </div>
   )

@@ -3,6 +3,7 @@ import path from 'path'
 import { getDatabase, closeDatabase } from './database/connection'
 import { registerAllHandlers } from './ipc'
 import { WindowManager } from './windows/WindowManager'
+import { TrayManager } from './windows/TrayManager'
 import { TerminalService } from './services/TerminalService'
 import { GitService } from './services/GitService'
 import { GoogleOAuth } from './services/GoogleOAuth'
@@ -18,6 +19,7 @@ process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL
 // Initialize database, window manager, terminal service, and git service
 const db = getDatabase()
 const windowManager = WindowManager.getInstance()
+const trayManager = new TrayManager(windowManager)
 const terminalService = new TerminalService()
 const gitService = new GitService()
 
@@ -34,6 +36,8 @@ if (googleClientId && googleClientSecret) {
 // Register all IPC handlers (including window, terminal, and git management)
 registerAllHandlers(db, windowManager, terminalService, gitService, undefined, gmailService)
 
+let isQuitting = false
+
 app.whenReady().then(() => {
   // Set dock icon on macOS
   if (process.platform === 'darwin') {
@@ -46,11 +50,22 @@ app.whenReady().then(() => {
     }
   }
 
-  windowManager.createMainWindow()
+  // Create system tray
+  trayManager.create()
+
+  const mainWin = windowManager.createMainWindow()
+
+  // Minimize to tray instead of closing on Windows/Linux
+  mainWin.on('close', (e) => {
+    if (!isQuitting && process.platform !== 'darwin') {
+      e.preventDefault()
+      mainWin.hide()
+    }
+  })
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  // No-op: app stays alive in tray
 })
 
 app.on('activate', () => {
@@ -68,6 +83,8 @@ app.on('activate', () => {
 })
 
 app.on('before-quit', () => {
+  isQuitting = true
+  trayManager.destroy()
   terminalService.killAll()
   closeDatabase()
 })

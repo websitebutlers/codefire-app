@@ -61,7 +61,7 @@ export type GitHubChannel =
   | 'github:listIssues'
   | 'github:listCommits'
 
-export type FileChannel = 'files:list' | 'files:read' | 'files:write'
+export type FileChannel = 'files:list' | 'files:read' | 'files:write' | 'dialog:selectFolder'
 
 export type MemoryChannel =
   | 'memory:getDir'
