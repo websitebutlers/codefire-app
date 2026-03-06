@@ -7,7 +7,7 @@ export const migrations: Migration[] = [
     name: 'v1_createTables',
     up: (db) => {
       db.exec(`
-        CREATE TABLE projects (
+        CREATE TABLE IF NOT EXISTS projects (
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL,
           path TEXT NOT NULL UNIQUE,
@@ -16,7 +16,7 @@ export const migrations: Migration[] = [
           createdAt DATETIME NOT NULL
         );
 
-        CREATE TABLE sessions (
+        CREATE TABLE IF NOT EXISTS sessions (
           id TEXT PRIMARY KEY,
           projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
           slug TEXT,
@@ -30,7 +30,7 @@ export const migrations: Migration[] = [
           filesChanged TEXT
         );
 
-        CREATE TABLE codebaseSnapshots (
+        CREATE TABLE IF NOT EXISTS codebaseSnapshots (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
           capturedAt DATETIME NOT NULL,
@@ -39,7 +39,7 @@ export const migrations: Migration[] = [
           keySymbols TEXT
         );
 
-        CREATE TABLE notes (
+        CREATE TABLE IF NOT EXISTS notes (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
           title TEXT NOT NULL,
@@ -50,7 +50,7 @@ export const migrations: Migration[] = [
           updatedAt DATETIME NOT NULL
         );
 
-        CREATE TABLE patterns (
+        CREATE TABLE IF NOT EXISTS patterns (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
           category TEXT NOT NULL,
@@ -61,7 +61,7 @@ export const migrations: Migration[] = [
           createdAt DATETIME NOT NULL
         );
 
-        CREATE TABLE taskItems (
+        CREATE TABLE IF NOT EXISTS taskItems (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
           title TEXT NOT NULL,
