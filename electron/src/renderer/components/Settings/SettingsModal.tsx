@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Check, Settings, Terminal, Cpu, Mail, Globe, Newspaper } from 'lucide-react'
+import { X, Check, Settings, Terminal, Cpu, Mail, Globe, Newspaper, Users } from 'lucide-react'
 import type { AppConfig } from '@shared/models'
 import { api } from '../../lib/api'
 import SettingsTabGeneral from './SettingsTabGeneral'
@@ -8,6 +8,7 @@ import SettingsTabEngine from './SettingsTabEngine'
 import SettingsTabGmail from './SettingsTabGmail'
 import SettingsTabBrowser from './SettingsTabBrowser'
 import SettingsTabBriefing from './SettingsTabBriefing'
+import SettingsTabTeam from './SettingsTabTeam'
 
 interface SettingsModalProps {
   open: boolean
@@ -16,6 +17,7 @@ interface SettingsModalProps {
 
 const TABS = [
   { id: 'general', label: 'General', icon: Settings },
+  { id: 'team', label: 'Team', icon: Users },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'engine', label: 'Engine', icon: Cpu },
   { id: 'gmail', label: 'Gmail', icon: Mail },
@@ -55,6 +57,8 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     switch (activeTab) {
       case 'general':
         return <SettingsTabGeneral {...props} />
+      case 'team':
+        return <SettingsTabTeam {...props} />
       case 'terminal':
         return <SettingsTabTerminal {...props} />
       case 'engine':

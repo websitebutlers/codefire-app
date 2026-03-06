@@ -17,6 +17,12 @@ import type {
   ChatConversation,
   ChatMessage,
 } from '@shared/models'
+import type {
+  PremiumStatus,
+  Team,
+  TeamMember,
+  TeamInvite,
+} from '@shared/premium-models'
 
 const invoke = window.api.invoke
 
@@ -457,6 +463,30 @@ export const api = {
     get: () => invoke('settings:get') as Promise<AppConfig>,
     set: (config: Partial<AppConfig>) =>
       invoke('settings:set', config) as Promise<{ success: boolean }>,
+  },
+
+  premium: {
+    getStatus: () => invoke('premium:getStatus') as Promise<PremiumStatus>,
+    signUp: (email: string, password: string, displayName: string) =>
+      invoke('premium:signUp', email, password, displayName) as Promise<PremiumStatus>,
+    signIn: (email: string, password: string) =>
+      invoke('premium:signIn', email, password) as Promise<PremiumStatus>,
+    signOut: () => invoke('premium:signOut') as Promise<void>,
+    createTeam: (name: string, slug: string) =>
+      invoke('premium:createTeam', name, slug) as Promise<Team>,
+    getTeam: () => invoke('premium:getTeam') as Promise<Team | null>,
+    listMembers: (teamId: string) =>
+      invoke('premium:listMembers', teamId) as Promise<TeamMember[]>,
+    inviteMember: (teamId: string, email: string, role: 'admin' | 'member') =>
+      invoke('premium:inviteMember', teamId, email, role) as Promise<TeamInvite>,
+    removeMember: (teamId: string, userId: string) =>
+      invoke('premium:removeMember', teamId, userId) as Promise<void>,
+    acceptInvite: (token: string) =>
+      invoke('premium:acceptInvite', token) as Promise<void>,
+    syncProject: (teamId: string, projectId: string, name: string, repoUrl?: string) =>
+      invoke('premium:syncProject', teamId, projectId, name, repoUrl) as Promise<void>,
+    unsyncProject: (projectId: string) =>
+      invoke('premium:unsyncProject', projectId) as Promise<void>,
   },
 
   github: {
