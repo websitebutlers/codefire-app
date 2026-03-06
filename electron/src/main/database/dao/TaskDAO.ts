@@ -8,28 +8,43 @@ export class TaskDAO {
     if (status) {
       return this.db
         .prepare(
-          'SELECT * FROM taskItems WHERE projectId = ? AND status = ? ORDER BY priority DESC, createdAt DESC'
+          'SELECT * FROM taskItems WHERE projectId = ? AND status = ? ORDER BY createdAt DESC'
         )
         .all(projectId, status) as TaskItem[]
     }
     return this.db
       .prepare(
-        'SELECT * FROM taskItems WHERE projectId = ? ORDER BY priority DESC, createdAt DESC'
+        'SELECT * FROM taskItems WHERE projectId = ? ORDER BY createdAt DESC'
       )
       .all(projectId) as TaskItem[]
+  }
+
+  listAll(status?: string): TaskItem[] {
+    if (status) {
+      return this.db
+        .prepare(
+          'SELECT * FROM taskItems WHERE status = ? ORDER BY createdAt DESC'
+        )
+        .all(status) as TaskItem[]
+    }
+    return this.db
+      .prepare(
+        'SELECT * FROM taskItems ORDER BY createdAt DESC'
+      )
+      .all() as TaskItem[]
   }
 
   listGlobal(status?: string): TaskItem[] {
     if (status) {
       return this.db
         .prepare(
-          'SELECT * FROM taskItems WHERE isGlobal = 1 AND status = ? ORDER BY priority DESC, createdAt DESC'
+          'SELECT * FROM taskItems WHERE status = ? ORDER BY createdAt DESC'
         )
         .all(status) as TaskItem[]
     }
     return this.db
       .prepare(
-        'SELECT * FROM taskItems WHERE isGlobal = 1 ORDER BY priority DESC, createdAt DESC'
+        'SELECT * FROM taskItems ORDER BY createdAt DESC'
       )
       .all() as TaskItem[]
   }
@@ -76,6 +91,7 @@ export class TaskDAO {
       status?: string
       priority?: number
       labels?: string[]
+      attachments?: string[]
     }
   ): TaskItem | undefined {
     const existing = this.getById(id)
@@ -91,7 +107,7 @@ export class TaskDAO {
     this.db
       .prepare(
         `UPDATE taskItems
-         SET title = ?, description = ?, status = ?, priority = ?, labels = ?, completedAt = ?
+         SET title = ?, description = ?, status = ?, priority = ?, labels = ?, attachments = ?, completedAt = ?
          WHERE id = ?`
       )
       .run(
@@ -100,10 +116,27 @@ export class TaskDAO {
         data.status ?? existing.status,
         data.priority ?? existing.priority,
         data.labels ? JSON.stringify(data.labels) : existing.labels,
+        data.attachments ? JSON.stringify(data.attachments) : existing.attachments,
         completedAt,
         id
       )
     return this.getById(id)
+  }
+
+  addAttachment(id: number, filePath: string): TaskItem | undefined {
+    const existing = this.getById(id)
+    if (!existing) return undefined
+    const current: string[] = existing.attachments ? JSON.parse(existing.attachments) : []
+    current.push(filePath)
+    return this.update(id, { attachments: current })
+  }
+
+  removeAttachment(id: number, filePath: string): TaskItem | undefined {
+    const existing = this.getById(id)
+    if (!existing) return undefined
+    const current: string[] = existing.attachments ? JSON.parse(existing.attachments) : []
+    const filtered = current.filter((p) => p !== filePath)
+    return this.update(id, { attachments: filtered })
   }
 
   delete(id: number): boolean {

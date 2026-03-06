@@ -28,7 +28,7 @@ export default function FilesView({ projectPath }: FilesViewProps) {
 
       {/* Code viewer panel (70%) */}
       <div className="flex-1 min-w-0">
-        <CodeViewer filePath={selectedFile} />
+        <CodeViewer filePath={selectedFile} projectPath={projectPath} />
       </div>
     </div>
   )

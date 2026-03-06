@@ -16,12 +16,14 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   // Terminal
   terminalFontSize: 13,
   scrollbackLines: 10000,
+  defaultTerminalPath: '',
 
   // Engine
   openRouterKey: '',
   contextSearchEnabled: true,
   embeddingModel: 'openai/text-embedding-3-small',
   chatModel: 'google/gemini-3.1-pro-preview',
+  chatMode: 'context' as const,
   autoSnapshotSessions: true,
   autoUpdateCodebaseTree: true,
   mcpServerAutoStart: true,

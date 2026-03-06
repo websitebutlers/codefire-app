@@ -68,6 +68,8 @@ export function useSessions(projectId: string) {
     try {
       setLoading(true)
       setError(null)
+      // Import sessions from .jsonl files before listing
+      await window.api.invoke('discovery:importSessions', projectId)
       const data = await api.sessions.list(projectId)
       setSessions(data)
     } catch (err) {

@@ -171,6 +171,57 @@ export function Select({
   )
 }
 
+/* ─── Slider ───────────────────────────────────────────────────────────────── */
+
+export function Slider({
+  label,
+  hint,
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  suffix,
+}: {
+  label: string
+  hint?: string
+  value: number
+  onChange: (v: number) => void
+  min: number
+  max: number
+  step?: number
+  suffix?: string
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <label className="text-xs text-neutral-500">{label}</label>
+        <span className="text-xs text-neutral-300 font-mono">
+          {value}{suffix ?? ''}
+        </span>
+      </div>
+      {hint && <p className="text-[10px] text-neutral-600">{hint}</p>}
+      <input
+        type="range"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        min={min}
+        max={max}
+        step={step ?? 1}
+        className="w-full h-1.5 bg-neutral-700 rounded-full appearance-none cursor-pointer
+                   [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5
+                   [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full
+                   [&::-webkit-slider-thumb]:bg-codefire-orange [&::-webkit-slider-thumb]:cursor-pointer
+                   [&::-webkit-slider-thumb]:hover:bg-codefire-orange-hover"
+      />
+      <div className="flex justify-between text-[9px] text-neutral-600">
+        <span>{min}{suffix ?? ''}</span>
+        <span>{max}{suffix ?? ''}</span>
+      </div>
+    </div>
+  )
+}
+
 /* ─── String List ──────────────────────────────────────────────────────────── */
 
 export function StringList({

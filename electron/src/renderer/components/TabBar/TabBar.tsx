@@ -11,6 +11,7 @@ import {
   Clock,
   Info,
   Mic,
+  BarChart3,
 } from 'lucide-react'
 import TabButton from './TabButton'
 
@@ -32,6 +33,7 @@ const tabs = [
   { id: 'Sessions', icon: Clock },
   { id: 'Details', icon: Info },
   { id: 'Recordings', icon: Mic },
+  { id: 'Visualizer', icon: BarChart3 },
 ] as const
 
 export default function TabBar({ activeTab, onTabChange }: TabBarProps) {

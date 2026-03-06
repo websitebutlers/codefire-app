@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react'
-import { Home, Settings, FolderOpen, Plus } from 'lucide-react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { Home, Settings, FolderOpen, Plus, X, Check } from 'lucide-react'
 import type { Project, Client } from '@shared/models'
 import { api } from '@renderer/lib/api'
 import SidebarItem from './SidebarItem'
@@ -7,14 +7,24 @@ import ClientGroup from './ClientGroup'
 import ProjectItem from './ProjectItem'
 import SettingsModal from '@renderer/components/Settings/SettingsModal'
 
+interface SidebarProps {
+  selectedProjectId?: string | null
+  onProjectSelect?: (projectId: string) => void
+  onHomeClick?: () => void
+}
+
 type NavView = 'planner' | 'sessions'
 
-export default function Sidebar() {
+export default function Sidebar({ selectedProjectId, onProjectSelect, onHomeClick }: SidebarProps = {}) {
   const [activeNav, setActiveNav] = useState<NavView>('planner')
   const [projects, setProjects] = useState<Project[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
+  const [showAddGroup, setShowAddGroup] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const [newGroupColor, setNewGroupColor] = useState('#F97316')
+  const addGroupInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     try {
@@ -52,8 +62,9 @@ export default function Sidebar() {
     }
   }
 
-  const handleProjectClick = (_projectId: string) => {
-    // Window opening is handled inside ProjectItem
+  const handleProjectClick = (projectId: string) => {
+    api.windows.openProject(projectId)
+    onProjectSelect?.(projectId)
   }
 
   async function handleOpenFolder() {
@@ -73,10 +84,18 @@ export default function Sidebar() {
     await load()
   }
 
-  async function handleAddGroup() {
-    const name = window.prompt('Client / group name:')
-    if (!name?.trim()) return
-    await api.clients.create({ name: name.trim() })
+  function handleAddGroup() {
+    setShowAddGroup(true)
+    setNewGroupName('')
+    setNewGroupColor('#F97316')
+    setTimeout(() => addGroupInputRef.current?.focus(), 50)
+  }
+
+  async function handleAddGroupSubmit() {
+    if (!newGroupName.trim()) return
+    await api.clients.create({ name: newGroupName.trim(), color: newGroupColor })
+    setShowAddGroup(false)
+    setNewGroupName('')
     load()
   }
 
@@ -102,8 +121,8 @@ export default function Sidebar() {
         <SidebarItem
           label="Planner"
           icon={<Home size={14} />}
-          isActive={activeNav === 'planner'}
-          onClick={() => setActiveNav('planner')}
+          isActive={activeNav === 'planner' && !selectedProjectId}
+          onClick={() => { setActiveNav('planner'); onHomeClick?.() }}
         />
       </div>
 
@@ -133,6 +152,9 @@ export default function Sidebar() {
                   client={client}
                   projects={clientProjects}
                   onProjectClick={handleProjectClick}
+                  selectedProjectId={selectedProjectId}
+                  allClients={clients}
+                  onRefresh={load}
                 />
               )
             })}
@@ -150,6 +172,9 @@ export default function Sidebar() {
                     key={project.id}
                     project={project}
                     onClick={() => handleProjectClick(project.id)}
+                    isSelected={selectedProjectId === project.id}
+                    clients={clients}
+                    onRefresh={load}
                   />
                 ))}
               </>
@@ -167,6 +192,52 @@ export default function Sidebar() {
           </>
         )}
       </div>
+
+      {/* Add Group inline form */}
+      {showAddGroup && (
+        <div className="px-3 py-2 border-t border-neutral-800/60 space-y-2">
+          <div className="flex items-center gap-1.5">
+            <input
+              ref={addGroupInputRef}
+              type="text"
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleAddGroupSubmit()
+                if (e.key === 'Escape') setShowAddGroup(false)
+              }}
+              placeholder="Group name..."
+              className="flex-1 bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-codefire-orange"
+            />
+            <button
+              onClick={handleAddGroupSubmit}
+              disabled={!newGroupName.trim()}
+              className="p-1 rounded text-success hover:bg-success/10 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Create"
+            >
+              <Check size={14} />
+            </button>
+            <button
+              onClick={() => setShowAddGroup(false)}
+              className="p-1 rounded text-neutral-500 hover:text-neutral-300 hover:bg-white/[0.04]"
+              title="Cancel"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {['#F97316', '#3B82F6', '#10B981', '#A855F7', '#EF4444', '#F59E0B'].map((color) => (
+              <button
+                key={color}
+                onClick={() => setNewGroupColor(color)}
+                className={`w-5 h-5 rounded-full transition-all ${newGroupColor === color ? 'ring-2 ring-offset-1 ring-offset-neutral-950 ring-white scale-110' : 'hover:scale-110'}`}
+                style={{ backgroundColor: color }}
+                title={color}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Bottom toolbar */}
       <div className="flex items-center gap-1 px-2 py-2 border-t border-neutral-800/60">

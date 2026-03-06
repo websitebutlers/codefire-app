@@ -1,7 +1,8 @@
 {
   "mcpServers": {
     "codefire": {
-      "command": "${HOME}/Library/Application Support/CodeFire/bin/CodeFireMCP"
+      "command": "node",
+      "args": ["electron/mcp-server/server.js"]
     }
   }
 }

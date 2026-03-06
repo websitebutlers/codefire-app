@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FolderKanban, Circle } from 'lucide-react'
+import { FolderKanban, Circle, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import type { Project, TaskItem, Client } from '@shared/models'
 import { api } from '@renderer/lib/api'
+
+type ProjectSortField = 'tasks' | 'name'
+type ProjectSortDir = 'asc' | 'desc'
 
 interface ProjectTaskCount {
   project: Project
@@ -13,6 +16,8 @@ interface ProjectTaskCount {
 export default function ProjectTaskSummary() {
   const [summaries, setSummaries] = useState<ProjectTaskCount[]>([])
   const [loading, setLoading] = useState(true)
+  const [sortField, setSortField] = useState<ProjectSortField>('tasks')
+  const [sortDir, setSortDir] = useState<ProjectSortDir>('desc')
 
   const fetchSummaries = useCallback(async () => {
     try {
@@ -42,16 +47,8 @@ export default function ProjectTaskSummary() {
         })
       )
 
-      // Only show projects with active tasks, sorted by total desc
-      const active = counts
-        .filter((c) => c.todoCount + c.inProgressCount > 0)
-        .sort(
-          (a, b) =>
-            b.todoCount +
-            b.inProgressCount -
-            (a.todoCount + a.inProgressCount)
-        )
-
+      // Only show projects with active tasks
+      const active = counts.filter((c) => c.todoCount + c.inProgressCount > 0)
       setSummaries(active)
     } catch (err) {
       console.error('Failed to fetch project task summaries:', err)
@@ -71,6 +68,26 @@ export default function ProjectTaskSummary() {
     0
   )
 
+  const sortedSummaries = [...summaries].sort((a, b) => {
+    const dir = sortDir === 'desc' ? -1 : 1
+    if (sortField === 'name') {
+      return a.project.name.localeCompare(b.project.name) * dir
+    }
+    // tasks: sort by total active count
+    const aTotal = a.todoCount + a.inProgressCount
+    const bTotal = b.todoCount + b.inProgressCount
+    return (aTotal - bTotal) * dir
+  })
+
+  const handleSortClick = (field: ProjectSortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
+    } else {
+      setSortField(field)
+      setSortDir('desc')
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -80,6 +97,26 @@ export default function ProjectTaskSummary() {
           Active Tasks by Project
         </span>
         <div className="flex-1" />
+        <div className="flex items-center gap-1">
+          {(['tasks', 'name'] as const).map((field) => {
+            const isActive = sortField === field
+            const Icon = isActive ? (sortDir === 'desc' ? ArrowDown : ArrowUp) : ArrowUpDown
+            return (
+              <button
+                key={field}
+                onClick={() => handleSortClick(field)}
+                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] transition-colors ${
+                  isActive
+                    ? 'bg-neutral-700 text-neutral-200'
+                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
+                }`}
+              >
+                {field === 'tasks' ? 'Tasks' : 'Name'}
+                {isActive && <Icon size={9} />}
+              </button>
+            )
+          })}
+        </div>
         {totalActive > 0 && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">
             {totalActive}
@@ -93,7 +130,7 @@ export default function ProjectTaskSummary() {
           <div className="flex items-center justify-center h-full">
             <p className="text-xs text-neutral-600">Loading...</p>
           </div>
-        ) : summaries.length === 0 ? (
+        ) : sortedSummaries.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-neutral-600">
             <FolderKanban size={24} className="mb-2 opacity-40" />
             <p className="text-xs">All clear</p>
@@ -103,7 +140,7 @@ export default function ProjectTaskSummary() {
           </div>
         ) : (
           <div className="p-2 space-y-0.5">
-            {summaries.map((summary) => (
+            {sortedSummaries.map((summary) => (
               <button
                 key={summary.project.id}
                 onClick={() =>

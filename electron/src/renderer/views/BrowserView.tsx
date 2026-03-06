@@ -1,7 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { Globe } from 'lucide-react'
 import { useBrowserTabs } from '@renderer/hooks/useBrowserTabs'
 import BrowserTabStrip from '@renderer/components/Browser/BrowserTabStrip'
 import BrowserToolbar from '@renderer/components/Browser/BrowserToolbar'
+import CaptureIssueSheet from '@renderer/components/Browser/CaptureIssueSheet'
+import DevToolsPanel from '@renderer/components/Browser/DevToolsPanel'
 
 interface BrowserViewProps {
   projectId: string
@@ -13,7 +16,7 @@ interface ConsoleEntry {
   timestamp: number
 }
 
-export default function BrowserView({ projectId: _projectId }: BrowserViewProps) {
+export default function BrowserView({ projectId }: BrowserViewProps) {
   const {
     tabs,
     activeTab,
@@ -23,7 +26,7 @@ export default function BrowserView({ projectId: _projectId }: BrowserViewProps)
     closeTab,
     updateTab,
     navigateTab,
-  } = useBrowserTabs()
+  } = useBrowserTabs('about:blank')
 
   const webviewContainerRef = useRef<HTMLDivElement>(null)
   const webviewRefs = useRef<Map<string, HTMLElement>>(new Map())
@@ -31,66 +34,87 @@ export default function BrowserView({ projectId: _projectId }: BrowserViewProps)
   const [canGoForward, setCanGoForward] = useState(false)
   const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([])
   const [showConsole, setShowConsole] = useState(false)
+  const [showCaptureIssue, setShowCaptureIssue] = useState(false)
+  const [captureScreenshot, setCaptureScreenshot] = useState<string | null>(null)
+
+  // Resize webviews to match container using explicit pixel dimensions
+  useEffect(() => {
+    const container = webviewContainerRef.current
+    if (!container) return
+
+    function syncSize() {
+      const w = container!.clientWidth
+      const h = container!.clientHeight
+      for (const [, wv] of webviewRefs.current.entries()) {
+        const el = wv as HTMLElement
+        el.setAttribute('style', `display:inline-flex;width:${w}px;height:${h}px;border:none;`)
+      }
+    }
+
+    const ro = new ResizeObserver(syncSize)
+    ro.observe(container)
+    return () => ro.disconnect()
+  }, [])
 
   // Create/remove webviews when tabs change
   useEffect(() => {
     const container = webviewContainerRef.current
     if (!container) return
 
-    // Add webviews for new tabs
     for (const tab of tabs) {
-      if (!webviewRefs.current.has(tab.id)) {
-        const wv = document.createElement('webview') as any
-        wv.setAttribute('src', tab.url)
-        wv.setAttribute('allowpopups', 'true')
-        wv.setAttribute('partition', 'persist:browser')
-        wv.style.width = '100%'
-        wv.style.height = '100%'
-        wv.style.border = 'none'
-        wv.style.display = tab.id === activeTabId ? 'flex' : 'none'
+      // Don't create a webview for about:blank tabs (show placeholder instead)
+      if (tab.url === 'about:blank') continue
+      if (webviewRefs.current.has(tab.id)) continue
 
-        wv.addEventListener('page-title-updated', (e: any) => {
-          updateTab(tab.id, { title: e.title })
-        })
-        wv.addEventListener('did-navigate', (e: any) => {
-          updateTab(tab.id, { url: e.url })
-        })
-        wv.addEventListener('did-navigate-in-page', (e: any) => {
-          if (e.isMainFrame) updateTab(tab.id, { url: e.url })
-        })
-        wv.addEventListener('did-start-loading', () => {
-          updateTab(tab.id, { isLoading: true })
-        })
-        wv.addEventListener('did-stop-loading', () => {
-          updateTab(tab.id, { isLoading: false })
-          if (tab.id === activeTabId) {
-            setCanGoBack(wv.canGoBack())
-            setCanGoForward(wv.canGoForward())
-          }
-        })
-        wv.addEventListener('did-fail-load', (e: any) => {
-          if (e.errorCode !== -3) {
-            // -3 is ERR_ABORTED (navigation cancelled), ignore it
-            updateTab(tab.id, {
-              isLoading: false,
-              title: `Error: ${e.errorDescription || 'Failed to load'}`,
-            })
-          }
-        })
-        wv.addEventListener('console-message', (e: any) => {
-          setConsoleEntries((prev) => [
-            ...prev.slice(-499),
-            {
-              level: ['verbose', 'info', 'warning', 'error'][e.level] ?? 'info',
-              message: e.message,
-              timestamp: Date.now(),
-            },
-          ])
-        })
+      const wv = document.createElement('webview') as any
+      wv.setAttribute('src', tab.url)
+      wv.setAttribute('allowpopups', 'true')
+      wv.setAttribute('partition', 'persist:browser')
+      const w = container.clientWidth
+      const h = container.clientHeight
+      const vis = tab.id === activeTabId ? 'inline-flex' : 'none'
+      wv.setAttribute('style', `display:${vis};width:${w}px;height:${h}px;border:none;`)
 
-        container.appendChild(wv)
-        webviewRefs.current.set(tab.id, wv)
-      }
+      wv.addEventListener('page-title-updated', (e: any) => {
+        updateTab(tab.id, { title: e.title })
+      })
+      wv.addEventListener('did-navigate', (e: any) => {
+        updateTab(tab.id, { url: e.url })
+      })
+      wv.addEventListener('did-navigate-in-page', (e: any) => {
+        if (e.isMainFrame) updateTab(tab.id, { url: e.url })
+      })
+      wv.addEventListener('did-start-loading', () => {
+        updateTab(tab.id, { isLoading: true })
+      })
+      wv.addEventListener('did-stop-loading', () => {
+        updateTab(tab.id, { isLoading: false })
+        if (tab.id === activeTabId) {
+          setCanGoBack(wv.canGoBack())
+          setCanGoForward(wv.canGoForward())
+        }
+      })
+      wv.addEventListener('did-fail-load', (e: any) => {
+        if (e.errorCode !== -3) {
+          updateTab(tab.id, {
+            isLoading: false,
+            title: `Error: ${e.errorDescription || 'Failed to load'}`,
+          })
+        }
+      })
+      wv.addEventListener('console-message', (e: any) => {
+        setConsoleEntries((prev) => [
+          ...prev.slice(-499),
+          {
+            level: ['verbose', 'info', 'warning', 'error'][e.level] ?? 'info',
+            message: e.message,
+            timestamp: Date.now(),
+          },
+        ])
+      })
+
+      container.appendChild(wv)
+      webviewRefs.current.set(tab.id, wv)
     }
 
     // Remove webviews for closed tabs
@@ -105,8 +129,16 @@ export default function BrowserView({ projectId: _projectId }: BrowserViewProps)
 
   // Show/hide webviews based on active tab
   useEffect(() => {
+    const container = webviewContainerRef.current
     for (const [id, wv] of webviewRefs.current.entries()) {
-      ;(wv as HTMLElement).style.display = id === activeTabId ? 'flex' : 'none'
+      const el = wv as HTMLElement
+      const w = container?.clientWidth ?? 0
+      const h = container?.clientHeight ?? 0
+      if (id === activeTabId) {
+        el.setAttribute('style', `display:inline-flex;width:${w}px;height:${h}px;border:none;`)
+      } else {
+        el.setAttribute('style', `display:none;`)
+      }
     }
     const activeWv = webviewRefs.current.get(activeTabId) as any
     if (activeWv && activeWv.canGoBack) {
@@ -120,9 +152,24 @@ export default function BrowserView({ projectId: _projectId }: BrowserViewProps)
   }, [activeTabId])
 
   function handleNavigate(url: string) {
-    navigateTab(activeTabId, url)
+    // Normalize URL
+    let normalized = url.trim()
+    if (!normalized.startsWith('http://') && !normalized.startsWith('https://') && !normalized.startsWith('about:')) {
+      if (normalized.includes('.') && !normalized.includes(' ')) {
+        normalized = `https://${normalized}`
+      } else {
+        normalized = `https://www.google.com/search?q=${encodeURIComponent(normalized)}`
+      }
+    }
+
+    navigateTab(activeTabId, normalized)
+
     const wv = getActiveWebview()
-    if (wv) wv.loadURL(url)
+    if (wv) {
+      wv.loadURL(normalized)
+    }
+    // If no webview exists yet (was about:blank), the useEffect will create one
+    // since we just updated the tab URL away from about:blank
   }
 
   function handleScreenshot() {
@@ -138,8 +185,23 @@ export default function BrowserView({ projectId: _projectId }: BrowserViewProps)
     }
   }
 
+  function handleCaptureIssue() {
+    const wv = getActiveWebview()
+    if (wv && wv.capturePage) {
+      wv.capturePage().then((img: any) => {
+        setCaptureScreenshot(img.toDataURL())
+        setShowCaptureIssue(true)
+      })
+    } else {
+      setCaptureScreenshot(null)
+      setShowCaptureIssue(true)
+    }
+  }
+
+  const hasWebview = activeTab.url !== 'about:blank' && webviewRefs.current.has(activeTabId)
+
   return (
-    <div className="flex flex-col h-full">
+    <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 0%', minHeight: 0, overflow: 'hidden' }}>
       <BrowserTabStrip
         tabs={tabs}
         activeTabId={activeTabId}
@@ -149,66 +211,62 @@ export default function BrowserView({ projectId: _projectId }: BrowserViewProps)
       />
 
       <BrowserToolbar
-        url={activeTab.url}
+        url={activeTab.url === 'about:blank' ? '' : activeTab.url}
         onNavigate={handleNavigate}
         onBack={() => getActiveWebview()?.goBack()}
         onForward={() => getActiveWebview()?.goForward()}
         onReload={() => getActiveWebview()?.reload()}
         onScreenshot={handleScreenshot}
+        onCaptureIssue={handleCaptureIssue}
         canGoBack={canGoBack}
         canGoForward={canGoForward}
       />
 
       {/* Webview container */}
-      <div ref={webviewContainerRef} className="flex-1 relative bg-white" />
+      <div
+        ref={webviewContainerRef}
+        className="flex-1 min-h-0 overflow-hidden relative"
+      >
+        {/* Placeholder shown when no page is loaded */}
+        {!hasWebview && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-900">
+            <Globe size={32} className="text-neutral-700 mb-3" />
+            <p className="text-sm text-neutral-600">Enter a URL to get started</p>
+          </div>
+        )}
+      </div>
 
-      {/* Console panel */}
+      {/* DevTools panel (Console, Network, Elements) */}
       {showConsole && (
-        <div className="h-48 border-t border-neutral-800 bg-neutral-900 flex flex-col">
-          <div className="flex items-center justify-between px-3 py-1 border-b border-neutral-800">
-            <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
-              Console
-            </span>
-            <button
-              type="button"
-              onClick={() => setConsoleEntries([])}
-              className="text-[10px] text-neutral-600 hover:text-neutral-400"
-            >
-              Clear
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-2 font-mono text-[11px]">
-            {consoleEntries.map((entry, i) => (
-              <div
-                key={i}
-                className={`py-0.5 ${
-                  entry.level === 'error'
-                    ? 'text-red-400'
-                    : entry.level === 'warning'
-                      ? 'text-yellow-400'
-                      : 'text-neutral-400'
-                }`}
-              >
-                <span className="text-neutral-600 mr-2">
-                  {new Date(entry.timestamp).toLocaleTimeString()}
-                </span>
-                {entry.message}
-              </div>
-            ))}
-          </div>
-        </div>
+        <DevToolsPanel
+          consoleEntries={consoleEntries}
+          onClearConsole={() => setConsoleEntries([])}
+          getActiveWebview={getActiveWebview}
+        />
       )}
 
       {/* Console toggle footer */}
-      <div className="flex items-center px-3 py-1 border-t border-neutral-800 bg-neutral-900">
+      <div className="flex items-center px-3 py-1 border-t border-neutral-800 bg-neutral-900 shrink-0">
         <button
           type="button"
           onClick={() => setShowConsole(!showConsole)}
           className="text-[10px] text-neutral-600 hover:text-codefire-orange transition-colors"
         >
-          {showConsole ? 'Hide Console' : 'Show Console'}
+          {showConsole ? 'Hide DevTools' : 'Show DevTools'}
         </button>
       </div>
+
+      {/* Capture Issue Sheet */}
+      {showCaptureIssue && (
+        <CaptureIssueSheet
+          projectId={projectId}
+          screenshotDataUrl={captureScreenshot}
+          pageUrl={activeTab.url}
+          pageTitle={activeTab.title || activeTab.url}
+          consoleEntries={consoleEntries}
+          onClose={() => setShowCaptureIssue(false)}
+        />
+      )}
     </div>
   )
 }

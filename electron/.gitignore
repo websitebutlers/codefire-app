@@ -4,3 +4,5 @@ dist-electron/
 release/
 *.tsbuildinfo
 .vite/
+mcp-server/node_modules/
+mcp-server/server.js

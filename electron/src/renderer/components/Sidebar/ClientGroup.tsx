@@ -7,12 +7,18 @@ interface ClientGroupProps {
   client: Client
   projects: Project[]
   onProjectClick: (projectId: string) => void
+  selectedProjectId?: string | null
+  allClients?: Client[]
+  onRefresh?: () => void
 }
 
 export default function ClientGroup({
   client,
   projects,
   onProjectClick,
+  selectedProjectId,
+  allClients,
+  onRefresh,
 }: ClientGroupProps) {
   const [expanded, setExpanded] = useState(false)
 
@@ -48,6 +54,9 @@ export default function ClientGroup({
               project={project}
               onClick={() => onProjectClick(project.id)}
               indent
+              isSelected={selectedProjectId === project.id}
+              clients={allClients}
+              onRefresh={onRefresh}
             />
           ))}
         </div>

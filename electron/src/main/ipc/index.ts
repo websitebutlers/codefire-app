@@ -18,6 +18,10 @@ import { registerServiceHandlers } from './service-handlers'
 import { registerImageHandlers } from './image-handlers'
 import { registerRecordingHandlers } from './recording-handlers'
 import { registerSettingsHandlers } from './settings-handlers'
+import { registerMCPHandlers } from './mcp-handlers'
+import { registerBriefingHandlers } from './briefing-handlers'
+import { registerChatHandlers } from './chat-handlers'
+import { registerUpdateHandlers } from './update-handlers'
 import type { WindowManager } from '../windows/WindowManager'
 import type { TerminalService } from '../services/TerminalService'
 import type { GitService } from '../services/GitService'
@@ -25,6 +29,7 @@ import type { GitHubService } from '../services/GitHubService'
 import type { GmailService } from '../services/GmailService'
 import type { SearchEngine } from '../services/SearchEngine'
 import type { ContextEngine } from '../services/ContextEngine'
+import type { MCPServerManager } from '../services/MCPServerManager'
 
 export function registerAllHandlers(
   db: Database.Database,
@@ -34,7 +39,8 @@ export function registerAllHandlers(
   githubService?: GitHubService,
   gmailService?: GmailService,
   searchEngine?: SearchEngine,
-  contextEngine?: ContextEngine
+  contextEngine?: ContextEngine,
+  mcpManager?: MCPServerManager
 ) {
   registerProjectHandlers(db)
   registerTaskHandlers(db)
@@ -67,4 +73,10 @@ export function registerAllHandlers(
   registerImageHandlers(db)
   registerRecordingHandlers(db)
   registerSettingsHandlers(db)
+  registerChatHandlers(db)
+  registerBriefingHandlers(db)
+  registerUpdateHandlers()
+  if (mcpManager) {
+    registerMCPHandlers(mcpManager)
+  }
 }

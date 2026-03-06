@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Hash,
   Clock,
@@ -6,8 +7,14 @@ import {
   FileCode,
   MessageSquare,
   Wrench,
+  Play,
+  Sparkles,
+  ListTodo,
+  Loader2,
+  Check,
 } from 'lucide-react'
 import type { Session } from '@shared/models'
+import { api } from '@renderer/lib/api'
 import {
   calculateSessionCost,
   formatCost,
@@ -20,7 +27,50 @@ interface SessionDetailProps {
   session: Session | null
 }
 
+async function getApiKey(): Promise<string | null> {
+  try {
+    const config = (await window.api.invoke('settings:get')) as { openRouterKey?: string } | undefined
+    return config?.openRouterKey || null
+  } catch {
+    return null
+  }
+}
+
+async function callAI(prompt: string, systemPrompt: string): Promise<string> {
+  const apiKey = await getApiKey()
+  if (!apiKey) throw new Error('OpenRouter API key not configured. Set it in Settings > Engine.')
+
+  const config = (await window.api.invoke('settings:get')) as { chatModel?: string } | undefined
+  const model = config?.chatModel || 'google/gemini-3.1-pro-preview'
+
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: prompt },
+      ],
+      max_tokens: 2000,
+    }),
+  })
+
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  const data = await res.json()
+  return data.choices?.[0]?.message?.content ?? ''
+}
+
 export default function SessionDetail({ session }: SessionDetailProps) {
+  const [resuming, setResuming] = useState(false)
+  const [summarizing, setSummarizing] = useState(false)
+  const [extracting, setExtracting] = useState(false)
+  const [extractResult, setExtractResult] = useState<string | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
+
   if (!session) {
     return (
       <div className="flex items-center justify-center h-full text-neutral-500 text-sm">
@@ -40,6 +90,105 @@ export default function SessionDetail({ session }: SessionDetailProps) {
       })()
     : []
 
+  async function handleResume() {
+    if (!session) return
+    setResuming(true)
+    try {
+      const config = (await window.api.invoke('settings:get')) as
+        | { preferredCLI?: string }
+        | undefined
+      const cli = config?.preferredCLI ?? 'claude'
+      const command = cli === 'claude'
+        ? `claude --resume ${session.id}`
+        : `${cli} --resume ${session.id}`
+      window.api.send('terminal:writeToActive', command + '\n')
+    } catch (err) {
+      console.error('Failed to resume session:', err)
+    } finally {
+      setTimeout(() => setResuming(false), 500)
+    }
+  }
+
+  async function handleSummarize() {
+    if (!session) return
+    setSummarizing(true)
+    setAiError(null)
+    try {
+      const sessionInfo = [
+        `Session: ${session.slug || session.id}`,
+        `Model: ${session.model || 'unknown'}`,
+        `Branch: ${session.gitBranch || 'unknown'}`,
+        `Messages: ${session.messageCount}, Tool uses: ${session.toolUseCount}`,
+        `Duration: ${formatDuration(session.startedAt, session.endedAt)}`,
+        `Cost: ${formatCost(cost)}`,
+        filesChanged.length > 0 ? `Files changed: ${filesChanged.join(', ')}` : '',
+        session.summary ? `Existing summary: ${session.summary}` : '',
+      ].filter(Boolean).join('\n')
+
+      const summary = await callAI(
+        sessionInfo,
+        'You are a coding assistant. Summarize this AI coding session in 2-3 concise sentences. Focus on what was accomplished, key changes, and outcomes. Be specific about files and features.'
+      )
+
+      await api.sessions.update(session.id, { summary })
+      // Update local state by triggering a re-read
+      session.summary = summary
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'Failed to generate summary')
+    } finally {
+      setSummarizing(false)
+    }
+  }
+
+  async function handleExtractTasks() {
+    if (!session) return
+    setExtracting(true)
+    setAiError(null)
+    setExtractResult(null)
+    try {
+      const sessionInfo = [
+        `Session: ${session.slug || session.id}`,
+        `Model: ${session.model || 'unknown'}`,
+        `Branch: ${session.gitBranch || 'unknown'}`,
+        `Messages: ${session.messageCount}, Tool uses: ${session.toolUseCount}`,
+        filesChanged.length > 0 ? `Files changed:\n${filesChanged.map(f => `  - ${f}`).join('\n')}` : '',
+        session.summary ? `Summary: ${session.summary}` : '',
+      ].filter(Boolean).join('\n')
+
+      const result = await callAI(
+        sessionInfo,
+        `You are a coding assistant. Based on this AI coding session, extract follow-up tasks that should be done next. Return ONLY a JSON array of objects with "title" and "description" fields. Example: [{"title":"Add tests for auth module","description":"The auth module was modified but no tests were added."}]. Return an empty array if no tasks are needed.`
+      )
+
+      // Parse tasks from AI response
+      const jsonMatch = result.match(/\[[\s\S]*\]/)
+      if (!jsonMatch) {
+        setExtractResult('No tasks extracted')
+        return
+      }
+
+      const tasks = JSON.parse(jsonMatch[0]) as { title: string; description?: string }[]
+      let created = 0
+      for (const task of tasks) {
+        if (task.title) {
+          await api.tasks.create({
+            projectId: session.projectId,
+            title: task.title,
+            description: task.description || '',
+            priority: 2,
+            source: 'ai-extracted',
+          })
+          created++
+        }
+      }
+      setExtractResult(`Created ${created} task${created !== 1 ? 's' : ''}`)
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'Failed to extract tasks')
+    } finally {
+      setExtracting(false)
+    }
+  }
+
   return (
     <div className="p-4 overflow-y-auto h-full">
       {/* Header */}
@@ -55,6 +204,56 @@ export default function SessionDetail({ session }: SessionDetailProps) {
           <span className="font-mono">{session.id.slice(0, 16)}</span>
         </div>
       </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-2 mb-4 flex-wrap">
+        <button
+          onClick={handleResume}
+          disabled={resuming}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-cf
+                     bg-codefire-orange/10 border border-codefire-orange/20
+                     text-codefire-orange text-xs font-medium
+                     hover:bg-codefire-orange/15 transition-colors disabled:opacity-50"
+        >
+          <Play size={12} />
+          {resuming ? 'Resuming...' : 'Resume'}
+        </button>
+        <button
+          onClick={handleSummarize}
+          disabled={summarizing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-cf
+                     bg-purple-500/10 border border-purple-500/20
+                     text-purple-400 text-xs font-medium
+                     hover:bg-purple-500/15 transition-colors disabled:opacity-50"
+        >
+          {summarizing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+          AI Summary
+        </button>
+        <button
+          onClick={handleExtractTasks}
+          disabled={extracting}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-cf
+                     bg-blue-500/10 border border-blue-500/20
+                     text-blue-400 text-xs font-medium
+                     hover:bg-blue-500/15 transition-colors disabled:opacity-50"
+        >
+          {extracting ? <Loader2 size={12} className="animate-spin" /> : <ListTodo size={12} />}
+          Extract Tasks
+        </button>
+      </div>
+
+      {/* AI error/result messages */}
+      {aiError && (
+        <div className="mb-4 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded text-xs text-red-400">
+          {aiError}
+        </div>
+      )}
+      {extractResult && (
+        <div className="mb-4 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded text-xs text-green-400 flex items-center gap-1.5">
+          <Check size={12} />
+          {extractResult}
+        </div>
+      )}
 
       {/* Metadata */}
       <div className="grid grid-cols-2 gap-3 mb-4">
