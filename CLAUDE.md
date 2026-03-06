@@ -74,6 +74,25 @@ Path aliases: `@shared` → `src/shared`, `@renderer` → `src/renderer`, `@main
 - **Native modules**: `better-sqlite3` and `node-pty` are externalized from Vite bundling and unpacked from asar. `better-sqlite3` is rebuilt against Electron's Node headers via a `postinstall` script (`electron-rebuild`). `node-pty` ships N-API prebuilds that are ABI-stable across Node/Electron versions.
 - **Multi-window**: Main window shows home/global views. Project windows open separately with `?projectId=` param.
 
+## Release Workflow
+
+When creating a GitHub release:
+
+1. **Always include a Downloads table** at the top of the release notes, before the changelog. Format:
+   ```markdown
+   ## Downloads
+
+   | Asset | Size | Platform |
+   |-------|------|----------|
+   | [filename](download-url) | size | platform description |
+   ```
+   - Link each asset name to its direct download URL
+   - Include size in MB (rounded)
+   - List all platform variants (Swift macOS, Electron macOS DMG/zip, Windows exe, Linux AppImage, Linux deb)
+
+2. **Update README download links** to point to the new version's assets
+3. **Repo:** `websitebutlers/codefire-app`
+
 ## Branch Naming
 
 - `feature/<description>`, `fix/<description>`, `chore/<description>`
