@@ -18,7 +18,8 @@
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
     "dist:linux": "npm run build && electron-builder --linux",
-    "dist:all": "npm run build && electron-builder --win --linux",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:all": "npm run build && electron-builder --win --linux --mac",
     "postinstall": "electron-rebuild --only=better-sqlite3 && node scripts/patch-vite-plugin-electron.js"
   },
   "dependencies": {
@@ -71,7 +72,7 @@
     "vitest": "^4.0.18"
   },
   "build": {
-    "appId": "com.codefire.app",
+    "appId": "com.codefire.electron",
     "productName": "CodeFire",
     "publish": null,
     "directories": {
@@ -123,6 +124,25 @@
       "createStartMenuShortcut": true,
       "shortcutName": "CodeFire",
       "allowElevation": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "arch": [
+        "x64"
+      ],
+      "icon": "resources/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "identity": null
+    },
+    "dmg": {
+      "title": "${productName}",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
     },
     "linux": {
       "target": [
