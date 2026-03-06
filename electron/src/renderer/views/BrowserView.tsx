@@ -26,7 +26,7 @@ export default function BrowserView({ projectId }: BrowserViewProps) {
     closeTab,
     updateTab,
     navigateTab,
-  } = useBrowserTabs('https://prime8engineering.com/')
+  } = useBrowserTabs('about:blank')
 
   const webviewContainerRef = useRef<HTMLDivElement>(null)
   const webviewRefs = useRef<Map<string, HTMLElement>>(new Map())

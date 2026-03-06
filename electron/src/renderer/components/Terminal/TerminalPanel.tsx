@@ -47,6 +47,7 @@ export default function TerminalPanel({ projectId, projectPath, showChat, onTogg
     tabId: string
   } | null>(null)
   const mountedRef = useRef(false)
+  const [terminalAvailable, setTerminalAvailable] = useState<boolean | null>(null)
 
   // ─── Create a new terminal tab ──────────────────────────────────────────
   const addTab = useCallback(async () => {
@@ -80,14 +81,29 @@ export default function TerminalPanel({ projectId, projectPath, showChat, onTogg
     [activeTabId]
   )
 
-  // ─── Create first tab on mount ──────────────────────────────────────────
+  // ─── Check availability and create first tab on mount ────────────────────
   useEffect(() => {
     // Guard against React Strict Mode double-mount
     if (mountedRef.current) return
     mountedRef.current = true
 
-    addTab()
+    window.api.invoke('terminal:available').then((available: unknown) => {
+      const isAvailable = available === true
+      setTerminalAvailable(isAvailable)
+      if (isAvailable) addTab()
+    }).catch(() => {
+      setTerminalAvailable(false)
+    })
 
+    // Cleanup: kill all terminals when panel unmounts
+    return () => {
+      setTabs((currentTabs) => {
+        currentTabs.forEach((tab) => {
+          window.api.invoke('terminal:kill', tab.id).catch(() => {})
+        })
+        return currentTabs
+      })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -129,6 +145,23 @@ export default function TerminalPanel({ projectId, projectPath, showChat, onTogg
     )
     return removeListener
   }, [])
+
+  if (terminalAvailable === false) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-[#171717] text-neutral-400 gap-3 px-8 text-center">
+        <span className="text-2xl">⚠</span>
+        <p className="text-sm font-medium text-neutral-300">Terminal not available</p>
+        <p className="text-xs leading-relaxed">
+          The terminal requires native build tools that weren&apos;t found during installation.
+          Install build tools for your platform and reinstall CodeFire:
+        </p>
+        <ul className="text-xs text-neutral-500 list-disc text-left space-y-1">
+          <li><strong>Windows:</strong> Install Visual Studio Build Tools with &quot;Desktop development with C++&quot;</li>
+          <li><strong>Linux:</strong> <code className="bg-neutral-800 px-1 rounded">sudo apt install build-essential python3</code></li>
+        </ul>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full bg-[#171717]">

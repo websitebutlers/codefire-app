@@ -16,12 +16,24 @@ export class TerminalService {
   private sessions = new Map<string, TerminalSession>()
 
   /**
+   * Whether the terminal backend (node-pty) is available.
+   * Returns false if native build tools were not present at install time.
+   */
+  isAvailable(): boolean {
+    return typeof pty.spawn === 'function'
+  }
+
+  /**
    * Create a new PTY session.
    *
    * @param id - Unique identifier for this terminal (e.g. `${projectId}-${tabIndex}`)
    * @param projectPath - Working directory for the shell
    */
   create(id: string, projectPath: string): void {
+    if (!this.isAvailable()) {
+      throw new Error('Terminal is not available — node-pty failed to load. Install system build tools and reinstall.')
+    }
+
     // Don't create duplicate sessions
     if (this.sessions.has(id)) {
       return

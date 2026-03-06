@@ -12,6 +12,12 @@ import { TerminalService } from '../services/TerminalService'
  * - Lifecycle (create/kill):       `terminal:create` / `terminal:kill` via handle (request-response)
  */
 export function registerTerminalHandlers(terminalService: TerminalService) {
+  // ─── Availability check ─────────────────────────────────────────────────────
+
+  ipcMain.handle('terminal:available', () => {
+    return terminalService.isAvailable()
+  })
+
   // ─── Lifecycle (request-response) ─────────────────────────────────────────
 
   ipcMain.handle(
@@ -69,13 +75,20 @@ export function registerTerminalHandlers(terminalService: TerminalService) {
     } else {
       // No terminal exists yet — create one, wire it up, then write after shell initializes
       const id = `__auto-term-${Date.now()}`
-      const cwd = process.env.HOME || process.env.USERPROFILE || '.'
+      const cwd = process.env.HOME || process.env.USERPROFILE || process.cwd()
       terminalService.create(id, cwd)
 
       const senderWindow = BrowserWindow.fromWebContents(_event.sender)
+      let shellReady = false
+
       terminalService.onData(id, (output) => {
         if (senderWindow && !senderWindow.isDestroyed()) {
           senderWindow.webContents.send('terminal:data', id, output)
+        }
+        // Write the command once the shell emits its first output (prompt ready)
+        if (!shellReady) {
+          shellReady = true
+          terminalService.write(id, data)
         }
       })
       terminalService.onExit(id, (exitCode, signal) => {
@@ -89,9 +102,6 @@ export function registerTerminalHandlers(terminalService: TerminalService) {
       if (senderWindow && !senderWindow.isDestroyed()) {
         senderWindow.webContents.send('terminal:created', id)
       }
-
-      // Wait for shell to initialize before writing the command
-      setTimeout(() => terminalService.write(id, data), 500)
     }
   })
 

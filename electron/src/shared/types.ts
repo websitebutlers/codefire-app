@@ -143,7 +143,7 @@ export type GmailChannel =
   | 'gmail:getEmailByMessageId'
 
 /** Channels that use ipcMain.handle (request-response) */
-export type TerminalHandleChannel = 'terminal:create' | 'terminal:kill'
+export type TerminalHandleChannel = 'terminal:create' | 'terminal:kill' | 'terminal:available'
 
 /** Channels that use ipcRenderer.send (fire-and-forget, renderer → main) */
 export type TerminalSendChannel = 'terminal:write' | 'terminal:writeToActive' | 'terminal:resize'

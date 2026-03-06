@@ -4,7 +4,7 @@ import { getDatabase, closeDatabase } from './database/connection'
 import { registerAllHandlers } from './ipc'
 import { WindowManager } from './windows/WindowManager'
 import { TrayManager } from './windows/TrayManager'
-import { TerminalService } from './services/TerminalService'
+import type { TerminalService as TerminalServiceType } from './services/TerminalService'
 import { GitService } from './services/GitService'
 import { GoogleOAuth } from './services/GoogleOAuth'
 import { GmailService } from './services/GmailService'
@@ -33,7 +33,14 @@ process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL
 const db = getDatabase()
 const windowManager = WindowManager.getInstance()
 const trayManager = new TrayManager(windowManager)
-const terminalService = new TerminalService()
+// Lazy-load TerminalService — node-pty may not be available if build tools are missing
+let terminalService: TerminalServiceType | undefined
+try {
+  const { TerminalService } = require('./services/TerminalService')
+  terminalService = new TerminalService()
+} catch {
+  console.warn('[Main] Terminal service unavailable — node-pty failed to load')
+}
 const gitService = new GitService()
 
 // Initialize Gmail service from config store or env vars
@@ -137,7 +144,7 @@ app.whenReady().then(() => {
       : path.join(__dirname, '../../resources/icon.png')
     const icon = nativeImage.createFromPath(iconPath)
     if (!icon.isEmpty()) {
-      app.dock.setIcon(icon)
+      app.dock?.setIcon(icon)
     }
   }
 
@@ -234,6 +241,6 @@ app.on('activate', () => {
 app.on('before-quit', () => {
   isQuitting = true
   trayManager.destroy()
-  terminalService.killAll()
+  terminalService?.killAll()
   closeDatabase()
 })
