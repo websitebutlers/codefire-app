@@ -293,7 +293,7 @@ class ContextEngine: ObservableObject {
             }.value
 
             totalFileCount = fileWork.totalFiles
-            indexedFileCount = fileWork.skippedFiles
+            indexedFileCount = fileWork.skippedFiles + fileWork.pendingFileRecords.count
             indexProgress = 0.3
 
             // 2. Batch DB write: delete stale chunks + upsert file records + insert new chunks
@@ -478,7 +478,9 @@ class ContextEngine: ObservableObject {
         let gitDir = (projectPath as NSString).appendingPathComponent(".git")
         guard FileManager.default.fileExists(atPath: gitDir) else { return 0 }
 
-        // Run git log in a detached context to avoid MainActor issues with Process
+        // Run git log in a detached context to avoid MainActor issues with Process.
+        // IMPORTANT: Read pipe data BEFORE waitUntilExit() to avoid deadlock when
+        // output exceeds the 64KB kernel pipe buffer.
         let gitLog: String? = await Task.detached {
             let process = Process()
             let pipe = Pipe()
@@ -490,12 +492,16 @@ class ContextEngine: ObservableObject {
 
             do {
                 try process.run()
-                process.waitUntilExit()
             } catch {
                 return nil
             }
 
+            // Read all output first — if we waitUntilExit() before draining,
+            // the child blocks when the 64KB pipe buffer fills, deadlocking both.
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+
+            guard process.terminationStatus == 0 else { return nil }
             return String(data: data, encoding: .utf8)
         }.value
 
