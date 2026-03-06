@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { MessageCircle, GripVertical } from 'lucide-react'
 import TerminalTab from './TerminalTab'
 
 interface TerminalPanelProps {
@@ -6,6 +7,14 @@ interface TerminalPanelProps {
   projectId: string
   /** Filesystem path for the project, used as the shell's cwd */
   projectPath: string
+  /** Whether the chat panel is currently visible */
+  showChat?: boolean
+  /** Callback to toggle the chat panel */
+  onToggleChat?: () => void
+  /** Whether the terminal panel is on the left side */
+  terminalOnLeft?: boolean
+  /** Callback to swap panel positions */
+  onSwapPanels?: () => void
 }
 
 interface TabInfo {
@@ -29,7 +38,7 @@ function createTabId(projectId: string): string {
  * - Tabs can be closed via middle-click or context menu
  * - First tab is created automatically on mount
  */
-export default function TerminalPanel({ projectId, projectPath }: TerminalPanelProps) {
+export default function TerminalPanel({ projectId, projectPath, showChat, onToggleChat, terminalOnLeft, onSwapPanels }: TerminalPanelProps) {
   const [tabs, setTabs] = useState<TabInfo[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{
@@ -110,6 +119,20 @@ export default function TerminalPanel({ projectId, projectPath }: TerminalPanelP
     <div className="flex flex-col h-full bg-[#171717]">
       {/* ─── Tab Bar ───────────────────────────────────────────────────────── */}
       <div className="flex items-center h-9 bg-[#0a0a0a] border-b border-[#262626] select-none shrink-0">
+        {/* Drag grip for swapping columns */}
+        {onSwapPanels && (
+          <div
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('application/x-codefire-panel', 'terminal')
+              e.dataTransfer.effectAllowed = 'move'
+            }}
+            className="flex items-center justify-center w-7 h-9 cursor-grab active:cursor-grabbing text-[#525252] hover:text-[#737373] transition-colors"
+            title="Drag to swap panel position"
+          >
+            <GripVertical size={14} />
+          </div>
+        )}
         <div className="flex-1 flex items-center overflow-x-auto scrollbar-none">
           {tabs.map((tab) => (
             <button
@@ -161,6 +184,25 @@ export default function TerminalPanel({ projectId, projectPath }: TerminalPanelP
         >
           <span className="text-lg leading-none">+</span>
         </button>
+
+        {/* Chat Mode toggle */}
+        {onToggleChat && (
+          <>
+            <div className="w-px h-4 bg-[#262626]" />
+            <button
+              className={`flex items-center gap-1.5 px-3 h-9 text-xs font-medium transition-colors ${
+                showChat
+                  ? 'text-[#f97316] bg-[#f97316]/10'
+                  : 'text-[#737373] hover:text-[#e5e5e5] hover:bg-[#1a1a1a]'
+              }`}
+              onClick={onToggleChat}
+              title="Toggle Chat Mode"
+            >
+              <MessageCircle size={13} />
+              <span>Chat Mode</span>
+            </button>
+          </>
+        )}
       </div>
 
       {/* ─── Terminal Content ──────────────────────────────────────────────── */}

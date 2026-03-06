@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, RotateCw, Home, Camera } from 'lucide-react'
+import { ArrowLeft, ArrowRight, RotateCw, Home, Camera, Bug } from 'lucide-react'
 import { useState, useEffect, type KeyboardEvent } from 'react'
 
 interface BrowserToolbarProps {
@@ -8,6 +8,7 @@ interface BrowserToolbarProps {
   onForward: () => void
   onReload: () => void
   onScreenshot: () => void
+  onCaptureIssue?: () => void
   canGoBack: boolean
   canGoForward: boolean
 }
@@ -19,6 +20,7 @@ export default function BrowserToolbar({
   onForward,
   onReload,
   onScreenshot,
+  onCaptureIssue,
   canGoBack,
   canGoForward,
 }: BrowserToolbarProps) {
@@ -69,6 +71,11 @@ export default function BrowserToolbar({
       <button type="button" onClick={onScreenshot} className={btnClass} title="Screenshot">
         <Camera size={14} />
       </button>
+      {onCaptureIssue && (
+        <button type="button" onClick={onCaptureIssue} className={btnClass} title="Capture Issue">
+          <Bug size={14} />
+        </button>
+      )}
     </div>
   )
 }

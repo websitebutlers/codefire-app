@@ -108,4 +108,11 @@ export class TerminalService {
   has(id: string): boolean {
     return this.sessions.has(id)
   }
+
+  /**
+   * Get all active session IDs.
+   */
+  getActiveIds(): string[] {
+    return Array.from(this.sessions.keys())
+  }
 }

@@ -12,10 +12,13 @@ export type ProjectChannel =
 export type TaskChannel =
   | 'tasks:list'
   | 'tasks:listGlobal'
+  | 'tasks:listAll'
   | 'tasks:get'
   | 'tasks:create'
   | 'tasks:update'
   | 'tasks:delete'
+  | 'tasks:addAttachment'
+  | 'tasks:removeAttachment'
 
 export type TaskNoteChannel = 'taskNotes:list' | 'taskNotes:create'
 
@@ -33,8 +36,9 @@ export type SessionChannel =
   | 'sessions:create'
   | 'sessions:update'
   | 'sessions:search'
+  | 'sessions:getLiveState'
 
-export type ClientChannel = 'clients:list' | 'clients:get' | 'clients:create'
+export type ClientChannel = 'clients:list' | 'clients:get' | 'clients:create' | 'clients:update' | 'clients:delete'
 
 export type WindowChannel =
   | 'window:openProject'
@@ -61,7 +65,9 @@ export type GitHubChannel =
   | 'github:listIssues'
   | 'github:listCommits'
 
-export type FileChannel = 'files:list' | 'files:read' | 'files:write' | 'dialog:selectFolder'
+export type ShellChannel = 'shell:showInExplorer' | 'shell:openExternal'
+
+export type FileChannel = 'files:list' | 'files:read' | 'files:write' | 'dialog:selectFolder' | 'dialog:selectFiles'
 
 export type MemoryChannel =
   | 'memory:getDir'
@@ -95,11 +101,35 @@ export type RecordingChannel =
   | 'recordings:saveAudio'
   | 'recordings:transcribe'
 
+export type MCPChannel = 'mcp:status' | 'mcp:getServerPath' | 'mcp:start' | 'mcp:stop'
+
+export type BriefingChannel =
+  | 'briefing:listDigests'
+  | 'briefing:getDigest'
+  | 'briefing:getItems'
+  | 'briefing:generate'
+  | 'briefing:markRead'
+  | 'briefing:saveItem'
+
+export type ChatChannel =
+  | 'chat:listConversations'
+  | 'chat:getConversation'
+  | 'chat:createConversation'
+  | 'chat:listMessages'
+  | 'chat:sendMessage'
+  | 'chat:deleteConversation'
+  | 'chat:browserCommand'
+
+export type UpdateChannel = 'update:check' | 'update:download'
+
+/** Deep link result pushed from main → renderer */
+export type DeepLinkReceiveChannel = 'deeplink:result'
+
 export type SettingsChannel = 'settings:get' | 'settings:set'
 
 export type ArenaChannel = 'arena:open'
 
-export type SearchChannel = 'search:query' | 'search:reindex'
+export type SearchChannel = 'search:query' | 'search:reindex' | 'search:getIndexState' | 'search:clearIndex'
 
 export type GmailChannel =
   | 'gmail:listAccounts'
@@ -110,6 +140,7 @@ export type GmailChannel =
   | 'gmail:removeRule'
   | 'gmail:pollEmails'
   | 'gmail:listRecentEmails'
+  | 'gmail:getEmailByMessageId'
 
 /** Channels that use ipcMain.handle (request-response) */
 export type TerminalHandleChannel = 'terminal:create' | 'terminal:kill'
@@ -140,8 +171,13 @@ export type IpcChannel =
   | ServiceChannel
   | ImageChannel
   | RecordingChannel
+  | MCPChannel
+  | BriefingChannel
+  | ChatChannel
+  | UpdateChannel
   | SettingsChannel
   | ArenaChannel
+  | ShellChannel
 
 // ─── Electron API ────────────────────────────────────────────────────────────
 

@@ -11,8 +11,27 @@ export function useGlobalTasks() {
     try {
       setLoading(true)
       setError(null)
-      const data = await api.tasks.listGlobal()
-      setTasks(data)
+      // Fetch all projects, then fetch tasks for each + global tasks
+      const projects = await api.projects.list()
+      const projectIds = projects.map((p) => p.id)
+      const allResults = await Promise.all([
+        api.tasks.listGlobal(),
+        ...projectIds.map((id) => api.tasks.list(id)),
+      ])
+      // Deduplicate by task id (global tasks might also appear in a project list)
+      const seen = new Set<number>()
+      const merged: TaskItem[] = []
+      for (const batch of allResults) {
+        for (const task of batch) {
+          if (!seen.has(task.id)) {
+            seen.add(task.id)
+            merged.push(task)
+          }
+        }
+      }
+      // Sort by most recent first (createdAt desc)
+      merged.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+      setTasks(merged)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tasks')
     } finally {

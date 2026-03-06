@@ -95,6 +95,7 @@ export default function RecordingsView({ projectId }: RecordingsViewProps) {
             recording={selected}
             onTranscribe={handleTranscribe}
             isTranscribing={isTranscribing}
+            projectId={projectId}
           />
         </div>
       </div>

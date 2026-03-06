@@ -1,0 +1,12 @@
+{
+  "name": "codefire-mcp-server",
+  "version": "1.0.4",
+  "description": "CodeFire MCP server for AI coding agents",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2"
+  }
+}

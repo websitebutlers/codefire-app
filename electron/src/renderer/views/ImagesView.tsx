@@ -11,12 +11,28 @@ interface ImagesViewProps {
 
 const API_KEY_STORAGE = 'codefire_openrouter_key'
 
+const ASPECT_RATIOS = [
+  { value: '1:1', label: '1:1' },
+  { value: '16:9', label: '16:9' },
+  { value: '9:16', label: '9:16' },
+  { value: '4:3', label: '4:3' },
+  { value: '3:2', label: '3:2' },
+]
+
+const IMAGE_SIZES = [
+  { value: '1024x1024', label: '1K' },
+  { value: '2048x2048', label: '2K' },
+  { value: '4096x4096', label: '4K' },
+]
+
 export default function ImagesView({ projectId }: ImagesViewProps) {
   const [images, setImages] = useState<GeneratedImage[]>([])
   const [selected, setSelected] = useState<GeneratedImage | null>(null)
   const [prompt, setPrompt] = useState('')
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [aspectRatio, setAspectRatio] = useState('1:1')
+  const [imageSize, setImageSize] = useState('1024x1024')
 
   const fetchImages = useCallback(async () => {
     const imgs = await api.images.list(projectId)
@@ -52,6 +68,8 @@ export default function ImagesView({ projectId }: ImagesViewProps) {
         projectId,
         prompt: trimmed,
         apiKey,
+        aspectRatio,
+        imageSize,
       })
 
       if (result.error) {
@@ -82,28 +100,66 @@ export default function ImagesView({ projectId }: ImagesViewProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Generation bar */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-800 bg-neutral-900 shrink-0">
-        <input
-          type="text"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-          placeholder="Describe an image to generate..."
-          disabled={generating}
-          className="flex-1 bg-neutral-800 border border-neutral-700 rounded px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-codefire-orange/50 disabled:opacity-50"
-        />
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={!prompt.trim() || generating}
-          className="p-1.5 rounded bg-codefire-orange/20 text-codefire-orange hover:bg-codefire-orange/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          {generating ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <Send size={14} />
-          )}
-        </button>
+      <div className="px-3 py-2 border-b border-neutral-800 bg-neutral-900 shrink-0 space-y-1.5">
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+            placeholder="Describe an image to generate..."
+            disabled={generating}
+            className="flex-1 bg-neutral-800 border border-neutral-700 rounded px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-codefire-orange/50 disabled:opacity-50"
+          />
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={!prompt.trim() || generating}
+            className="p-1.5 rounded bg-codefire-orange/20 text-codefire-orange hover:bg-codefire-orange/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            {generating ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Send size={14} />
+            )}
+          </button>
+        </div>
+
+        {/* Aspect ratio + size pickers */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-neutral-600">Ratio:</span>
+            {ASPECT_RATIOS.map((r) => (
+              <button
+                key={r.value}
+                onClick={() => setAspectRatio(r.value)}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                  aspectRatio === r.value
+                    ? 'bg-codefire-orange/20 text-codefire-orange border border-codefire-orange/30'
+                    : 'bg-neutral-800 text-neutral-500 border border-neutral-700 hover:text-neutral-300'
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-neutral-600">Size:</span>
+            {IMAGE_SIZES.map((s) => (
+              <button
+                key={s.value}
+                onClick={() => setImageSize(s.value)}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                  imageSize === s.value
+                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                    : 'bg-neutral-800 text-neutral-500 border border-neutral-700 hover:text-neutral-300'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Error banner */}
@@ -127,7 +183,13 @@ export default function ImagesView({ projectId }: ImagesViewProps) {
 
         {/* Right: Image viewer */}
         <div className="flex-1">
-          <ImageViewer image={selected} />
+          <ImageViewer
+            image={selected}
+            onVariation={(newImage) => {
+              setImages((prev) => [newImage, ...prev])
+              setSelected(newImage)
+            }}
+          />
         </div>
       </div>
     </div>

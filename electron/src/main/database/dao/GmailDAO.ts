@@ -171,6 +171,18 @@ export class GmailDAO {
       .get(Number(result.lastInsertRowid)) as ProcessedEmail
   }
 
+  getProcessedEmailByMessageId(messageId: string): ProcessedEmail | undefined {
+    return this.db
+      .prepare('SELECT * FROM processedEmails WHERE gmailMessageId = ?')
+      .get(messageId) as ProcessedEmail | undefined
+  }
+
+  getProcessedEmailByThreadId(threadId: string): ProcessedEmail[] {
+    return this.db
+      .prepare('SELECT * FROM processedEmails WHERE gmailThreadId = ? ORDER BY receivedAt ASC')
+      .all(threadId) as ProcessedEmail[]
+  }
+
   listProcessedEmails(accountId: string): ProcessedEmail[] {
     return this.db
       .prepare(

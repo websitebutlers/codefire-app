@@ -6,6 +6,7 @@ interface IndexIndicatorProps {
   totalChunks?: number
   progress?: number // 0-100
   lastError?: string
+  onRequestIndex?: () => void
 }
 
 export default function IndexIndicator({
@@ -13,17 +14,20 @@ export default function IndexIndicator({
   totalChunks,
   progress,
   lastError,
+  onRequestIndex,
 }: IndexIndicatorProps) {
   const [showError, setShowError] = useState(false)
 
   const handleClick = () => {
-    if (status === 'error' && lastError) {
+    if (status === 'idle' && onRequestIndex) {
+      onRequestIndex()
+    } else if (status === 'error') {
       setShowError((prev) => !prev)
     }
   }
 
-  const tooltipText = buildTooltip(status, totalChunks, lastError)
-  const isClickable = status === 'error' && lastError
+  const tooltipText = buildTooltip(status, totalChunks, lastError, !!onRequestIndex)
+  const isClickable = (status === 'idle' && !!onRequestIndex) || status === 'error'
 
   return (
     <div className="relative">
@@ -50,15 +54,15 @@ export default function IndexIndicator({
         <Database className="w-3 h-3 text-neutral-500 flex-shrink-0" />
 
         {/* Label */}
-        <span className="text-tiny text-neutral-500">
+        <span className={`text-tiny ${status === 'idle' && onRequestIndex ? 'text-codefire-orange underline' : status === 'error' ? 'text-error underline' : 'text-neutral-500'}`}>
           {labelText(status, totalChunks, progress)}
         </span>
       </button>
 
       {/* Error detail popover */}
-      {showError && lastError && (
+      {showError && status === 'error' && (
         <div className="absolute bottom-full left-0 mb-1 px-2 py-1.5 rounded-cf bg-neutral-800 border border-neutral-700 max-w-64 z-50">
-          <p className="text-tiny text-error break-words">{lastError}</p>
+          <p className="text-tiny text-error break-words">{lastError || 'Unknown error'}</p>
         </div>
       )}
     </div>
@@ -98,11 +102,12 @@ function labelText(
 function buildTooltip(
   status: IndexIndicatorProps['status'],
   totalChunks?: number,
-  lastError?: string
+  lastError?: string,
+  canIndex?: boolean
 ): string {
   switch (status) {
     case 'idle':
-      return 'Project has not been indexed yet'
+      return canIndex ? 'Click to index project' : 'Project has not been indexed yet'
     case 'indexing':
       return 'Indexing project files...'
     case 'ready':
@@ -110,8 +115,6 @@ function buildTooltip(
         ? `Index ready: ${totalChunks} chunks indexed`
         : 'Index ready'
     case 'error':
-      return lastError
-        ? `Index error: ${lastError} (click for details)`
-        : 'Index error'
+      return 'Index error — click for details'
   }
 }

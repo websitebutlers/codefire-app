@@ -11,6 +11,9 @@ interface AgentStatusBarProps {
   indexTotalChunks?: number
   indexProgress?: number
   indexLastError?: string
+  onMCPConnect?: () => void
+  onMCPDisconnect?: () => void
+  onRequestIndex?: () => void
 }
 
 /** Truncate a file path to show only the last N segments. */
@@ -28,6 +31,9 @@ export default function AgentStatusBar({
   indexTotalChunks,
   indexProgress,
   indexLastError,
+  onMCPConnect,
+  onMCPDisconnect,
+  onRequestIndex,
 }: AgentStatusBarProps) {
   return (
     <div
@@ -39,7 +45,12 @@ export default function AgentStatusBar({
     >
       {/* Left: MCP indicator */}
       <div className="flex items-center">
-        <MCPIndicator status={mcpStatus} sessionCount={mcpSessionCount} />
+        <MCPIndicator
+          status={mcpStatus}
+          sessionCount={mcpSessionCount}
+          onConnect={onMCPConnect}
+          onDisconnect={onMCPDisconnect}
+        />
       </div>
 
       {/* Center: Index indicator */}
@@ -49,6 +60,7 @@ export default function AgentStatusBar({
           totalChunks={indexTotalChunks}
           progress={indexProgress}
           lastError={indexLastError}
+          onRequestIndex={onRequestIndex}
         />
       </div>
 

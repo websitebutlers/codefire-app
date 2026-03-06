@@ -11,6 +11,11 @@ import type {
   WhitelistRule,
   ProcessedEmail,
   AppConfig,
+  LiveSessionState,
+  BriefingDigest,
+  BriefingItem,
+  ChatConversation,
+  ChatMessage,
 } from '@shared/models'
 
 const invoke = window.api.invoke
@@ -50,6 +55,8 @@ export const api = {
       invoke('tasks:list', projectId, status) as Promise<TaskItem[]>,
     listGlobal: (status?: string) =>
       invoke('tasks:listGlobal', status) as Promise<TaskItem[]>,
+    listAll: (status?: string) =>
+      invoke('tasks:listAll', status) as Promise<TaskItem[]>,
     get: (id: number) =>
       invoke('tasks:get', id) as Promise<TaskItem | undefined>,
     create: (data: {
@@ -72,6 +79,10 @@ export const api = {
       }
     ) => invoke('tasks:update', id, data) as Promise<TaskItem | undefined>,
     delete: (id: number) => invoke('tasks:delete', id) as Promise<boolean>,
+    addAttachment: (taskId: number, filePath?: string) =>
+      invoke('tasks:addAttachment', taskId, filePath) as Promise<TaskItem | undefined>,
+    removeAttachment: (taskId: number, filePath: string) =>
+      invoke('tasks:removeAttachment', taskId, filePath) as Promise<TaskItem | undefined>,
   },
 
   taskNotes: {
@@ -140,6 +151,8 @@ export const api = {
     ) => invoke('sessions:update', id, data) as Promise<Session | undefined>,
     search: (query: string) =>
       invoke('sessions:search', query) as Promise<Session[]>,
+    getLiveState: (projectId: string) =>
+      invoke('sessions:getLiveState', projectId) as Promise<LiveSessionState | null>,
   },
 
   clients: {
@@ -348,6 +361,96 @@ export const api = {
       invoke('gmail:pollEmails', accountId) as Promise<ProcessedEmail[]>,
     listRecentEmails: () =>
       invoke('gmail:listRecentEmails') as Promise<ProcessedEmail[]>,
+    getEmailByMessageId: (messageId: string) =>
+      invoke('gmail:getEmailByMessageId', messageId) as Promise<ProcessedEmail | null>,
+  },
+
+  search: {
+    query: (projectId: string, query: string, options?: { limit?: number; types?: string[] }) =>
+      invoke('search:query', projectId, query, options) as Promise<
+        Array<{
+          chunkId: string
+          content: string
+          symbolName: string | null
+          chunkType: string
+          filePath: string | null
+          startLine: number | null
+          endLine: number | null
+          score: number
+          matchSource: 'fts' | 'vector' | 'hybrid'
+        }>
+      >,
+    reindex: (projectId: string) =>
+      invoke('search:reindex', projectId) as Promise<{ success: boolean }>,
+    getIndexState: (projectId: string) =>
+      invoke('search:getIndexState', projectId) as Promise<{
+        projectId: string
+        status: string
+        lastFullIndexAt: string | null
+        totalChunks: number
+        lastError: string | null
+      } | null>,
+    clearIndex: (projectId: string) =>
+      invoke('search:clearIndex', projectId) as Promise<{ success: boolean }>,
+  },
+
+  shell: {
+    showInExplorer: (filePath: string) =>
+      invoke('shell:showInExplorer', filePath) as Promise<void>,
+  },
+
+  mcp: {
+    status: () =>
+      invoke('mcp:status') as Promise<{
+        status: 'connected' | 'disconnected' | 'error'
+        sessionCount: number
+      }>,
+    getServerPath: () => invoke('mcp:getServerPath') as Promise<string>,
+    start: () => invoke('mcp:start') as Promise<{ success: boolean }>,
+    stop: () => invoke('mcp:stop') as Promise<{ success: boolean }>,
+  },
+
+  briefing: {
+    listDigests: () =>
+      invoke('briefing:listDigests') as Promise<BriefingDigest[]>,
+    getDigest: (id: number) =>
+      invoke('briefing:getDigest', id) as Promise<BriefingDigest | undefined>,
+    getItems: (digestId: number) =>
+      invoke('briefing:getItems', digestId) as Promise<BriefingItem[]>,
+    generate: (projectId: string) =>
+      invoke('briefing:generate', projectId) as Promise<BriefingDigest>,
+    markRead: (itemId: number) =>
+      invoke('briefing:markRead', itemId) as Promise<void>,
+    saveItem: (itemId: number) =>
+      invoke('briefing:saveItem', itemId) as Promise<void>,
+  },
+
+  chat: {
+    listConversations: (projectId: string) =>
+      invoke('chat:listConversations', projectId) as Promise<ChatConversation[]>,
+    getConversation: (id: number) =>
+      invoke('chat:getConversation', id) as Promise<ChatConversation | undefined>,
+    createConversation: (data: { projectId: string; title: string }) =>
+      invoke('chat:createConversation', data) as Promise<ChatConversation>,
+    listMessages: (conversationId: number) =>
+      invoke('chat:listMessages', conversationId) as Promise<ChatMessage[]>,
+    sendMessage: (data: { conversationId: number; role: string; content: string }) =>
+      invoke('chat:sendMessage', data) as Promise<ChatMessage>,
+    deleteConversation: (id: number) =>
+      invoke('chat:deleteConversation', id) as Promise<boolean>,
+  },
+
+  update: {
+    check: () =>
+      invoke('update:check') as Promise<{
+        available: boolean
+        currentVersion: string
+        latestVersion: string | null
+        downloadUrl: string | null
+        releaseNotes: string | null
+      }>,
+    download: (url: string) =>
+      invoke('update:download', url) as Promise<{ success: boolean; filePath?: string }>,
   },
 
   settings: {

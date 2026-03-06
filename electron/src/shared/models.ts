@@ -30,6 +30,30 @@ export interface Session {
   cacheReadTokens: number
 }
 
+export interface LiveSessionState {
+  sessionId: string
+  slug: string | null
+  model: string | null
+  gitBranch: string | null
+  startedAt: string | null
+  lastActivity: string | null
+  totalInputTokens: number
+  totalOutputTokens: number
+  cacheCreationTokens: number
+  cacheReadTokens: number
+  latestContextTokens: number
+  messageCount: number
+  userMessageCount: number
+  toolUseCount: number
+  filesChanged: string[]
+  toolCounts: { name: string; count: number }[]
+  recentActivity: { timestamp: string; type: 'userMessage' | 'assistantText' | 'toolUse'; detail: string }[]
+  estimatedCost: number
+  contextUsagePercent: number
+  elapsedFormatted: string
+  isActive: boolean
+}
+
 export interface TaskItem {
   id: number
   projectId: string
@@ -258,12 +282,14 @@ export interface AppConfig {
   // Terminal
   terminalFontSize: number
   scrollbackLines: number
+  defaultTerminalPath: string
 
   // Engine
   openRouterKey: string
   contextSearchEnabled: boolean
   embeddingModel: string
   chatModel: string
+  chatMode: 'context' | 'agent'
   autoSnapshotSessions: boolean
   autoUpdateCodebaseTree: boolean
   mcpServerAutoStart: boolean

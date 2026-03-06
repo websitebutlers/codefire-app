@@ -38,6 +38,7 @@ export class MainWindow {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
+        webviewTag: true,
       },
     })
 

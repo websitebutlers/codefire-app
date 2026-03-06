@@ -474,4 +474,30 @@ export const migrations: Migration[] = [
       `)
     },
   },
+
+  // Migration 20: FTS5 for taskItems (title + description)
+  {
+    version: 20,
+    name: 'v19_createTaskItemsFts',
+    up: (db) => {
+      db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS taskItemsFts USING fts5(title, description, content='taskItems', content_rowid='rowid');
+
+        -- Backfill existing rows
+        INSERT INTO taskItemsFts(rowid, title, description)
+          SELECT rowid, title, COALESCE(description, '') FROM taskItems;
+
+        CREATE TRIGGER IF NOT EXISTS taskItems_fts_ai AFTER INSERT ON taskItems BEGIN
+          INSERT INTO taskItemsFts(rowid, title, description) VALUES (NEW.rowid, NEW.title, COALESCE(NEW.description, ''));
+        END;
+        CREATE TRIGGER IF NOT EXISTS taskItems_fts_ad AFTER DELETE ON taskItems BEGIN
+          INSERT INTO taskItemsFts(taskItemsFts, rowid, title, description) VALUES ('delete', OLD.rowid, OLD.title, COALESCE(OLD.description, ''));
+        END;
+        CREATE TRIGGER IF NOT EXISTS taskItems_fts_au AFTER UPDATE ON taskItems BEGIN
+          INSERT INTO taskItemsFts(taskItemsFts, rowid, title, description) VALUES ('delete', OLD.rowid, OLD.title, COALESCE(OLD.description, ''));
+          INSERT INTO taskItemsFts(rowid, title, description) VALUES (NEW.rowid, NEW.title, COALESCE(NEW.description, ''));
+        END;
+      `)
+    },
+  },
 ]

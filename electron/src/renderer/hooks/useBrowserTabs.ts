@@ -9,11 +9,11 @@ export interface BrowserTab {
 
 let tabCounter = 0
 
-export function useBrowserTabs() {
+export function useBrowserTabs(defaultUrl = 'https://www.google.com') {
   const [tabs, setTabs] = useState<BrowserTab[]>([
     {
       id: `tab-${++tabCounter}`,
-      url: 'https://www.google.com',
+      url: defaultUrl,
       title: 'New Tab',
       isLoading: false,
     },

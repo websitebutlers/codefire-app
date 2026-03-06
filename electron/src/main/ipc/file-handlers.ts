@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -95,6 +95,13 @@ export function registerFileHandlers() {
       }
     }
   )
+
+  ipcMain.handle('shell:showInExplorer', (_event, filePath: string) => {
+    if (!filePath || typeof filePath !== 'string') {
+      throw new Error('filePath is required and must be a string')
+    }
+    shell.showItemInFolder(filePath)
+  })
 
   ipcMain.handle(
     'files:read',

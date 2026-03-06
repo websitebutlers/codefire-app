@@ -150,3 +150,206 @@ export function parseSessionFile(content: string, sessionId: string): ParsedSess
   result.filesChanged = Array.from(filePathsSet)
   return result
 }
+
+// ─── Live Session State ───────────────────────────────────────────────────────
+
+export interface ToolCount {
+  name: string
+  count: number
+}
+
+export interface ActivityItem {
+  timestamp: string
+  type: 'userMessage' | 'assistantText' | 'toolUse'
+  detail: string
+}
+
+export interface LiveSessionState {
+  sessionId: string
+  slug: string | null
+  model: string | null
+  gitBranch: string | null
+  startedAt: string | null
+  lastActivity: string | null
+  totalInputTokens: number
+  totalOutputTokens: number
+  cacheCreationTokens: number
+  cacheReadTokens: number
+  latestContextTokens: number
+  messageCount: number
+  userMessageCount: number
+  toolUseCount: number
+  filesChanged: string[]
+  toolCounts: ToolCount[]
+  recentActivity: ActivityItem[]
+  estimatedCost: number
+  contextUsagePercent: number
+  elapsedFormatted: string
+  isActive: boolean
+}
+
+/**
+ * Parse a JSONL session file into rich live-session state for the dashboard.
+ */
+export function parseLiveSession(content: string, sessionId: string): LiveSessionState {
+  const toolCountMap = new Map<string, number>()
+  const filePathsSet = new Set<string>()
+  const activity: ActivityItem[] = []
+
+  let slug: string | null = null
+  let model: string | null = null
+  let gitBranch: string | null = null
+  let startedAt: string | null = null
+  let lastActivity: string | null = null
+  let totalInput = 0
+  let totalOutput = 0
+  let cacheCreation = 0
+  let cacheRead = 0
+  let latestContext = 0
+  let messageCount = 0
+  let userMessageCount = 0
+  let toolUseCount = 0
+
+  const lines = content.split('\n').filter((l) => l.trim().length > 0)
+
+  for (const line of lines) {
+    let parsed: JsonlLine
+    try {
+      parsed = JSON.parse(line) as JsonlLine
+    } catch {
+      continue
+    }
+
+    if (parsed.slug && !slug) slug = parsed.slug
+    if (parsed.gitBranch && !gitBranch) gitBranch = parsed.gitBranch
+
+    const ts = parsed.timestamp ?? null
+    if (ts) {
+      if (!startedAt || ts < startedAt) startedAt = ts
+      if (!lastActivity || ts > lastActivity) lastActivity = ts
+    }
+
+    const type = parsed.type
+    if (type !== 'user' && type !== 'assistant') continue
+
+    messageCount++
+
+    if (type === 'user') {
+      userMessageCount++
+      const text = typeof parsed.message?.content === 'string'
+        ? parsed.message.content.slice(0, 80)
+        : 'User message'
+      if (ts) activity.push({ timestamp: ts, type: 'userMessage', detail: text })
+    }
+
+    if (type === 'assistant' && parsed.message) {
+      const msg = parsed.message
+      if (msg.model && !model) model = msg.model
+
+      if (msg.usage) {
+        totalInput += msg.usage.input_tokens ?? 0
+        totalOutput += msg.usage.output_tokens ?? 0
+        cacheCreation += msg.usage.cache_creation_input_tokens ?? 0
+        cacheRead += msg.usage.cache_read_input_tokens ?? 0
+        // Latest context = input tokens of most recent assistant message
+        latestContext = msg.usage.input_tokens ?? 0
+      }
+
+      if (Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block.type === 'tool_use') {
+            toolUseCount++
+            const toolName = (block as Record<string, unknown>).name as string ?? 'unknown'
+            toolCountMap.set(toolName, (toolCountMap.get(toolName) ?? 0) + 1)
+            if (block.input?.file_path && typeof block.input.file_path === 'string') {
+              filePathsSet.add(block.input.file_path)
+            }
+            if (ts) activity.push({ timestamp: ts, type: 'toolUse', detail: toolName })
+          } else if (block.type === 'text') {
+            const text = (block as Record<string, unknown>).text as string ?? ''
+            if (ts && text.length > 0) {
+              activity.push({ timestamp: ts, type: 'assistantText', detail: text.slice(0, 80) })
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const toolCounts = Array.from(toolCountMap.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+
+  const estimatedCost = calculateCost(model, totalInput, totalOutput, cacheCreation, cacheRead)
+  const contextLimit = 200_000
+  const contextUsagePercent = contextLimit > 0 ? Math.min(1, latestContext / contextLimit) : 0
+
+  let elapsedFormatted = ''
+  if (startedAt) {
+    const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000
+    if (elapsed < 60) elapsedFormatted = 'just now'
+    else {
+      const minutes = Math.floor(elapsed / 60)
+      if (minutes < 60) elapsedFormatted = `${minutes}m ago`
+      else {
+        const hours = Math.floor(minutes / 60)
+        elapsedFormatted = `${hours}h ${minutes % 60}m ago`
+      }
+    }
+  }
+
+  return {
+    sessionId,
+    slug,
+    model,
+    gitBranch,
+    startedAt,
+    lastActivity,
+    totalInputTokens: totalInput,
+    totalOutputTokens: totalOutput,
+    cacheCreationTokens: cacheCreation,
+    cacheReadTokens: cacheRead,
+    latestContextTokens: latestContext,
+    messageCount,
+    userMessageCount,
+    toolUseCount,
+    filesChanged: Array.from(filePathsSet),
+    toolCounts,
+    recentActivity: activity.slice(-30).reverse(),
+    estimatedCost,
+    contextUsagePercent,
+    elapsedFormatted,
+    isActive: sessionId !== '',
+  }
+}
+
+function calculateCost(
+  model: string | null,
+  input: number,
+  output: number,
+  cacheCreation: number,
+  cacheRead: number
+): number {
+  // Pricing per million tokens (USD)
+  let inputRate = 3.0
+  let outputRate = 15.0
+  let cacheCreateRate = 3.75
+  let cacheReadRate = 0.30
+
+  if (model) {
+    const m = model.toLowerCase()
+    if (m.includes('opus')) {
+      inputRate = 15.0; outputRate = 75.0; cacheCreateRate = 18.75; cacheReadRate = 1.50
+    } else if (m.includes('haiku')) {
+      inputRate = 0.25; outputRate = 1.25; cacheCreateRate = 0.30; cacheReadRate = 0.03
+    }
+    // sonnet defaults are already set
+  }
+
+  return (
+    (input / 1_000_000) * inputRate +
+    (output / 1_000_000) * outputRate +
+    (cacheCreation / 1_000_000) * cacheCreateRate +
+    (cacheRead / 1_000_000) * cacheReadRate
+  )
+}

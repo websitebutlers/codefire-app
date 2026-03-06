@@ -10,6 +10,7 @@ const GMAIL_CHANNELS = [
   'gmail:removeRule',
   'gmail:pollEmails',
   'gmail:listRecentEmails',
+  'gmail:getEmailByMessageId',
 ] as const
 
 export function registerGmailHandlers(gmailService: GmailService) {
@@ -72,5 +73,10 @@ export function registerGmailHandlers(gmailService: GmailService) {
         new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime()
     )
     return allEmails.slice(0, 100)
+  })
+
+  ipcMain.handle('gmail:getEmailByMessageId', (_e, messageId: string) => {
+    const dao = (gmailService as any).gmailDAO
+    return dao.getProcessedEmailByMessageId(messageId) ?? null
   })
 }

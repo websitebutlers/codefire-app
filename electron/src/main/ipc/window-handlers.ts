@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, shell } from 'electron'
 import { WindowManager } from '../windows/WindowManager'
 
 export function registerWindowHandlers(windowManager: WindowManager) {
@@ -26,6 +26,14 @@ export function registerWindowHandlers(windowManager: WindowManager) {
     const mainWin = windowManager.getMainWindow()
     if (mainWin) {
       mainWin.focus()
+      return true
+    }
+    return false
+  })
+
+  ipcMain.handle('shell:openExternal', async (_e, url: string) => {
+    if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('mailto:'))) {
+      await shell.openExternal(url)
       return true
     }
     return false
