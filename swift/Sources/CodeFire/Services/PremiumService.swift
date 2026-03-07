@@ -968,7 +968,9 @@ class PremiumService: ObservableObject {
                 )
                 let grants = try decoder.decode([TeamGrant].self, from: grantData)
                 status.grant = grants.first
-                status.subscriptionActive = status.grant != nil || status.team?.plan == "agency"
+                // If you're on a team, you have an active subscription
+                // (teams require payment to create)
+                status.subscriptionActive = true
             }
         } catch {
             // Non-fatal: user may not be on a team yet
