@@ -65,13 +65,16 @@ struct TeamInvite: Codable, Identifiable, Sendable {
     let teamId: String
     let email: String
     let role: String  // "admin" | "member"
+    let invitedBy: String
     let status: String  // "pending" | "accepted" | "expired"
+    let token: String
     let createdAt: String
     let expiresAt: String
 
     enum CodingKeys: String, CodingKey {
-        case id, email, role, status
+        case id, email, role, status, token
         case teamId = "team_id"
+        case invitedBy = "invited_by"
         case createdAt = "created_at"
         case expiresAt = "expires_at"
     }

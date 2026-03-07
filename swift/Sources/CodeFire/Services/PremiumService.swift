@@ -344,10 +344,14 @@ class PremiumService: ObservableObject {
     }
 
     func inviteMember(teamId: String, email: String, role: String) async throws -> TeamInvite {
+        guard let userId = status.user?.id else {
+            throw PremiumError.authFailed("Not authenticated")
+        }
         let body: [String: Any] = [
             "team_id": teamId,
             "email": email,
             "role": role,
+            "invited_by": userId,
             "status": "pending",
             "expires_at": ISO8601DateFormatter().string(from: Date().addingTimeInterval(7 * 24 * 3600))
         ]

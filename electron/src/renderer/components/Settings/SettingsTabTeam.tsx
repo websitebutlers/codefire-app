@@ -26,6 +26,8 @@ export default function SettingsTabTeam({ config, onChange }: Props) {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<'admin' | 'member'>('member')
   const [submitting, setSubmitting] = useState(false)
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
+  const [inviteError, setInviteError] = useState<string | null>(null)
   const [selectedPlan, setSelectedPlan] = useState<'starter' | 'agency'>('starter')
   const [extraSeats, setExtraSeats] = useState(0)
   const [billingLoading, setBillingLoading] = useState(false)
@@ -524,9 +526,15 @@ export default function SettingsTabTeam({ config, onChange }: Props) {
                 onClick={async () => {
                   if (!inviteEmail) return
                   setSubmitting(true)
+                  setInviteSuccess(null)
+                  setInviteError(null)
+                  const emailSent = inviteEmail.trim()
                   try {
-                    await inviteMember(inviteEmail, inviteRole)
+                    await inviteMember(emailSent, inviteRole)
                     setInviteEmail('')
+                    setInviteSuccess(`Invite sent to ${emailSent}`)
+                  } catch (err) {
+                    setInviteError(`Failed to invite: ${err instanceof Error ? err.message : String(err)}`)
                   } finally {
                     setSubmitting(false)
                   }
@@ -540,6 +548,12 @@ export default function SettingsTabTeam({ config, onChange }: Props) {
                 Invite
               </button>
             </div>
+            {inviteSuccess && (
+              <p className="text-xs text-green-400 mt-1">{inviteSuccess}</p>
+            )}
+            {inviteError && (
+              <p className="text-xs text-red-400 mt-1">{inviteError}</p>
+            )}
           </Section>
 
           <Section title="Sync">

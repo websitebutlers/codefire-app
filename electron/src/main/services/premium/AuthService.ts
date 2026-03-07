@@ -96,9 +96,9 @@ export class AuthService {
       }
     }
 
-    // Subscription is active if team has one, user has one, or there's a grant
-    const subscriptionActive = !!grant
-      || !!(team?.stripe_subscription_id)
+    // Subscription is active if on a team (teams require payment), has a stripe sub, or there's a grant
+    const subscriptionActive = !!team
+      || !!grant
       || !!(profile?.stripe_subscription_id)
 
     return {

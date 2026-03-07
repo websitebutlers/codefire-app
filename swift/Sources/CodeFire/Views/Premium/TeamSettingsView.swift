@@ -21,6 +21,8 @@ struct TeamSettingsTab: View {
     @State private var isCreatingTeam = false
     @State private var createTeamError: String?
     @State private var isInviting = false
+    @State private var inviteSuccess: String?
+    @State private var inviteError: String?
 
     // Sync
     @State private var isSyncEnabled = false
@@ -380,6 +382,17 @@ struct TeamSettingsTab: View {
                         .font(.system(size: 11))
                     }
 
+                    if let success = inviteSuccess {
+                        Text(success)
+                            .font(.system(size: 11))
+                            .foregroundColor(.green)
+                    }
+                    if let error = inviteError {
+                        Text(error)
+                            .font(.system(size: 11))
+                            .foregroundColor(.red)
+                    }
+
                     // Billing
                     HStack(spacing: 12) {
                         Button("Subscribe") {
@@ -650,19 +663,25 @@ struct TeamSettingsTab: View {
     private func inviteMember() {
         guard let team = premiumService.status.team else { return }
 
-        // Check seat limit
-        if case .blocked(let reason) = enforcer.canAddMember(currentCount: members.count) {
+        // Check seat limit (super admins bypass)
+        if !premiumService.isSuperAdmin,
+           case .blocked(let reason) = enforcer.canAddMember(currentCount: members.count) {
             planBlock = reason
             return
         }
 
+        inviteSuccess = nil
+        inviteError = nil
         isInviting = true
+        let emailToInvite = inviteEmail.trimmingCharacters(in: .whitespaces)
         Task {
             do {
-                try await premiumService.inviteMember(teamId: team.id, email: inviteEmail, role: inviteRole)
+                try await premiumService.inviteMember(teamId: team.id, email: emailToInvite, role: inviteRole)
                 inviteEmail = ""
+                inviteSuccess = "Invite sent to \(emailToInvite)"
                 await loadMembers()
             } catch {
+                inviteError = "Failed to send invite: \(error.localizedDescription)"
                 print("TeamSettings: failed to invite: \(error)")
             }
             isInviting = false
