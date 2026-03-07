@@ -552,7 +552,10 @@ export const migrations: Migration[] = [
     version: 22,
     name: 'v21_addProjectRepoUrl',
     up: (db) => {
-      db.exec(`ALTER TABLE projects ADD COLUMN repoUrl TEXT;`)
+      const cols = db.pragma('table_info(projects)') as { name: string }[]
+      if (!cols.some(c => c.name === 'repoUrl')) {
+        db.exec(`ALTER TABLE projects ADD COLUMN repoUrl TEXT;`)
+      }
     },
   },
 
@@ -561,7 +564,10 @@ export const migrations: Migration[] = [
     version: 23,
     name: 'v22_addTaskNoteMentions',
     up: (db) => {
-      db.exec(`ALTER TABLE taskNotes ADD COLUMN mentions TEXT;`)
+      const cols = db.pragma('table_info(taskNotes)') as { name: string }[]
+      if (!cols.some(c => c.name === 'mentions')) {
+        db.exec(`ALTER TABLE taskNotes ADD COLUMN mentions TEXT;`)
+      }
     },
   },
 
@@ -570,7 +576,10 @@ export const migrations: Migration[] = [
     version: 24,
     name: 'v23_addTaskUpdatedAt',
     up: (db) => {
-      db.exec(`ALTER TABLE taskItems ADD COLUMN updatedAt DATETIME;`)
+      const cols = db.pragma('table_info(taskItems)') as { name: string }[]
+      if (!cols.some(c => c.name === 'updatedAt')) {
+        db.exec(`ALTER TABLE taskItems ADD COLUMN updatedAt DATETIME;`)
+      }
     },
   },
 ]

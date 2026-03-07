@@ -20,6 +20,11 @@ import { BrowserCommandExecutor } from './services/BrowserCommandExecutor'
 import { LiveSessionWatcher } from './services/LiveSessionWatcher'
 import { FileWatcher } from './services/FileWatcher'
 import { ProjectDAO } from './database/dao/ProjectDAO'
+import { AuthService } from './services/premium/AuthService'
+import { TeamService } from './services/premium/TeamService'
+import { SyncEngine } from './services/premium/SyncEngine'
+import { PresenceService } from './services/premium/PresenceService'
+import { registerPremiumHandlers } from './ipc/premium-handlers'
 
 // Prevent crashes from uncaught errors
 process.on('uncaughtException', (err) => {
@@ -106,24 +111,19 @@ function initDeferredServices() {
   registerSearchHandlers(db, searchEngine, contextEngine)
   if (gmailService) registerGmailHandlers(gmailService)
 
-  // Premium services (only if configured)
-  if (config.premiumEnabled && config.supabaseUrl && config.supabaseAnonKey) {
-    try {
-      const { AuthService } = require('./services/premium/AuthService')
-      const { TeamService } = require('./services/premium/TeamService')
-      const { SyncEngine } = require('./services/premium/SyncEngine')
-      const { PresenceService } = require('./services/premium/PresenceService')
-      const { registerPremiumHandlers } = require('./ipc/premium-handlers')
-      const authSvc = new AuthService()
-      const teamSvc = new TeamService()
-      const syncEng = new SyncEngine(db)
-      const presenceSvc = new PresenceService()
-      registerPremiumHandlers(authSvc, teamSvc, syncEng, presenceSvc)
+  // Premium services — always register handlers so the Team tab works.
+  try {
+    const authSvc = new AuthService()
+    const teamSvc = new TeamService()
+    const syncEng = new SyncEngine(db)
+    const presenceSvc = new PresenceService()
+    registerPremiumHandlers(authSvc, teamSvc, syncEng, presenceSvc)
+    if (config.supabaseUrl && config.supabaseAnonKey) {
       syncEng.start()
-      console.log('[Main] Premium services initialized')
-    } catch (err) {
-      console.warn('[Main] Premium services unavailable:', err)
     }
+    console.log('[Main] Premium services initialized')
+  } catch (err) {
+    console.warn('[Main] Premium services unavailable:', err)
   }
 }
 

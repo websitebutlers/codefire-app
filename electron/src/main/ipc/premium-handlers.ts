@@ -13,10 +13,14 @@ export function registerPremiumHandlers(
 ) {
   // Auth
   ipcMain.handle('premium:getStatus', () => authService.getStatus())
-  ipcMain.handle('premium:signUp', (_e, email: string, password: string, displayName: string) =>
-    authService.signUp(email, password, displayName))
-  ipcMain.handle('premium:signIn', (_e, email: string, password: string) =>
-    authService.signIn(email, password))
+  ipcMain.handle('premium:signUp', async (_e, email: string, password: string, displayName: string) => {
+    await authService.signUp(email, password, displayName)
+    return authService.getStatus()
+  })
+  ipcMain.handle('premium:signIn', async (_e, email: string, password: string) => {
+    await authService.signIn(email, password)
+    return authService.getStatus()
+  })
   ipcMain.handle('premium:signOut', () => authService.signOut())
 
   // Team management
