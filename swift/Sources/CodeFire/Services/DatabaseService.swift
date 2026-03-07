@@ -492,7 +492,7 @@ class DatabaseService {
         }
 
         migrator.registerMigration("v18b_createRecordings") { db in
-            try db.create(table: "recordings") { t in
+            try db.create(table: "recordings", ifNotExists: true) { t in
                 t.primaryKey("id", .text)
                 t.column("projectId", .text).notNull()
                     .references("projects", onDelete: .cascade)
@@ -505,8 +505,11 @@ class DatabaseService {
                 t.column("createdAt", .datetime).notNull()
             }
 
-            try db.alter(table: "taskItems") { t in
-                t.add(column: "recordingId", .text)
+            let taskColumns = try db.columns(in: "taskItems").map(\.name)
+            if !taskColumns.contains("recordingId") {
+                try db.alter(table: "taskItems") { t in
+                    t.add(column: "recordingId", .text)
+                }
             }
         }
 
