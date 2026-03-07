@@ -232,7 +232,8 @@ struct CodeFireApp: App {
                         if parts.count == 2 {
                             updateService.startPeriodicChecks(
                                 owner: String(parts[0]),
-                                repo: String(parts[1])
+                                repo: String(parts[1]),
+                                interval: 21600
                             )
                         }
                     }
