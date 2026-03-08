@@ -59,7 +59,7 @@ export class TerminalService {
     delete cleanEnv.CLAUDECODE
     cleanEnv.TERM = 'xterm-256color'
 
-    const term = pty.spawn(shell, [], {
+    const term = pty!.spawn(shell, [], {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
