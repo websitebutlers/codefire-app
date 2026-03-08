@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity, CheckCircle, FileText, Users, GitBranch, Clock, RefreshCw, MessageSquare } from 'lucide-react'
+import { Activity, CheckCircle, FileText, Users, GitBranch, Clock, RefreshCw, MessageSquare, Zap, Share2 } from 'lucide-react'
 import { useActivityFeed } from '@renderer/hooks/useActivityFeed'
 import { useSessionSummaries } from '@renderer/hooks/useSessionSummaries'
 import SharedSummaryCard from '@renderer/components/SessionSummary/SharedSummaryCard'
@@ -172,12 +172,26 @@ export default function ActivityView({ projectId }: ActivityViewProps) {
         {tab === 'activity' ? (
           /* Activity event list */
           events.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-4">
-              <Activity size={28} className="text-neutral-700 mb-3" />
-              <p className="text-xs text-neutral-500">No activity yet</p>
-              <p className="text-[10px] text-neutral-600 mt-1">
-                Activity from team members will appear here
+            <div className="flex flex-col items-center justify-center h-full text-center px-6">
+              <div className="w-12 h-12 rounded-full bg-codefire-orange/10 flex items-center justify-center mb-4">
+                <Zap size={22} className="text-codefire-orange" />
+              </div>
+              <p className="text-sm font-medium text-neutral-300 mb-1">Team Activity Feed</p>
+              <p className="text-xs text-neutral-500 max-w-[280px] leading-relaxed mb-4">
+                See what your team is working on in real time — tasks created, sessions shared, code reviewed, and more.
               </p>
+              <div className="flex flex-col gap-2 text-left w-full max-w-[240px]">
+                {[
+                  { icon: <CheckCircle size={12} className="text-green-400" />, text: 'Task updates from teammates' },
+                  { icon: <GitBranch size={12} className="text-codefire-orange" />, text: 'Project syncs and changes' },
+                  { icon: <Users size={12} className="text-purple-400" />, text: 'Team joins and reviews' },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-cf bg-neutral-800/50">
+                    {item.icon}
+                    <span className="text-[11px] text-neutral-400">{item.text}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="px-4 py-2">
@@ -217,11 +231,13 @@ export default function ActivityView({ projectId }: ActivityViewProps) {
         ) : (
           /* Session summaries list */
           summaries.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-4">
-              <MessageSquare size={28} className="text-neutral-700 mb-3" />
-              <p className="text-xs text-neutral-500">No shared summaries yet</p>
-              <p className="text-[10px] text-neutral-600 mt-1">
-                Session summaries shared by team members will appear here
+            <div className="flex flex-col items-center justify-center h-full text-center px-6">
+              <div className="w-12 h-12 rounded-full bg-cyan-500/10 flex items-center justify-center mb-4">
+                <Share2 size={22} className="text-cyan-400" />
+              </div>
+              <p className="text-sm font-medium text-neutral-300 mb-1">Shared Session Summaries</p>
+              <p className="text-xs text-neutral-500 max-w-[280px] leading-relaxed">
+                Share what you accomplished in a coding session so your team stays in sync — models used, branches touched, and a quick summary of the work.
               </p>
             </div>
           ) : (

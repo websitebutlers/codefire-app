@@ -10,7 +10,7 @@ import {
   Image,
   Clock,
   Info,
-  Mic,
+  AudioLines,
   BarChart3,
   Activity,
   BookOpen,
@@ -21,31 +21,30 @@ import TabButton from './TabButton'
 interface TabBarProps {
   activeTab: string
   onTabChange: (tab: string) => void
+  hiddenTabs?: Set<string>
 }
 
 const tabs = [
   { id: 'Tasks', icon: CheckSquare },
+  { id: 'Dashboard', icon: Info },
+  { id: 'Activity', icon: Activity },
+  { id: 'Sessions', icon: Clock },
   { id: 'Notes', icon: FileText },
-  { id: 'Files', icon: FolderOpen },
-  { id: 'Browser', icon: Globe },
   { id: 'Memory', icon: Brain },
   { id: 'Rules', icon: ScrollText },
-  { id: 'Services', icon: Cloud },
+  { id: 'Files', icon: FolderOpen },
   { id: 'Git', icon: GitBranch },
-  { id: 'Images', icon: Image },
-  { id: 'Sessions', icon: Clock },
-  { id: 'Details', icon: Info },
-  { id: 'Recordings', icon: Mic },
-  { id: 'Visualizer', icon: BarChart3 },
-  { id: 'Activity', icon: Activity },
   { id: 'Docs', icon: BookOpen },
+  { id: 'Browser', icon: Globe },
+  { id: 'Images', icon: Image },
+  { id: 'Transcribe', icon: AudioLines },
   { id: 'Reviews', icon: GitPullRequest },
 ] as const
 
-export default function TabBar({ activeTab, onTabChange }: TabBarProps) {
+export default function TabBar({ activeTab, onTabChange, hiddenTabs }: TabBarProps) {
   return (
     <div className="flex items-center overflow-x-auto scrollbar-none bg-neutral-900 border-b border-neutral-800 shrink-0">
-      {tabs.map((tab) => (
+      {tabs.filter((tab) => !('hidden' in tab && tab.hidden) && !hiddenTabs?.has(tab.id)).map((tab) => (
         <TabButton
           key={tab.id}
           label={tab.id}

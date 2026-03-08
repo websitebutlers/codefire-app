@@ -20,7 +20,7 @@ export type TaskChannel =
   | 'tasks:addAttachment'
   | 'tasks:removeAttachment'
 
-export type TaskNoteChannel = 'taskNotes:list' | 'taskNotes:create'
+export type TaskNoteChannel = 'taskNotes:list' | 'taskNotes:create' | 'taskNotes:delete'
 
 export type NoteChannel =
   | 'notes:list'
@@ -84,6 +84,8 @@ export type ServiceChannel =
   | 'services:listEnvFiles'
   | 'services:readEnvFile'
   | 'services:scanTemplates'
+  | 'services:scanArchitecture'
+  | 'services:scanSchema'
 
 export type ImageChannel =
   | 'images:list'
@@ -91,6 +93,7 @@ export type ImageChannel =
   | 'images:create'
   | 'images:delete'
   | 'images:generate'
+  | 'images:readFile'
 
 export type RecordingChannel =
   | 'recordings:list'
@@ -100,6 +103,7 @@ export type RecordingChannel =
   | 'recordings:delete'
   | 'recordings:saveAudio'
   | 'recordings:transcribe'
+  | 'recordings:importFile'
 
 export type MCPChannel = 'mcp:status' | 'mcp:getServerPath' | 'mcp:start' | 'mcp:stop'
 
@@ -177,6 +181,13 @@ export type PremiumChannel =
   | 'premium:admin:revokeGrant'
   | 'premium:admin:listGrants'
 
+export type ProjectDocChannel =
+  | 'projectDocs:list'
+  | 'projectDocs:get'
+  | 'projectDocs:create'
+  | 'projectDocs:update'
+  | 'projectDocs:delete'
+
 export type SearchChannel = 'search:query' | 'search:reindex' | 'search:getIndexState' | 'search:clearIndex'
 
 export type GmailChannel =
@@ -228,6 +239,7 @@ export type IpcChannel =
   | ShellChannel
   | BrowserCommandChannel
   | PremiumChannel
+  | ProjectDocChannel
 
 // ─── Electron API ────────────────────────────────────────────────────────────
 

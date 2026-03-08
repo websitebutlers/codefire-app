@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Home, Settings, FolderOpen, Plus, X, Check } from 'lucide-react'
+import { Home, Settings, FolderOpen, Plus, X, Check, Flame } from 'lucide-react'
 import type { Project, Client } from '@shared/models'
 import { api } from '@renderer/lib/api'
 import SidebarItem from './SidebarItem'
@@ -250,6 +250,16 @@ export default function Sidebar({ selectedProjectId, onProjectSelect, onHomeClic
           title="Settings"
         >
           <Settings size={14} />
+        </button>
+        <button
+          onClick={() => api.arena.open()}
+          className="
+            p-1.5 rounded text-neutral-600 hover:text-codefire-orange
+            hover:bg-white/[0.04] transition-colors duration-100
+          "
+          title="Agent Arena"
+        >
+          <Flame size={14} />
         </button>
         <button
           onClick={handleOpenFolder}

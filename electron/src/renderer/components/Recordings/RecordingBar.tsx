@@ -1,9 +1,10 @@
-import { Mic, Square, Loader2 } from 'lucide-react'
+import { Mic, Square, Loader2, FileAudio } from 'lucide-react'
 import { useState } from 'react'
 import { useRecorder } from '@renderer/hooks/useRecorder'
 
 interface RecordingBarProps {
   onRecordingComplete: (blob: Blob, title: string) => void
+  onImportFile: () => void
 }
 
 function formatDuration(seconds: number): string {
@@ -12,7 +13,7 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export default function RecordingBar({ onRecordingComplete }: RecordingBarProps) {
+export default function RecordingBar({ onRecordingComplete, onImportFile }: RecordingBarProps) {
   const { isRecording, duration, startRecording, stopRecording } = useRecorder()
   const [title, setTitle] = useState('')
   const [starting, setStarting] = useState(false)
@@ -65,15 +66,25 @@ export default function RecordingBar({ onRecordingComplete }: RecordingBarProps)
           </button>
         </>
       ) : (
-        <button
-          type="button"
-          onClick={handleStart}
-          disabled={starting}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-codefire-orange/20 text-codefire-orange hover:bg-codefire-orange/30 rounded text-sm transition-colors disabled:opacity-50"
-        >
-          {starting ? <Loader2 size={14} className="animate-spin" /> : <Mic size={14} />}
-          Record
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={handleStart}
+            disabled={starting}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-codefire-orange/20 text-codefire-orange hover:bg-codefire-orange/30 rounded text-sm transition-colors disabled:opacity-50"
+          >
+            {starting ? <Loader2 size={14} className="animate-spin" /> : <Mic size={14} />}
+            Record
+          </button>
+          <button
+            type="button"
+            onClick={onImportFile}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 text-neutral-300 hover:bg-neutral-700 rounded text-sm transition-colors"
+          >
+            <FileAudio size={14} />
+            Import File
+          </button>
+        </>
       )}
     </div>
   )

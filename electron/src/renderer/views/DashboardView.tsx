@@ -6,13 +6,15 @@ import { api } from '@renderer/lib/api'
 import CostSummaryCard from '@renderer/components/Dashboard/CostSummaryCard'
 import LiveSessionView from '@renderer/components/Dashboard/LiveSessionView'
 import TaskLauncherCard from '@renderer/components/Dashboard/TaskLauncherCard'
+import DevToolsCard from '@renderer/components/Dashboard/DevToolsCard'
 
 interface DashboardViewProps {
   projectId: string
+  projectPath?: string
   onTabChange?: (tab: string) => void
 }
 
-export default function DashboardView({ projectId, onTabChange }: DashboardViewProps) {
+export default function DashboardView({ projectId, projectPath, onTabChange }: DashboardViewProps) {
   const { sessions, loading: sessionsLoading, error: sessionsError } = useSessions(projectId)
   const {
     todoTasks,
@@ -113,6 +115,9 @@ export default function DashboardView({ projectId, onTabChange }: DashboardViewP
           Open in Explorer
         </button>
       </div>
+
+      {/* Dev Tools */}
+      {projectPath && <DevToolsCard projectPath={projectPath} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <CostSummaryCard sessions={sessions} />

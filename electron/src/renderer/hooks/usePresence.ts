@@ -4,6 +4,15 @@ import { api } from '../lib/api'
 
 const POLL_INTERVAL = 5000
 
+/** Keep only the latest entry per userId to avoid duplicate avatars */
+function dedupeByUserId(states: PresenceState[]): PresenceState[] {
+  const seen = new Map<string, PresenceState>()
+  for (const s of states) {
+    seen.set(s.userId, s)
+  }
+  return Array.from(seen.values())
+}
+
 export function usePresence(projectId: string) {
   const [members, setMembers] = useState<PresenceState[]>([])
   const [loading, setLoading] = useState(true)
@@ -24,7 +33,7 @@ export function usePresence(projectId: string) {
       // Initial fetch
       try {
         const states = await api.premium.getPresence(projectId)
-        if (!cancelled) setMembers(states)
+        if (!cancelled) setMembers(dedupeByUserId(states))
       } catch {
         // ignore
       }
@@ -35,7 +44,7 @@ export function usePresence(projectId: string) {
         if (cancelled) return
         try {
           const states = await api.premium.getPresence(projectId)
-          if (!cancelled) setMembers(states)
+          if (!cancelled) setMembers(dedupeByUserId(states))
         } catch {
           // ignore
         }

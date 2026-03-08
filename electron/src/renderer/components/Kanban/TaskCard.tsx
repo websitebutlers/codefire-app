@@ -1,6 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { MessageSquare, GripVertical } from 'lucide-react'
+import { MessageSquare, GripVertical, Bot, User, Mail, Cpu, FolderOpen } from 'lucide-react'
 import type { TaskItem } from '@shared/models'
 
 interface TaskCardProps {
@@ -22,6 +22,16 @@ const PRIORITY_LABELS: Record<number, string> = {
   2: 'Med',
   3: 'High',
   4: 'Urgent',
+}
+
+const SOURCE_BADGES: Record<string, { label: string; color: string; bg: string }> = {
+  claude: { label: 'CLAUDE', color: 'text-orange-300', bg: 'bg-orange-500/20' },
+  'ai-extracted': { label: 'AI', color: 'text-purple-300', bg: 'bg-purple-500/20' },
+  manual: { label: 'MANUAL', color: 'text-neutral-400', bg: 'bg-neutral-700' },
+  email: { label: 'EMAIL', color: 'text-blue-300', bg: 'bg-blue-500/20' },
+  mcp: { label: 'MCP', color: 'text-green-300', bg: 'bg-green-500/20' },
+  browser: { label: 'BROWSER', color: 'text-cyan-300', bg: 'bg-cyan-500/20' },
+  chat: { label: 'CHAT', color: 'text-pink-300', bg: 'bg-pink-500/20' },
 }
 
 function parseLabels(labels: string | null): string[] {
@@ -72,9 +82,16 @@ export default function TaskCard({ task, onClick, noteCount = 0 }: TaskCardProps
         </button>
 
         <div className="flex-1 min-w-0">
-          <div className="text-sm text-neutral-200 leading-snug">{task.title}</div>
+          <div className="text-sm text-neutral-200 leading-snug line-clamp-2">{task.title}</div>
 
-          {/* Priority + Labels row */}
+          {/* Description snippet */}
+          {task.description && (
+            <div className="text-xs text-neutral-500 mt-1 line-clamp-2 leading-relaxed">
+              {task.description}
+            </div>
+          )}
+
+          {/* Priority + Labels + Source row */}
           <div className="flex items-center flex-wrap gap-1 mt-1.5">
             {task.priority > 0 && (
               <span
@@ -83,7 +100,15 @@ export default function TaskCard({ task, onClick, noteCount = 0 }: TaskCardProps
                 {PRIORITY_LABELS[task.priority] || `P${task.priority}`}
               </span>
             )}
-            {labels.map((label) => (
+            {(() => {
+              const badge = SOURCE_BADGES[task.source ?? 'manual']
+              return badge && task.source !== 'manual' ? (
+                <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${badge.bg} ${badge.color}`}>
+                  {badge.label}
+                </span>
+              ) : null
+            })()}
+            {labels.slice(0, 3).map((label) => (
               <span
                 key={label}
                 className="text-xs px-1.5 py-0.5 rounded bg-neutral-700 text-neutral-400 border border-neutral-600/50"
@@ -91,15 +116,23 @@ export default function TaskCard({ task, onClick, noteCount = 0 }: TaskCardProps
                 {label}
               </span>
             ))}
+            {labels.length > 3 && (
+              <span className="text-[10px] text-neutral-500">+{labels.length - 3}</span>
+            )}
           </div>
 
-          {/* Note count */}
-          {noteCount > 0 && (
-            <div className="flex items-center gap-1 mt-1.5 text-xs text-neutral-500">
-              <MessageSquare size={10} />
-              <span>{noteCount}</span>
-            </div>
-          )}
+          {/* Footer: note count + date */}
+          <div className="flex items-center gap-2 mt-1.5 text-[10px] text-neutral-500">
+            {noteCount > 0 && (
+              <div className="flex items-center gap-1">
+                <MessageSquare size={10} />
+                <span>{noteCount}</span>
+              </div>
+            )}
+            <span>
+              {new Date(task.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            </span>
+          </div>
         </div>
       </div>
     </div>

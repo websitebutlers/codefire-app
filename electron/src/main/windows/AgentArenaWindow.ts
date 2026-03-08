@@ -1,5 +1,8 @@
 import { app, BrowserWindow, nativeImage, screen } from 'electron'
 import path from 'path'
+import { AgentMonitor } from '../services/AgentMonitor'
+import { AgentArenaDataSource } from '../services/AgentArenaDataSource'
+import { LiveSessionWatcher } from '../services/LiveSessionWatcher'
 
 function getAppIcon() {
   const iconPath = app.isPackaged
@@ -9,8 +12,11 @@ function getAppIcon() {
 }
 
 let arenaWindow: BrowserWindow | null = null
+let agentMonitor: AgentMonitor | null = null
+let dataSource: AgentArenaDataSource | null = null
+let pushTimer: ReturnType<typeof setInterval> | null = null
 
-export function openAgentArena(): BrowserWindow {
+export function openAgentArena(sessionWatcher?: LiveSessionWatcher): BrowserWindow {
   if (arenaWindow && !arenaWindow.isDestroyed()) {
     arenaWindow.focus()
     return arenaWindow
@@ -37,14 +43,62 @@ export function openAgentArena(): BrowserWindow {
   })
 
   // Load the shared HTML renderer
-  const htmlPath = path.join(__dirname, '../../../shared/agent-arena/agent-arena.html')
+  const htmlPath = path.isAbsolute(__dirname)
+    ? path.join(__dirname, '../../../shared/agent-arena/agent-arena.html')
+    : path.join(process.cwd(), 'shared/agent-arena/agent-arena.html')
   arenaWindow.loadFile(htmlPath)
+
+  // Start agent monitoring when the arena window opens
+  startMonitoring(sessionWatcher)
 
   arenaWindow.on('closed', () => {
     arenaWindow = null
+    stopMonitoring()
   })
 
   return arenaWindow
+}
+
+function startMonitoring(sessionWatcher?: LiveSessionWatcher): void {
+  if (agentMonitor) return
+
+  agentMonitor = new AgentMonitor()
+  const watcher = sessionWatcher ?? new LiveSessionWatcher()
+  dataSource = new AgentArenaDataSource(agentMonitor, watcher)
+
+  // Listen for process changes and push state immediately
+  agentMonitor.onChange(() => pushStateToWindow())
+
+  agentMonitor.start()
+
+  // Also push state every 3 seconds as a fallback
+  pushTimer = setInterval(() => pushStateToWindow(), 3000)
+}
+
+function stopMonitoring(): void {
+  if (agentMonitor) {
+    agentMonitor.stop()
+    agentMonitor = null
+  }
+  dataSource = null
+  if (pushTimer) {
+    clearInterval(pushTimer)
+    pushTimer = null
+  }
+}
+
+function pushStateToWindow(): void {
+  const win = getArenaWindow()
+  if (!win || !dataSource) return
+
+  const json = dataSource.jsonString()
+  if (!json) return
+
+  win.webContents
+    .executeJavaScript(`if(typeof updateAgentState==='function')updateAgentState(${json})`)
+    .catch(() => {
+      // Page may not be ready yet
+    })
 }
 
 export function getArenaWindow(): BrowserWindow | null {
@@ -55,6 +109,6 @@ export function pushArenaState(state: object): void {
   const win = getArenaWindow()
   if (win) {
     const json = JSON.stringify(state)
-    win.webContents.executeJavaScript(`updateAgentState(${json})`)
+    win.webContents.executeJavaScript(`updateAgentState(${json})`).catch(() => {})
   }
 }

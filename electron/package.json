@@ -76,12 +76,14 @@
     "appId": "com.codefire.electron",
     "productName": "CodeFire",
     "publish": null,
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "shared/**/*",
       "node_modules/**/*",
       "!node_modules/lucide-react/**",
       "!node_modules/@codemirror/**",
