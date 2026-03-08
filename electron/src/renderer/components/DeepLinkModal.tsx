@@ -3,9 +3,10 @@ import { CheckCircle, XCircle, X } from 'lucide-react'
 
 interface DeepLinkResult {
   success: boolean
-  cli: string
-  displayName: string
+  cli?: string
+  displayName?: string
   error?: string
+  type?: string
 }
 
 export default function DeepLinkModal() {
@@ -13,7 +14,13 @@ export default function DeepLinkModal() {
 
   useEffect(() => {
     const unsub = window.api.on('deeplink:result', (data: unknown) => {
-      setResult(data as DeepLinkResult)
+      const r = data as DeepLinkResult
+      if (r.type === 'auth-callback') {
+        // Auth callback — reload the page to refresh premium status
+        window.location.reload()
+        return
+      }
+      setResult(r)
     })
     return unsub
   }, [])

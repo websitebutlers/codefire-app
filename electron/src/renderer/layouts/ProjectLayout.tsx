@@ -3,17 +3,13 @@ import { Group, Panel, Separator } from 'react-resizable-panels'
 import { Terminal } from 'lucide-react'
 import type { Project } from '@shared/models'
 import { api } from '@renderer/lib/api'
-import TerminalPanel from '@renderer/components/Terminal/TerminalPanel'
 import TabBar from '@renderer/components/TabBar/TabBar'
-import CodeFireChat from '@renderer/components/Chat/CodeFireChat'
-import BriefingDrawer from '@renderer/components/Dashboard/BriefingDrawer'
 import AgentStatusBar from '@renderer/components/StatusBar/AgentStatusBar'
 import { ProjectHeaderLeft, ProjectHeaderRight } from '@renderer/components/Header/ProjectHeaderBar'
 import ProjectDropdown from '@renderer/components/Header/ProjectDropdown'
-import { useMCPStatus } from '@renderer/hooks/useMCPStatus'
-import { usePremium } from '@renderer/hooks/usePremium'
+import { useDeferredMCPStatus } from '@renderer/hooks/useMCPStatus'
+import { useDeferredPremium } from '@renderer/hooks/usePremium'
 import NotificationBell from '@renderer/components/NotificationBell'
-import PresenceAvatars from '@renderer/components/Presence/PresenceAvatars'
 import { UpdateBanner } from '@renderer/components/UpdateBanner'
 import logoIcon from '../../../resources/icon.png'
 
@@ -37,6 +33,12 @@ const ActivityView = lazy(() => import('@renderer/views/ActivityView'))
 const DocsView = lazy(() => import('@renderer/views/DocsView'))
 const ReviewsView = lazy(() => import('@renderer/views/ReviewsView'))
 
+// Lazy: heavy components (node-pty, xterm.js, presence websocket)
+const TerminalPanel = lazy(() => import('@renderer/components/Terminal/TerminalPanel'))
+const CodeFireChat = lazy(() => import('@renderer/components/Chat/CodeFireChat'))
+const BriefingDrawer = lazy(() => import('@renderer/components/Dashboard/BriefingDrawer'))
+const PresenceAvatars = lazy(() => import('@renderer/components/Presence/PresenceAvatars'))
+
 interface ProjectLayoutProps {
   projectId: string
 }
@@ -45,8 +47,8 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
   const [project, setProject] = useState<Project | null>(null)
   const [activeTab, setActiveTab] = useState('Tasks')
   const [error, setError] = useState<string | null>(null)
-  const { mcpStatus, mcpSessionCount, startMCP, stopMCP } = useMCPStatus()
-  const { status: premiumStatus } = usePremium()
+  const { mcpStatus, mcpSessionCount, startMCP, stopMCP } = useDeferredMCPStatus()
+  const { status: premiumStatus } = useDeferredPremium()
   const [indexStatus, setIndexStatus] = useState<'idle' | 'indexing' | 'ready' | 'error'>('idle')
   const [indexLastError, setIndexLastError] = useState<string | undefined>()
   const [showBriefing, setShowBriefing] = useState(false)
@@ -74,7 +76,13 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
 
     async function init() {
       try {
-        const proj = await api.projects.get(projectId)
+        // Fire project fetch and lastOpened update in parallel
+        const [proj] = await Promise.all([
+          api.projects.get(projectId),
+          api.projects.updateLastOpened(projectId).catch((err) => {
+            console.warn('Failed to update lastOpened:', err)
+          }),
+        ])
         if (cancelled) return
 
         if (!proj) {
@@ -84,9 +92,6 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
 
         setProject(proj)
         document.title = `${proj.name} — CodeFire`
-        api.projects.updateLastOpened(projectId).catch((err) => {
-          console.warn('Failed to update lastOpened:', err)
-        })
 
         // Always trigger indexing when a project is opened
         handleRequestIndex()
@@ -115,22 +120,16 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
     )
   }
 
-  if (!project) {
-    return (
-      <div className="h-screen bg-neutral-900 text-neutral-200 flex items-center justify-center">
-        <p className="text-xs text-neutral-600">Loading project...</p>
-      </div>
-    )
-  }
-
   const lazyFallback = (
     <div className="flex-1 flex items-center justify-center">
       <div className="w-5 h-5 border-2 border-neutral-700 border-t-codefire-orange rounded-full animate-spin" />
     </div>
   )
 
+  const projectPath = project?.path
+
   function renderActiveView(tab: string, pid: string, onTabChange: (t: string) => void) {
-    // Eager-loaded views (default tab + lightweight)
+    // Eager-loaded views (default tab + lightweight — work with just projectId)
     switch (tab) {
       case 'Tasks':
         return <TasksView projectId={pid} />
@@ -140,19 +139,22 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
         return <NotesView projectId={pid} />
     }
 
+    // Views that need projectPath — show spinner until project loads
+    if (!projectPath) return lazyFallback
+
     // Lazy-loaded views (heavy dependencies)
     return (
       <Suspense fallback={lazyFallback}>
         {tab === 'Sessions' && <SessionsView projectId={pid} />}
-        {tab === 'Files' && <FilesView projectId={pid} projectPath={project!.path} />}
-        {tab === 'Memory' && <MemoryView projectId={pid} projectPath={project!.path} />}
-        {tab === 'Services' && <ServicesView projectId={pid} projectPath={project!.path} />}
-        {tab === 'Rules' && <RulesView projectId={pid} projectPath={project!.path} />}
-        {tab === 'Git' && <GitView projectId={pid} projectPath={project!.path} />}
+        {tab === 'Files' && <FilesView projectId={pid} projectPath={projectPath} />}
+        {tab === 'Memory' && <MemoryView projectId={pid} projectPath={projectPath} />}
+        {tab === 'Services' && <ServicesView projectId={pid} projectPath={projectPath} />}
+        {tab === 'Rules' && <RulesView projectId={pid} projectPath={projectPath} />}
+        {tab === 'Git' && <GitView projectId={pid} projectPath={projectPath} />}
         {tab === 'Images' && <ImagesView projectId={pid} />}
         {tab === 'Recordings' && <RecordingsView projectId={pid} />}
         {tab === 'Browser' && <BrowserView projectId={pid} />}
-        {tab === 'Visualizer' && <VisualizerView projectId={pid} projectPath={project!.path} />}
+        {tab === 'Visualizer' && <VisualizerView projectId={pid} projectPath={projectPath} />}
         {tab === 'Activity' && <ActivityView projectId={pid} />}
         {tab === 'Docs' && <DocsView projectId={pid} />}
         {tab === 'Reviews' && <ReviewsView projectId={pid} />}
@@ -167,15 +169,25 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
   }
 
   function renderTerminalChat() {
+    if (!projectPath) {
+      return (
+        <div className="h-full flex items-center justify-center bg-neutral-950">
+          <div className="w-5 h-5 border-2 border-neutral-700 border-t-codefire-orange rounded-full animate-spin" />
+        </div>
+      )
+    }
+
     const terminalPanel = (
-      <TerminalPanel
-        projectId={projectId}
-        projectPath={project!.path}
-        showChat={showChat}
-        onToggleChat={() => setShowChat(v => !v)}
-        terminalOnLeft={terminalOnLeft}
-        onSwapPanels={() => setTerminalOnLeft(v => !v)}
-      />
+      <Suspense fallback={lazyFallback}>
+        <TerminalPanel
+          projectId={projectId}
+          projectPath={projectPath}
+          showChat={showChat}
+          onToggleChat={() => setShowChat(v => !v)}
+          terminalOnLeft={terminalOnLeft}
+          onSwapPanels={() => setTerminalOnLeft(v => !v)}
+        />
+      </Suspense>
     )
 
     if (!showChat) return terminalPanel
@@ -187,7 +199,9 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
         </Panel>
         <Separator className="h-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" />
         <Panel id="chat" defaultSize="50%" minSize="15%">
-          <CodeFireChat projectId={projectId} projectName={project!.name} />
+          <Suspense fallback={lazyFallback}>
+            <CodeFireChat projectId={projectId} projectName={project?.name ?? ''} />
+          </Suspense>
         </Panel>
       </Group>
     )
@@ -206,10 +220,12 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
           <span className="text-sm font-semibold text-neutral-200 tracking-tight">CodeFire</span>
           <ProjectDropdown />
           <div className="w-px h-4 bg-neutral-700" />
-          <ProjectHeaderLeft projectName={project.name} projectPath={project.path} />
+          <ProjectHeaderLeft projectName={project?.name ?? '...'} projectPath={project?.path ?? ''} />
           <div className="flex-1" />
           {premiumStatus?.enabled && premiumStatus.authenticated && (
-            <PresenceAvatars projectId={projectId} />
+            <Suspense fallback={null}>
+              <PresenceAvatars projectId={projectId} />
+            </Suspense>
           )}
           <button
             onClick={() => setShowTerminal(v => !v)}
@@ -337,13 +353,15 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
 
         {/* Briefing Drawer */}
         {showBriefing && (
-          <BriefingDrawer projectId={projectId} onClose={() => setShowBriefing(false)} />
+          <Suspense fallback={null}>
+            <BriefingDrawer projectId={projectId} onClose={() => setShowBriefing(false)} />
+          </Suspense>
         )}
 
         {/* Status bar */}
         <AgentStatusBar
           projectId={projectId}
-          projectPath={project.path}
+          projectPath={project?.path ?? ''}
           mcpStatus={mcpStatus}
           mcpSessionCount={mcpSessionCount}
           indexStatus={indexStatus}

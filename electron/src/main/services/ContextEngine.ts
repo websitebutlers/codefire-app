@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { createHash, randomUUID } from 'crypto'
 import fs from 'fs'
+import fsPromises from 'fs/promises'
 import path from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -14,6 +15,12 @@ import {
 } from '@main/services/CodeChunker'
 
 const execFileAsync = promisify(execFile)
+
+/** Yield to the event loop so IPC and window creation aren't starved. */
+const yieldToEventLoop = () => new Promise<void>((r) => setImmediate(r))
+
+/** How many files to process before yielding. */
+const INDEX_BATCH_SIZE = 30
 
 // ─── Skip Rules ──────────────────────────────────────────────────────────────
 
@@ -82,13 +89,14 @@ function shouldSkipFile(filePath: string): boolean {
 
 /**
  * Recursively enumerate all files in a directory, skipping excluded dirs/extensions.
+ * Async to avoid blocking the main-process event loop for large trees.
  */
-function enumerateFiles(dirPath: string): string[] {
+async function enumerateFiles(dirPath: string): Promise<string[]> {
   const results: string[] = []
 
   let entries: fs.Dirent[]
   try {
-    entries = fs.readdirSync(dirPath, { withFileTypes: true })
+    entries = await fsPromises.readdir(dirPath, { withFileTypes: true })
   } catch {
     return results
   }
@@ -96,7 +104,7 @@ function enumerateFiles(dirPath: string): string[] {
   for (const entry of entries) {
     if (entry.isDirectory()) {
       if (!shouldSkipDir(entry.name)) {
-        results.push(...enumerateFiles(path.join(dirPath, entry.name)))
+        results.push(...await enumerateFiles(path.join(dirPath, entry.name)))
       }
     } else if (entry.isFile()) {
       const fullPath = path.join(dirPath, entry.name)
@@ -152,20 +160,24 @@ export class ContextEngine {
         lastError: null,
       })
 
-      // Step 2: Enumerate files
-      const absolutePaths = enumerateFiles(projectPath)
+      // Step 2: Enumerate files (async to avoid blocking)
+      const absolutePaths = await enumerateFiles(projectPath)
       const relativePaths = absolutePaths.map((p) =>
         path.relative(projectPath, p)
       )
 
-      // Step 3: Process each file
+      // Step 3: Process each file (yield every batch to keep event loop responsive)
       for (let i = 0; i < absolutePaths.length; i++) {
+        if (i > 0 && i % INDEX_BATCH_SIZE === 0) {
+          await yieldToEventLoop()
+        }
+
         const absPath = absolutePaths[i]
         const relPath = relativePaths[i]
 
         let content: string
         try {
-          content = fs.readFileSync(absPath, 'utf-8')
+          content = await fsPromises.readFile(absPath, 'utf-8')
         } catch {
           continue // Skip unreadable files
         }

@@ -116,3 +116,22 @@ export function usePremium() {
     refresh,
   }
 }
+
+/**
+ * Deferred variant — delays the initial premium status fetch so it doesn't
+ * compete with critical window-load calls (project data, tasks).
+ */
+export function useDeferredPremium() {
+  const [status, setStatus] = useState<PremiumStatus | null>(null)
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      api.premium.getStatus()
+        .then((s) => setStatus(s))
+        .catch(() => {})
+    }, 400)
+    return () => clearTimeout(id)
+  }, [])
+
+  return { status }
+}

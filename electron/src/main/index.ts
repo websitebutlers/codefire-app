@@ -6,7 +6,7 @@ import { registerSearchHandlers } from './ipc/search-handlers'
 import { registerGmailHandlers } from './ipc/gmail-handlers'
 import { WindowManager } from './windows/WindowManager'
 import { TrayManager } from './windows/TrayManager'
-import type { TerminalService as TerminalServiceType } from './services/TerminalService'
+import { TerminalService } from './services/TerminalService'
 import { GitService } from './services/GitService'
 import { GoogleOAuth } from './services/GoogleOAuth'
 import { GmailService } from './services/GmailService'
@@ -44,12 +44,8 @@ process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL
 const db = getDatabase()
 const windowManager = WindowManager.getInstance()
 const trayManager = new TrayManager(windowManager)
-// Lazy-load TerminalService — node-pty may not be available if build tools are missing
-let terminalService: TerminalServiceType | undefined
-try {
-  const { TerminalService } = require('./services/TerminalService')
-  terminalService = new TerminalService()
-} catch {
+const terminalService = new TerminalService()
+if (!terminalService.isAvailable()) {
   console.warn('[Main] Terminal service unavailable — node-pty failed to load')
 }
 const gitService = new GitService()
@@ -140,7 +136,41 @@ if (process.defaultApp) {
 }
 
 /** Process a codefire:// URL and broadcast result to all renderer windows */
-function handleDeepLinkURL(url: string) {
+async function handleDeepLinkURL(url: string) {
+  // Handle auth callback: codefire://auth/callback#access_token=...&refresh_token=...
+  if (url.includes('auth/callback') || url.includes('access_token=')) {
+    try {
+      // Supabase puts tokens in the hash fragment (after #)
+      const hashPart = url.split('#')[1] || url.split('?')[1] || ''
+      const params = new URLSearchParams(hashPart)
+      const accessToken = params.get('access_token')
+      const refreshToken = params.get('refresh_token')
+
+      if (accessToken && refreshToken) {
+        const { getSupabaseClient } = require('./services/premium/SupabaseClient')
+        const client = getSupabaseClient()
+        if (client) {
+          await client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+          console.log('[DeepLink] Auth callback: session set successfully')
+        }
+      }
+    } catch (e) {
+      console.error('[DeepLink] Failed to handle auth callback:', e)
+    }
+
+    // Focus window and notify renderer to refresh auth status
+    const mainWin = windowManager.getMainWindow()
+    if (mainWin) {
+      if (mainWin.isMinimized()) mainWin.restore()
+      mainWin.show()
+      mainWin.focus()
+    }
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('deeplink:result', { success: true, type: 'auth-callback' })
+    }
+    return
+  }
+
   const result = deepLinkService.handleURL(url)
   if (!result) return
   // Ensure the app window is visible and focused

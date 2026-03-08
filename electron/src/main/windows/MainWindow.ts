@@ -1,7 +1,14 @@
-import { BrowserWindow, screen } from 'electron'
+import { app, BrowserWindow, nativeImage, screen } from 'electron'
 import path from 'path'
 import { WINDOW_SIZES } from '@shared/theme'
 import { WindowStateStore, type WindowState } from './WindowStateStore'
+
+function getAppIcon() {
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.png')
+    : path.join(__dirname, '../../../resources/icon.png')
+  return nativeImage.createFromPath(iconPath)
+}
 
 export class MainWindow {
   private window: BrowserWindow | null = null
@@ -27,6 +34,7 @@ export class MainWindow {
 
     this.window = new BrowserWindow({
       ...bounds,
+      icon: getAppIcon(),
       minWidth: 900,
       minHeight: 600,
       titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',

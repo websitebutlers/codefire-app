@@ -31,6 +31,7 @@ export default function SettingsTabTeam({ config, onChange }: Props) {
   const [selectedPlan, setSelectedPlan] = useState<'starter' | 'agency'>('starter')
   const [extraSeats, setExtraSeats] = useState(0)
   const [billingLoading, setBillingLoading] = useState(false)
+  const [confirmationSent, setConfirmationSent] = useState(false)
 
   if (loading) {
     return (
@@ -62,6 +63,13 @@ export default function SettingsTabTeam({ config, onChange }: Props) {
             </div>
           )}
 
+          {confirmationSent && (
+            <div className="flex items-center gap-1.5 text-xs text-green-400 mb-2 rounded-lg border border-green-500/30 bg-green-500/10 p-3">
+              <Mail className="w-4 h-4 shrink-0" />
+              <span>Check your email for a confirmation link. Click the link to verify your account, then sign in.</span>
+            </div>
+          )}
+
           <div className="space-y-3">
             {authMode === 'signup' && (
               <TextInput
@@ -89,9 +97,14 @@ export default function SettingsTabTeam({ config, onChange }: Props) {
               <button
                 onClick={async () => {
                   setSubmitting(true)
+                  setConfirmationSent(false)
                   try {
                     if (authMode === 'signup') {
-                      await signUp(email, password, displayName)
+                      const result = await signUp(email, password, displayName)
+                      if ((result as any)?.confirmationRequired) {
+                        setConfirmationSent(true)
+                        return
+                      }
                     } else {
                       await signIn(email, password)
                     }
@@ -261,7 +274,7 @@ export default function SettingsTabTeam({ config, onChange }: Props) {
                   )
                   window.api.invoke('shell:openExternal', url)
                 } catch (err: any) {
-                  console.error('Failed to create checkout:', err)
+                  setInviteError(err?.message || 'Failed to create checkout session')
                 } finally {
                   setBillingLoading(false)
                 }
@@ -274,6 +287,9 @@ export default function SettingsTabTeam({ config, onChange }: Props) {
               <CreditCard className="w-3 h-3" />
               {billingLoading ? 'Opening...' : 'Subscribe'}
             </button>
+            {inviteError && (
+              <p className="text-xs text-red-400 mt-1">{inviteError}</p>
+            )}
           </div>
         </Section>
       )}

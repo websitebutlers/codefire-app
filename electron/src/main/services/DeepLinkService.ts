@@ -40,6 +40,12 @@ export class DeepLinkService {
     }
 
     if (url.protocol !== 'codefire:') return null
+
+    if (url.hostname === 'auth' || url.pathname?.startsWith('/callback')) {
+      // Auth callback from Supabase email confirmation — handled by renderer
+      return { success: true, cli: 'claude' as CLIProvider, displayName: 'Auth callback' }
+    }
+
     if (url.hostname !== 'install-mcp') return null
 
     const client = url.searchParams.get('client') as CLIProvider | null

@@ -14,8 +14,9 @@ export function registerPremiumHandlers(
   // Auth
   ipcMain.handle('premium:getStatus', () => authService.getStatus())
   ipcMain.handle('premium:signUp', async (_e, email: string, password: string, displayName: string) => {
-    await authService.signUp(email, password, displayName)
-    return authService.getStatus()
+    const result = await authService.signUp(email, password, displayName)
+    const status = await authService.getStatus()
+    return { ...status, confirmationRequired: result.confirmationRequired }
   })
   ipcMain.handle('premium:signIn', async (_e, email: string, password: string) => {
     await authService.signIn(email, password)

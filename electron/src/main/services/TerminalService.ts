@@ -1,8 +1,15 @@
-import * as pty from 'node-pty'
+import type * as ptyType from 'node-pty'
+
+let pty: typeof ptyType | null = null
+try {
+  pty = require('node-pty')
+} catch {
+  // node-pty not available — terminal features will be disabled
+}
 
 interface TerminalSession {
   id: string
-  pty: pty.IPty
+  pty: ptyType.IPty
   projectPath: string
 }
 
@@ -20,7 +27,7 @@ export class TerminalService {
    * Returns false if native build tools were not present at install time.
    */
   isAvailable(): boolean {
-    return typeof pty.spawn === 'function'
+    return pty !== null && typeof pty.spawn === 'function'
   }
 
   /**

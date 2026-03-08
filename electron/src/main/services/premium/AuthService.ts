@@ -2,23 +2,30 @@ import { getSupabaseClient, resetSupabaseClient } from './SupabaseClient'
 import type { PremiumUser, PremiumStatus } from '@shared/premium-models'
 
 export class AuthService {
-  async signUp(email: string, password: string, displayName: string): Promise<PremiumUser> {
+  async signUp(email: string, password: string, displayName: string): Promise<PremiumUser & { confirmationRequired?: boolean }> {
     const client = getSupabaseClient()
     if (!client) throw new Error('Supabase not configured')
 
     const { data, error } = await client.auth.signUp({
       email,
       password,
-      options: { data: { display_name: displayName } },
+      options: {
+        data: { display_name: displayName },
+        emailRedirectTo: 'codefire://auth/callback',
+      },
     })
     if (error) throw new Error(error.message)
     if (!data.user) throw new Error('Sign up failed')
+
+    // Supabase returns a user with no session when email confirmation is required
+    const confirmationRequired = !data.session
 
     return {
       id: data.user.id,
       email: data.user.email!,
       displayName,
       avatarUrl: null,
+      confirmationRequired,
     }
   }
 

@@ -1,5 +1,12 @@
-import { BrowserWindow, screen } from 'electron'
+import { app, BrowserWindow, nativeImage, screen } from 'electron'
 import path from 'path'
+
+function getAppIcon() {
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.png')
+    : path.join(__dirname, '../../../resources/icon.png')
+  return nativeImage.createFromPath(iconPath)
+}
 
 let arenaWindow: BrowserWindow | null = null
 
@@ -12,6 +19,7 @@ export function openAgentArena(): BrowserWindow {
   const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize
 
   arenaWindow = new BrowserWindow({
+    icon: getAppIcon(),
     width: 600,
     height: 250,
     minWidth: 300,
