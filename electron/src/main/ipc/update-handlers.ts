@@ -3,6 +3,12 @@ import { app } from 'electron'
 
 const GITHUB_REPO = 'websitebutlers/codefire-app'
 
+/** Domains allowed for update downloads */
+const ALLOWED_DOWNLOAD_HOSTS = [
+  'github.com',
+  'objects.githubusercontent.com',
+]
+
 function compareVersions(a: string, b: string): number {
   const pa = a.replace(/^v/, '').split('.').map(Number)
   const pb = b.replace(/^v/, '').split('.').map(Number)
@@ -15,8 +21,17 @@ function compareVersions(a: string, b: string): number {
   return 0
 }
 
-async function fetchJSON(url: string): Promise<any> {
+async function fetchJSON(url: string, depth = 0): Promise<any> {
+  // Prevent infinite redirect loops
+  if (depth > 5) throw new Error('Too many redirects')
+
   return new Promise((resolve, reject) => {
+    // Only allow HTTPS for update checks
+    if (!url.startsWith('https://')) {
+      reject(new Error('Update check requires HTTPS'))
+      return
+    }
+
     const request = net.request(url)
     request.setHeader('User-Agent', 'CodeFire-Electron')
     request.setHeader('Accept', 'application/vnd.github+json')
@@ -26,7 +41,12 @@ async function fetchJSON(url: string): Promise<any> {
         const location = response.headers['location']
         if (location) {
           const redirectUrl = Array.isArray(location) ? location[0] : location
-          fetchJSON(redirectUrl).then(resolve).catch(reject)
+          // Validate redirect target is HTTPS
+          if (!redirectUrl.startsWith('https://')) {
+            reject(new Error('Redirect to non-HTTPS URL blocked'))
+            return
+          }
+          fetchJSON(redirectUrl, depth + 1).then(resolve).catch(reject)
           return
         }
       }
@@ -69,6 +89,18 @@ export function registerUpdateHandlers() {
         }
       }
 
+      // Validate download URL is from an allowed host
+      if (downloadUrl) {
+        try {
+          const parsed = new URL(downloadUrl)
+          if (parsed.protocol !== 'https:' || !ALLOWED_DOWNLOAD_HOSTS.includes(parsed.hostname)) {
+            downloadUrl = null
+          }
+        } catch {
+          downloadUrl = null
+        }
+      }
+
       return {
         available,
         currentVersion,
@@ -82,6 +114,19 @@ export function registerUpdateHandlers() {
   })
 
   ipcMain.handle('update:download', async (_e, url: string) => {
+    // Validate URL is HTTPS and from an allowed download host
+    if (!url || typeof url !== 'string') {
+      return { success: false }
+    }
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol !== 'https:' || !ALLOWED_DOWNLOAD_HOSTS.includes(parsed.hostname)) {
+        return { success: false }
+      }
+    } catch {
+      return { success: false }
+    }
+
     try {
       await shell.openExternal(url)
       return { success: true }

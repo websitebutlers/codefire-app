@@ -47,3 +47,6 @@ electron/*.exe
 # Dev artifacts
 TASK_EXECUTION_PLAN.md
 electron/dev.log
+
+# Security audit
+security-audit.md

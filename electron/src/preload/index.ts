@@ -1,15 +1,52 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcChannel } from '@shared/types'
 
+/**
+ * Allowed channels for fire-and-forget `send` (renderer → main).
+ * Kept as a Set for O(1) lookup.
+ */
+const ALLOWED_SEND_CHANNELS = new Set<string>([
+  'terminal:write',
+  'terminal:writeToActive',
+  'terminal:resize',
+])
+
+/**
+ * Allowed channels for `on` (main → renderer event listeners).
+ */
+const ALLOWED_RECEIVE_CHANNELS = new Set<string>([
+  'terminal:data',
+  'terminal:exit',
+  'terminal:created',
+  'deeplink:result',
+  'mcp:statusChanged',
+  'menu:openSettings',
+  'browser:commandRequest',
+  'browser:commandResult',
+  'file:changed',
+  'sessions:liveUpdate',
+  'premium:notification',
+])
+
 contextBridge.exposeInMainWorld('api', {
   invoke: (channel: IpcChannel, ...args: unknown[]) =>
     ipcRenderer.invoke(channel, ...args),
   on: (channel: string, callback: (...args: unknown[]) => void) => {
+    if (!ALLOWED_RECEIVE_CHANNELS.has(channel)) {
+      console.warn(`[preload] Blocked on() for unrecognized channel: ${channel}`)
+      return () => {} // no-op unsubscribe
+    }
     const subscription = (_event: Electron.IpcRendererEvent, ...args: unknown[]) =>
       callback(...args)
     ipcRenderer.on(channel, subscription)
     return () => ipcRenderer.removeListener(channel, subscription)
   },
-  send: (channel: string, ...args: unknown[]) => ipcRenderer.send(channel, ...args),
+  send: (channel: string, ...args: unknown[]) => {
+    if (!ALLOWED_SEND_CHANNELS.has(channel)) {
+      console.warn(`[preload] Blocked send() for unrecognized channel: ${channel}`)
+      return
+    }
+    ipcRenderer.send(channel, ...args)
+  },
   homePath: process.env.USERPROFILE || process.env.HOME || '',
 })

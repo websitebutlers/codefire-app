@@ -1,6 +1,7 @@
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
+import { getPathValidator } from '../services/PathValidator'
 
 /** Directories to skip when listing files */
 const SKIP_DIRS = new Set([
@@ -47,6 +48,8 @@ export function registerFileHandlers() {
         throw new Error('dirPath is required and must be a string')
       }
 
+      getPathValidator().assertAllowed(dirPath)
+
       try {
         const entries = fs.readdirSync(dirPath, { withFileTypes: true })
         const result: FileEntry[] = []
@@ -86,6 +89,7 @@ export function registerFileHandlers() {
 
         return result
       } catch (err) {
+        if (err instanceof Error && err.message.startsWith('Access denied')) throw err
         throw new Error(
           `Failed to list directory: ${err instanceof Error ? err.message : String(err)}`
         )
@@ -97,6 +101,7 @@ export function registerFileHandlers() {
     if (!filePath || typeof filePath !== 'string') {
       throw new Error('filePath is required and must be a string')
     }
+    getPathValidator().assertAllowed(filePath)
     shell.showItemInFolder(filePath)
   })
 
@@ -107,6 +112,8 @@ export function registerFileHandlers() {
         throw new Error('filePath is required and must be a string')
       }
 
+      getPathValidator().assertAllowed(filePath)
+
       try {
         // Limit file size to 2MB to avoid loading huge files
         const stat = fs.statSync(filePath)
@@ -115,6 +122,7 @@ export function registerFileHandlers() {
         }
         return fs.readFileSync(filePath, 'utf-8')
       } catch (err) {
+        if (err instanceof Error && err.message.startsWith('Access denied')) throw err
         throw new Error(
           `Failed to read file: ${err instanceof Error ? err.message : String(err)}`
         )
@@ -132,6 +140,8 @@ export function registerFileHandlers() {
         throw new Error('content must be a string')
       }
 
+      getPathValidator().assertAllowed(filePath)
+
       try {
         // Ensure parent directory exists
         const dir = path.dirname(filePath)
@@ -140,6 +150,7 @@ export function registerFileHandlers() {
         }
         fs.writeFileSync(filePath, content, 'utf-8')
       } catch (err) {
+        if (err instanceof Error && err.message.startsWith('Access denied')) throw err
         throw new Error(
           `Failed to write file: ${err instanceof Error ? err.message : String(err)}`
         )

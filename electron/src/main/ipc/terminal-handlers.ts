@@ -68,41 +68,15 @@ export function registerTerminalHandlers(terminalService: TerminalService) {
     terminalService.write(id, data)
   })
 
+  // Write to the first active terminal — only if one already exists.
+  // Does NOT auto-create terminals to prevent shell injection from XSS.
   ipcMain.on('terminal:writeToActive', (_event, data: string) => {
     const ids = terminalService.getActiveIds()
     if (ids.length > 0) {
       terminalService.write(ids[0], data)
-    } else {
-      // No terminal exists yet — create one, wire it up, then write after shell initializes
-      const id = `__auto-term-${Date.now()}`
-      const cwd = process.env.HOME || process.env.USERPROFILE || process.cwd()
-      terminalService.create(id, cwd)
-
-      const senderWindow = BrowserWindow.fromWebContents(_event.sender)
-      let shellReady = false
-
-      terminalService.onData(id, (output) => {
-        if (senderWindow && !senderWindow.isDestroyed()) {
-          senderWindow.webContents.send('terminal:data', id, output)
-        }
-        // Write the command once the shell emits its first output (prompt ready)
-        if (!shellReady) {
-          shellReady = true
-          terminalService.write(id, data)
-        }
-      })
-      terminalService.onExit(id, (exitCode, signal) => {
-        if (senderWindow && !senderWindow.isDestroyed()) {
-          senderWindow.webContents.send('terminal:exit', id, exitCode, signal)
-        }
-        terminalService.kill(id)
-      })
-
-      // Notify renderer so it can add a tab for this terminal
-      if (senderWindow && !senderWindow.isDestroyed()) {
-        senderWindow.webContents.send('terminal:created', id)
-      }
     }
+    // If no terminal exists, silently ignore — the renderer must create one first
+    // via the terminal:create handle (which requires explicit user action).
   })
 
   ipcMain.on(

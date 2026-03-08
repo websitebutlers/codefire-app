@@ -4,6 +4,7 @@ import path from 'path'
 import Database from 'better-sqlite3'
 import { ImageDAO } from '../database/dao/ImageDAO'
 import { ImageGenerationService } from '../services/ImageGenerationService'
+import { getPathValidator } from '../services/PathValidator'
 
 export function registerImageHandlers(db: Database.Database) {
   const imageDAO = new ImageDAO(db)
@@ -40,6 +41,7 @@ export function registerImageHandlers(db: Database.Database) {
 
   ipcMain.handle('images:readFile', (_e, filePath: string) => {
     try {
+      getPathValidator().assertAllowed(filePath)
       const data = fs.readFileSync(filePath)
       const ext = path.extname(filePath).toLowerCase().replace('.', '')
       const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext || 'png'}`

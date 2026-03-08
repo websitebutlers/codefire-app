@@ -46,8 +46,7 @@ export class MainWindow {
         preload: path.join(__dirname, '../preload/index.js'),
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: false,
-        webviewTag: true,
+        // webviewTag not needed on main window — only ProjectWindow hosts the browser
       },
     })
 

@@ -56,6 +56,8 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
 
   // Teams (opt-in cloud sync for team collaboration)
   premiumEnabled: false,
+  // SECURITY-REVIEW: [HIGH] Production Supabase URL + anon key hardcoded in source and shipped in binary.
+  // Extractable with `strings`. Verify RLS policies are airtight. Consider loading from build-time env var.
   supabaseUrl: 'https://hofreldxofygaerodowt.supabase.co',
   supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhvZnJlbGR4b2Z5Z2Flcm9kb3d0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjc2NjksImV4cCI6MjA4ODQwMzY2OX0.MBwqQBeDfu9uxb99tYTZD54P_U3tjuh2zddMUjTlCuA',
   autoShareSessions: false,
@@ -85,6 +87,8 @@ export function readRawConfig(): Partial<AppConfig> {
   }
 }
 
+// SECURITY-REVIEW: [HIGH] All credentials (openRouterKey, googleClientId/Secret, GitHub token)
+// stored as plaintext JSON in %APPDATA%. Use safeStorage.encryptString() for secrets.
 export function writeConfig(config: Partial<AppConfig>): void {
   const existing = readRawConfig()
   const merged = { ...existing, ...config }

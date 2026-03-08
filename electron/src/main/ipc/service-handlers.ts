@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { scanArchitecture, scanSchema } from '../services/ProjectAnalyzer'
+import { getPathValidator } from '../services/PathValidator'
 
 export interface DetectedService {
   name: string
@@ -233,6 +234,8 @@ export function registerServiceHandlers() {
       if (!filePath || typeof filePath !== 'string') {
         throw new Error('filePath is required and must be a string')
       }
+
+      getPathValidator().assertAllowed(filePath)
 
       const content = fs.readFileSync(filePath, 'utf-8')
       const lines = content.split('\n')

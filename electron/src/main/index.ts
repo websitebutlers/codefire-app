@@ -1,6 +1,7 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, session } from 'electron'
 import path from 'path'
 import { getDatabase, closeDatabase } from './database/connection'
+import { initPathValidator } from './services/PathValidator'
 import { registerAllHandlers } from './ipc'
 import { registerSearchHandlers } from './ipc/search-handlers'
 import { registerGmailHandlers } from './ipc/gmail-handlers'
@@ -42,6 +43,9 @@ process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL
 
 // Initialize database, window manager, terminal service, and git service
 const db = getDatabase()
+
+// Initialize path validator for IPC security
+initPathValidator(db)
 const windowManager = WindowManager.getInstance()
 const trayManager = new TrayManager(windowManager)
 const terminalService = new TerminalService()
@@ -138,22 +142,40 @@ if (process.defaultApp) {
 
 /** Process a codefire:// URL and broadcast result to all renderer windows */
 async function handleDeepLinkURL(url: string) {
+  // Validate URL structure
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    console.error('[DeepLink] Invalid URL:', url)
+    return
+  }
+
+  if (parsed.protocol !== 'codefire:') {
+    console.error('[DeepLink] Unexpected protocol:', parsed.protocol)
+    return
+  }
+
   // Handle auth callback: codefire://auth/callback#access_token=...&refresh_token=...
-  if (url.includes('auth/callback') || url.includes('access_token=')) {
+  if (parsed.hostname === 'auth' && parsed.pathname === '/callback') {
     try {
       // Supabase puts tokens in the hash fragment (after #)
-      const hashPart = url.split('#')[1] || url.split('?')[1] || ''
+      const hashPart = url.split('#')[1] || ''
       const params = new URLSearchParams(hashPart)
       const accessToken = params.get('access_token')
       const refreshToken = params.get('refresh_token')
 
-      if (accessToken && refreshToken) {
+      // Basic JWT format validation (3 dot-separated base64 segments)
+      const jwtPattern = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
+      if (accessToken && refreshToken && jwtPattern.test(accessToken)) {
         const { getSupabaseClient } = require('./services/premium/SupabaseClient')
         const client = getSupabaseClient()
         if (client) {
           await client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
           console.log('[DeepLink] Auth callback: session set successfully')
         }
+      } else {
+        console.error('[DeepLink] Invalid token format in auth callback')
       }
     } catch (e) {
       console.error('[DeepLink] Failed to handle auth callback:', e)
@@ -234,6 +256,43 @@ if (config.mcpServerAutoStart) {
 }
 
 app.whenReady().then(() => {
+  // ─── Content Security Policy ────────────────────────────────────────────────
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self';" +
+          " script-src 'self';" +
+          " style-src 'self' 'unsafe-inline';" +
+          " img-src 'self' data: blob: https:;" +
+          " font-src 'self' data:;" +
+          " connect-src 'self' https: wss: http://localhost:* http://127.0.0.1:*;" +
+          " media-src 'self' blob:;" +
+          " worker-src 'self' blob:;"
+        ],
+      },
+    })
+  })
+
+  // ─── Navigation guards ──────────────────────────────────────────────────────
+  // Block renderer navigation to unexpected URLs
+  app.on('web-contents-created', (_event, contents) => {
+    // Block navigation away from app content
+    contents.on('will-navigate', (event, navigationUrl) => {
+      const parsedUrl = new URL(navigationUrl)
+      // Allow Vite dev server and file:// (app content) only
+      if (parsedUrl.protocol === 'file:') return
+      if (process.env.VITE_DEV_SERVER_URL && navigationUrl.startsWith(process.env.VITE_DEV_SERVER_URL)) return
+      event.preventDefault()
+    })
+
+    // Block new window creation — deny popup windows
+    contents.setWindowOpenHandler(() => {
+      return { action: 'deny' }
+    })
+  })
+
   // Set dock icon on macOS
   if (process.platform === 'darwin') {
     const iconPath = app.isPackaged

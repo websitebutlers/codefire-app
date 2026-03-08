@@ -29,6 +29,18 @@ function getMemoryDir(projectPath: string): string {
 }
 
 /**
+ * Validate that a file path is within the ~/.claude/ directory tree.
+ * Prevents arbitrary filesystem access via memory handlers.
+ */
+function assertWithinClaudeDir(filePath: string): void {
+  const resolved = path.resolve(filePath)
+  const claudeRoot = path.resolve(os.homedir(), '.claude')
+  if (!resolved.startsWith(claudeRoot + path.sep) && resolved !== claudeRoot) {
+    throw new Error('Access denied: path is outside the Claude memory directory')
+  }
+}
+
+/**
  * Register IPC handlers for memory file operations.
  */
 export function registerMemoryHandlers() {
@@ -97,6 +109,8 @@ export function registerMemoryHandlers() {
         throw new Error('filePath is required and must be a string')
       }
 
+      assertWithinClaudeDir(filePath)
+
       try {
         const stat = fs.statSync(filePath)
         if (stat.size > 2 * 1024 * 1024) {
@@ -104,6 +118,7 @@ export function registerMemoryHandlers() {
         }
         return fs.readFileSync(filePath, 'utf-8')
       } catch (err) {
+        if (err instanceof Error && err.message.startsWith('Access denied')) throw err
         throw new Error(
           `Failed to read memory file: ${err instanceof Error ? err.message : String(err)}`
         )
@@ -121,6 +136,8 @@ export function registerMemoryHandlers() {
         throw new Error('content must be a string')
       }
 
+      assertWithinClaudeDir(filePath)
+
       try {
         const dir = path.dirname(filePath)
         if (!fs.existsSync(dir)) {
@@ -128,6 +145,7 @@ export function registerMemoryHandlers() {
         }
         fs.writeFileSync(filePath, content, 'utf-8')
       } catch (err) {
+        if (err instanceof Error && err.message.startsWith('Access denied')) throw err
         throw new Error(
           `Failed to write memory file: ${err instanceof Error ? err.message : String(err)}`
         )
@@ -142,9 +160,12 @@ export function registerMemoryHandlers() {
         throw new Error('filePath is required and must be a string')
       }
 
+      assertWithinClaudeDir(filePath)
+
       try {
         fs.unlinkSync(filePath)
       } catch (err) {
+        if (err instanceof Error && err.message.startsWith('Access denied')) throw err
         throw new Error(
           `Failed to delete memory file: ${err instanceof Error ? err.message : String(err)}`
         )
@@ -162,8 +183,11 @@ export function registerMemoryHandlers() {
         throw new Error('fileName is required and must be a string')
       }
 
+      // Reject path traversal in fileName
+      const sanitizedName = path.basename(fileName)
+
       // Ensure .md extension
-      const name = fileName.endsWith('.md') ? fileName : `${fileName}.md`
+      const name = sanitizedName.endsWith('.md') ? sanitizedName : `${sanitizedName}.md`
       const memDir = getMemoryDir(projectPath)
 
       try {
