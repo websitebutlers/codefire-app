@@ -44,7 +44,7 @@ export default function SettingsTabTeam({ config, onChange }: Props) {
   if (!status?.authenticated) {
     return (
       <div className="space-y-6">
-        <Section title="Team Collaboration (Premium)">
+        <Section title="Team Collaboration">
           <div className="flex items-start gap-3 mb-3">
             <Users className="w-5 h-5 text-codefire-orange mt-0.5 shrink-0" />
             <p className="text-[10px] text-neutral-500 leading-relaxed">

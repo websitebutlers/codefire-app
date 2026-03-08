@@ -78,7 +78,7 @@ struct TeamSettingsTab: View {
 
     private var authSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            GroupBox("Team Collaboration (Premium)") {
+            GroupBox("Team Collaboration") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Share projects, tasks, and notes with your team in real-time. Sign in or create an account to get started.")
                         .font(.system(size: 12))

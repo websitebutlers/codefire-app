@@ -1,16 +1,5 @@
 import SwiftUI
-
-/// Data passed from sessionDidEnd notification to the share prompt sheet.
-struct SessionEndInfo: Identifiable {
-    let id = UUID()
-    let sessionId: String
-    let slug: String?
-    let model: String?
-    let gitBranch: String?
-    let filesChanged: [String]
-    let startedAt: Date?
-    let durationMins: Int?
-}
+import UserNotifications
 
 /// Self-contained root view for project-specific windows.
 ///
@@ -36,7 +25,6 @@ struct ProjectWindowView: View {
 
     @State private var projectPath: String = ""
     @State private var project: Project?
-    @State private var sessionShareInfo: SessionEndInfo?
 
     var body: some View {
         Group {
@@ -90,34 +78,81 @@ struct ProjectWindowView: View {
             githubService.resumeMonitoring()
         }
         .onReceive(NotificationCenter.default.publisher(for: .sessionDidEnd)) { notification in
-            // Only show auto-share if premium sync is enabled
+            // Auto-share session in the background if premium sync is enabled
             guard PremiumService.shared.status.syncEnabled,
                   let info = notification.userInfo,
                   let sessionId = info["sessionId"] as? String else { return }
-            sessionShareInfo = SessionEndInfo(
-                sessionId: sessionId,
-                slug: info["slug"] as? String,
-                model: info["model"] as? String,
-                gitBranch: info["gitBranch"] as? String,
-                filesChanged: info["filesChanged"] as? [String] ?? [],
-                startedAt: info["startedAt"] as? Date,
-                durationMins: info["durationMins"] as? Int
-            )
+            let slug = info["slug"] as? String
+            let model = info["model"] as? String
+            let gitBranch = info["gitBranch"] as? String
+            let filesChanged = info["filesChanged"] as? [String] ?? []
+            let startedAt = info["startedAt"] as? Date
+            let durationMins = info["durationMins"] as? Int
+
+            Task {
+                await autoShareSession(
+                    sessionId: sessionId, slug: slug, model: model,
+                    gitBranch: gitBranch, filesChanged: filesChanged,
+                    startedAt: startedAt, durationMins: durationMins
+                )
+            }
         }
-        .sheet(item: $sessionShareInfo) { info in
-            SessionSharePromptView(
-                sessionId: info.sessionId,
-                slug: info.slug,
-                model: info.model,
-                gitBranch: info.gitBranch,
-                filesChanged: info.filesChanged,
-                startedAt: info.startedAt,
-                durationMins: info.durationMins,
-                onDismiss: { sessionShareInfo = nil }
-            )
-            .environmentObject(appState)
-            .environmentObject(claudeService)
+    }
+
+    /// Generate a summary and share the session with the team silently in the background.
+    private func autoShareSession(
+        sessionId: String, slug: String?, model: String?,
+        gitBranch: String?, filesChanged: [String],
+        startedAt: Date?, durationMins: Int?
+    ) async {
+        guard let project = appState.currentProject,
+              let claudeDir = project.claudeProject else { return }
+
+        // Generate summary via AI
+        let summary = await claudeService.generateSessionSummary(
+            sessionId: sessionId,
+            claudeProjectPath: claudeDir
+        ) ?? "Session completed on \(gitBranch ?? "unknown branch")."
+
+        // Share with team
+        let premium = PremiumService.shared
+        let toShare = SessionSummary(
+            id: "",
+            projectId: project.id,
+            userId: premium.status.user?.id ?? "",
+            sessionSlug: slug,
+            model: model,
+            gitBranch: gitBranch,
+            summary: summary,
+            filesChanged: filesChanged,
+            durationMins: durationMins,
+            startedAt: startedAt.map { ISO8601DateFormatter().string(from: $0) },
+            endedAt: ISO8601DateFormatter().string(from: Date()),
+            sharedAt: ISO8601DateFormatter().string(from: Date()),
+            user: nil
+        )
+
+        do {
+            _ = try await premium.shareSessionSummary(toShare)
+            sendSessionSharedNotification(branch: gitBranch)
+        } catch {
+            print("[AutoShare] Failed to share session: \(error)")
         }
+    }
+
+    private func sendSessionSharedNotification(branch: String?) {
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Session Shared"
+        content.body = "Session on \(branch ?? "unknown branch") shared with your team."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "sessionShared-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
     }
 
     private func loadProject() {

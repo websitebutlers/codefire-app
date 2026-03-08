@@ -54,7 +54,7 @@ class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(networkBodyLimit, forKey: "networkBodyLimit") }
     }
 
-    // Premium
+    // Teams (opt-in cloud sync for team collaboration)
     @Published var premiumEnabled: Bool {
         didSet { UserDefaults.standard.set(premiumEnabled, forKey: "premiumEnabled") }
     }

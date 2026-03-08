@@ -111,7 +111,8 @@ function initDeferredServices() {
   registerSearchHandlers(db, searchEngine, contextEngine)
   if (gmailService) registerGmailHandlers(gmailService)
 
-  // Premium services — always register handlers so the Team tab works.
+  // Teams services — always register handlers so the Team tab works.
+  // Cloud sync only activates when user explicitly signs in (opt-in).
   try {
     const authSvc = new AuthService()
     const teamSvc = new TeamService()
@@ -121,9 +122,9 @@ function initDeferredServices() {
     if (config.supabaseUrl && config.supabaseAnonKey) {
       syncEng.start()
     }
-    console.log('[Main] Premium services initialized')
+    console.log('[Main] Teams services initialized')
   } catch (err) {
-    console.warn('[Main] Premium services unavailable:', err)
+    console.warn('[Main] Teams services unavailable:', err)
   }
 }
 

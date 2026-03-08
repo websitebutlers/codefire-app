@@ -54,8 +54,8 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   ],
   briefingSubreddits: ['programming', 'MachineLearning', 'LocalLLaMA'],
 
-  // Premium
-  premiumEnabled: true,
+  // Teams (opt-in cloud sync for team collaboration)
+  premiumEnabled: false,
   supabaseUrl: 'https://hofreldxofygaerodowt.supabase.co',
   supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhvZnJlbGR4b2Z5Z2Flcm9kb3d0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjc2NjksImV4cCI6MjA4ODQwMzY2OX0.MBwqQBeDfu9uxb99tYTZD54P_U3tjuh2zddMUjTlCuA',
   autoShareSessions: false,

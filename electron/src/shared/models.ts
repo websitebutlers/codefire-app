@@ -314,7 +314,7 @@ export interface AppConfig {
   briefingRSSFeeds: string[]
   briefingSubreddits: string[]
 
-  // Premium (Team Sync)
+  // Teams (opt-in cloud sync for team collaboration)
   premiumEnabled: boolean
   supabaseUrl: string
   supabaseAnonKey: string
