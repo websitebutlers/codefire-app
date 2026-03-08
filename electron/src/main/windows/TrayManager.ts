@@ -15,9 +15,10 @@ export class TrayManager {
   }
 
   create(): Tray {
+    const ext = process.platform === 'win32' ? 'ico' : 'png'
     const iconPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'icon.png')
-      : path.join(__dirname, '../../../resources/icon.png')
+      ? path.join(process.resourcesPath, `icon.${ext}`)
+      : path.join(__dirname, `../../../resources/icon.${ext}`)
 
     const icon = nativeImage.createFromPath(iconPath)
     // Resize for tray (recommended 16x16 on Windows/Linux)

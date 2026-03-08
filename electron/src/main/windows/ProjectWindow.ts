@@ -4,9 +4,10 @@ import { WINDOW_SIZES } from '@shared/theme'
 import { WindowStateStore, type WindowState } from './WindowStateStore'
 
 function getAppIcon() {
+  const ext = process.platform === 'win32' ? 'ico' : 'png'
   const iconPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'icon.png')
-    : path.join(__dirname, '../../../resources/icon.png')
+    ? path.join(process.resourcesPath, `icon.${ext}`)
+    : path.join(__dirname, `../../../resources/icon.${ext}`)
   return nativeImage.createFromPath(iconPath)
 }
 

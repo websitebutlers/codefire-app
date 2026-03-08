@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
+import { Terminal } from 'lucide-react'
 import logoIcon from '../../../resources/icon.png'
 import { api } from '@renderer/lib/api'
 import TerminalPanel from '@renderer/components/Terminal/TerminalPanel'
@@ -16,6 +17,10 @@ const isMac = navigator.platform.toUpperCase().includes('MAC')
 export default function MainLayout() {
   const { mcpStatus, mcpSessionCount, startMCP, stopMCP } = useMCPStatus()
   const [defaultTerminalPath, setDefaultTerminalPath] = useState('')
+  const [showTerminal, setShowTerminal] = useState(true)
+  const [terminalOnLeft, setTerminalOnLeft] = useState(false)
+  const [showChat, setShowChat] = useState(true)
+  const [dragOverSide, setDragOverSide] = useState<'left' | 'right' | 'active' | null>(null)
 
   useEffect(() => {
     document.title = 'CodeFire'
@@ -25,6 +30,34 @@ export default function MainLayout() {
   }, [])
 
   const terminalProjectPath = defaultTerminalPath || window.api.homePath
+
+  function renderTerminalChat() {
+    const terminalPanel = (
+      <TerminalPanel
+        key="__global__"
+        projectId="__global__"
+        projectPath={terminalProjectPath}
+        showChat={showChat}
+        onToggleChat={() => setShowChat(v => !v)}
+        terminalOnLeft={terminalOnLeft}
+        onSwapPanels={() => setTerminalOnLeft(v => !v)}
+      />
+    )
+
+    if (!showChat) return terminalPanel
+
+    return (
+      <Group orientation="vertical" id="main-terminal-chat-split">
+        <Panel id="terminal" defaultSize="50%" minSize="15%">
+          {terminalPanel}
+        </Panel>
+        <Separator className="h-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" />
+        <Panel id="chat" defaultSize="50%" minSize="15%">
+          <CodeFireChat />
+        </Panel>
+      </Group>
+    )
+  }
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-neutral-900">
@@ -40,36 +73,107 @@ export default function MainLayout() {
 
           <div className="flex-1" />
 
+          <button
+            onClick={() => setShowTerminal(v => !v)}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+              showTerminal
+                ? 'text-codefire-orange bg-codefire-orange/10 hover:bg-codefire-orange/20'
+                : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
+            }`}
+            title={showTerminal ? 'Hide Terminal' : 'Show Terminal'}
+          >
+            <Terminal size={13} />
+            <span className="hidden sm:inline">Terminal</span>
+          </button>
           <NotificationBell />
           <MCPIndicator status={mcpStatus} sessionCount={mcpSessionCount} onConnect={startMCP} onDisconnect={stopMCP} />
         </div>
 
         <UpdateBanner />
 
-        {/* Main content area: dashboard left + terminal/chat right */}
-        <div className="flex-1 overflow-hidden">
-          <Group orientation="horizontal" id="main-layout">
-            <Panel id="content" defaultSize="60%" minSize="30%">
-              <AllProjectsView />
-            </Panel>
+        {/* Main content area: dashboard + terminal/chat columns (swappable via drag) */}
+        <div
+          className="flex-1 overflow-hidden relative"
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes('application/x-codefire-panel')) {
+              e.preventDefault()
+              if (dragOverSide === null) setDragOverSide('active')
+            }
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setDragOverSide(null)
+            }
+          }}
+          onDrop={() => setDragOverSide(null)}
+        >
+          {showTerminal ? (
+            <Group orientation="horizontal" id="main-layout" key={terminalOnLeft ? 'tl' : 'tr'}>
+              {terminalOnLeft ? (
+                <>
+                  <Panel id="terminal-chat" defaultSize="40%" minSize="20%">
+                    {renderTerminalChat()}
+                  </Panel>
+                  <Separator className="w-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" />
+                  <Panel id="content" defaultSize="60%" minSize="30%">
+                    <AllProjectsView />
+                  </Panel>
+                </>
+              ) : (
+                <>
+                  <Panel id="content" defaultSize="60%" minSize="30%">
+                    <AllProjectsView />
+                  </Panel>
+                  <Separator className="w-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" />
+                  <Panel id="terminal-chat" defaultSize="40%" minSize="20%">
+                    {renderTerminalChat()}
+                  </Panel>
+                </>
+              )}
+            </Group>
+          ) : (
+            <AllProjectsView />
+          )}
 
-            <Separator className="w-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" />
-
-            {/* Right panel: Terminal (top) + CodeFire Chat (bottom) */}
-            <Panel id="terminal-chat" defaultSize="40%" minSize="20%">
-              <Group orientation="vertical" id="main-terminal-chat-split">
-                <Panel id="terminal" defaultSize="50%" minSize="15%">
-                  <TerminalPanel key="__global__" projectId="__global__" projectPath={terminalProjectPath} />
-                </Panel>
-
-                <Separator className="h-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" />
-
-                <Panel id="chat" defaultSize="50%" minSize="15%">
-                  <CodeFireChat />
-                </Panel>
-              </Group>
-            </Panel>
-          </Group>
+          {/* Drop zones for dragging terminal left/right */}
+          {dragOverSide !== null && (
+            <>
+              <div
+                className={`absolute inset-y-0 left-0 w-1/2 z-40 transition-colors duration-100 ${
+                  dragOverSide === 'left'
+                    ? 'bg-codefire-orange/10 border-l-4 border-codefire-orange/40'
+                    : 'bg-transparent'
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  setDragOverSide('left')
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setDragOverSide(null)
+                  if (!terminalOnLeft) setTerminalOnLeft(true)
+                }}
+              />
+              <div
+                className={`absolute inset-y-0 right-0 w-1/2 z-40 transition-colors duration-100 ${
+                  dragOverSide === 'right'
+                    ? 'bg-codefire-orange/10 border-r-4 border-codefire-orange/40'
+                    : 'bg-transparent'
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  setDragOverSide('right')
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setDragOverSide(null)
+                  if (terminalOnLeft) setTerminalOnLeft(false)
+                }}
+              />
+            </>
+          )}
         </div>
 
         {/* Status bar */}
