@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { TaskItem, TaskNote } from '@shared/models'
 import { api } from '@renderer/lib/api'
 
@@ -7,12 +7,15 @@ export function useTasks(projectId: string) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const initialLoadDone = useRef(false)
+
   const fetchTasks = useCallback(async () => {
     try {
-      setLoading(true)
+      if (!initialLoadDone.current) setLoading(true)
       setError(null)
       const data = await api.tasks.list(projectId)
       setTasks(data)
+      initialLoadDone.current = true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tasks')
     } finally {
@@ -22,6 +25,8 @@ export function useTasks(projectId: string) {
 
   useEffect(() => {
     fetchTasks()
+    const interval = setInterval(fetchTasks, 5000)
+    return () => clearInterval(interval)
   }, [fetchTasks])
 
   const createTask = useCallback(
@@ -113,5 +118,13 @@ export function useTaskNotes(taskId: number | null) {
     [taskId, fetchNotes]
   )
 
-  return { notes, loading, addNote, refetch: fetchNotes }
+  const deleteNote = useCallback(
+    async (noteId: number) => {
+      await api.taskNotes.delete(noteId)
+      await fetchNotes()
+    },
+    [fetchNotes]
+  )
+
+  return { notes, loading, addNote, deleteNote, refetch: fetchNotes }
 }

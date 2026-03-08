@@ -83,6 +83,7 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "shared/**/*",
       "node_modules/**/*",
       "!node_modules/lucide-react/**",
       "!node_modules/@codemirror/**",

@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Save } from 'lucide-react'
-import type { ProjectDoc } from '@shared/premium-models'
+import type { LocalDoc } from '@renderer/hooks/useProjectDocs'
 
 interface DocEditorProps {
-  doc: ProjectDoc
-  onUpdate: (docId: string, data: { title?: string; content?: string }) => Promise<any>
+  doc: LocalDoc
+  onUpdate: (docId: number, data: { title?: string; content?: string }) => Promise<any>
 }
 
 export default function DocEditor({ doc, onUpdate }: DocEditorProps) {
@@ -29,7 +29,7 @@ export default function DocEditor({ doc, onUpdate }: DocEditorProps) {
       await onUpdate(doc.id, { title: t, content: c })
       setLastSaved(new Date().toLocaleTimeString())
     } catch {
-      // silently fail — user will see stale "last saved" or no indicator
+      // silently fail
     } finally {
       setSaving(false)
     }
@@ -43,13 +43,9 @@ export default function DocEditor({ doc, onUpdate }: DocEditorProps) {
     }, 1000)
   }, [save])
 
-  // Flush on unmount
   useEffect(() => {
     return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current)
-        // Fire final save synchronously is not possible; best effort
-      }
+      if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [])
 
@@ -83,11 +79,6 @@ export default function DocEditor({ doc, onUpdate }: DocEditorProps) {
           {!saving && lastSaved && (
             <span className="text-[10px] text-neutral-600">
               Saved at {lastSaved}
-            </span>
-          )}
-          {doc.lastEditedByUser && (
-            <span className="text-[10px] text-neutral-600">
-              Last edited by {doc.lastEditedByUser.displayName || doc.lastEditedByUser.email}
             </span>
           )}
         </div>

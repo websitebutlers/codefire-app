@@ -41,15 +41,18 @@ export default function ServicesView({ projectPath }: ServicesViewProps) {
 
     async function load() {
       try {
-        const [svc, env, tpl] = await Promise.all([
+        const results = await Promise.allSettled([
           api.services.detect(projectPath),
           api.services.listEnvFiles(projectPath),
           api.services.scanTemplates(projectPath),
         ])
         if (cancelled) return
-        setServices(svc)
-        setEnvFiles(env)
-        setTemplates(tpl)
+        if (results[0].status === 'fulfilled') setServices(results[0].value)
+        else console.warn('Service detection failed:', results[0].reason)
+        if (results[1].status === 'fulfilled') setEnvFiles(results[1].value)
+        else console.warn('Env file scan failed:', results[1].reason)
+        if (results[2].status === 'fulfilled') setTemplates(results[2].value)
+        else console.warn('Template scan failed:', results[2].reason)
       } catch (err) {
         console.error('Failed to load services data:', err)
       } finally {
@@ -75,9 +78,17 @@ export default function ServicesView({ projectPath }: ServicesViewProps) {
 
   if (isEmpty) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-2">
+      <div className="flex flex-col items-center justify-center h-full gap-4 px-8 max-w-md mx-auto">
         <Cloud size={32} className="text-neutral-700" />
-        <p className="text-sm text-neutral-500">No services detected</p>
+        <p className="text-sm font-medium text-neutral-400">No services detected</p>
+        <p className="text-xs text-neutral-600 text-center leading-relaxed">
+          This page auto-detects cloud services, databases, and environment config in your project
+          by scanning for config files and package.json dependencies.
+        </p>
+        <div className="text-[11px] text-neutral-600 text-center leading-relaxed space-y-1">
+          <p className="text-neutral-500 font-medium">Detected services include:</p>
+          <p>Firebase, Supabase, Vercel, Netlify, AWS, Docker, Prisma, Drizzle, Stripe, Sentry, MongoDB, Redis, and .env files</p>
+        </div>
       </div>
     )
   }

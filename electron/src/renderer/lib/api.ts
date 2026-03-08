@@ -107,6 +107,8 @@ export const api = {
       source?: string
       sessionId?: string
     }) => invoke('taskNotes:create', data) as Promise<TaskNote>,
+    delete: (noteId: number) =>
+      invoke('taskNotes:delete', noteId) as Promise<boolean>,
   },
 
   notes: {
@@ -268,6 +270,24 @@ export const api = {
           vars: Array<{ key: string; comment?: string; defaultValue?: string }>
         }>
       >,
+    scanArchitecture: (projectPath: string) =>
+      invoke('services:scanArchitecture', projectPath) as Promise<{
+        nodes: Array<{
+          id: string; name: string; directory: string; fileType: string
+          imports: string[]; x: number; y: number
+        }>
+        edges: Array<{ id: string; from: string; to: string }>
+      }>,
+    scanSchema: (projectPath: string) =>
+      invoke('services:scanSchema', projectPath) as Promise<
+        Array<{
+          id: string; name: string; x: number; y: number
+          columns: Array<{
+            id: string; name: string; type: string
+            isPrimaryKey: boolean; isForeignKey: boolean; references: string | null
+          }>
+        }>
+      >,
   },
 
   images: {
@@ -298,6 +318,8 @@ export const api = {
         error: string | null
         image: GeneratedImage | null
       }>,
+    readFile: (filePath: string) =>
+      invoke('images:readFile', filePath) as Promise<string | null>,
   },
 
   recordings: {
@@ -323,6 +345,8 @@ export const api = {
       invoke('recordings:saveAudio', id, audioData) as Promise<boolean>,
     transcribe: (id: string, apiKey: string) =>
       invoke('recordings:transcribe', id, apiKey) as Promise<Recording>,
+    importFile: (projectId: string) =>
+      invoke('recordings:importFile', projectId) as Promise<Recording | null>,
   },
 
   git: {
@@ -571,6 +595,10 @@ export const api = {
     revokeGrant: (grantId: string) => invoke('premium:admin:revokeGrant', grantId) as Promise<void>,
   },
 
+  arena: {
+    open: () => invoke('arena:open') as Promise<void>,
+  },
+
   github: {
     getRepoInfo: (projectPath: string) =>
       invoke('github:getRepoInfo', projectPath) as Promise<{ owner: string; repo: string } | null>,
@@ -583,5 +611,26 @@ export const api = {
       repo: string,
       options?: { state?: string; limit?: number; labels?: string[] }
     ) => invoke('github:listIssues', owner, repo, options) as Promise<any[]>,
+  },
+
+  docs: {
+    list: (projectId: string) =>
+      invoke('projectDocs:list', projectId) as Promise<
+        Array<{ id: number; projectId: string; title: string; content: string; sortOrder: number; createdAt: string; updatedAt: string }>
+      >,
+    get: (id: number) =>
+      invoke('projectDocs:get', id) as Promise<
+        { id: number; projectId: string; title: string; content: string; sortOrder: number; createdAt: string; updatedAt: string } | null
+      >,
+    create: (data: { projectId: string; title: string; content?: string }) =>
+      invoke('projectDocs:create', data) as Promise<
+        { id: number; projectId: string; title: string; content: string; sortOrder: number; createdAt: string; updatedAt: string }
+      >,
+    update: (id: number, data: { title?: string; content?: string }) =>
+      invoke('projectDocs:update', id, data) as Promise<
+        { id: number; projectId: string; title: string; content: string; sortOrder: number; createdAt: string; updatedAt: string }
+      >,
+    delete: (id: number) =>
+      invoke('projectDocs:delete', id) as Promise<boolean>,
   },
 }

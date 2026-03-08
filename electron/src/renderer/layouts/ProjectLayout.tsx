@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { Terminal } from 'lucide-react'
 import type { Project } from '@shared/models'
@@ -56,6 +56,20 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
   const [showTerminal, setShowTerminal] = useState(true)
   const [terminalOnLeft, setTerminalOnLeft] = useState(false)
   const [dragOverSide, setDragOverSide] = useState<'left' | 'right' | 'active' | null>(null)
+  const [hasReviews, setHasReviews] = useState(false)
+
+  // Check if there are any review requests to decide whether to show the Reviews tab
+  useEffect(() => {
+    api.premium.listReviewRequests(projectId)
+      .then((reviews) => setHasReviews(reviews.length > 0))
+      .catch(() => {}) // Silently ignore — tab stays hidden if premium is unavailable
+  }, [projectId])
+
+  const hiddenTabs = useMemo(() => {
+    const hidden = new Set<string>()
+    if (!hasReviews) hidden.add('Reviews')
+    return hidden
+  }, [hasReviews])
 
   const handleRequestIndex = useCallback(async () => {
     setIndexStatus('indexing')
@@ -133,8 +147,8 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
     switch (tab) {
       case 'Tasks':
         return <TasksView projectId={pid} />
-      case 'Details':
-        return <DashboardView projectId={pid} onTabChange={onTabChange} />
+      case 'Dashboard':
+        return <DashboardView projectId={pid} projectPath={projectPath} onTabChange={onTabChange} />
       case 'Notes':
         return <NotesView projectId={pid} />
     }
@@ -152,13 +166,13 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
         {tab === 'Rules' && <RulesView projectId={pid} projectPath={projectPath} />}
         {tab === 'Git' && <GitView projectId={pid} projectPath={projectPath} />}
         {tab === 'Images' && <ImagesView projectId={pid} />}
-        {tab === 'Recordings' && <RecordingsView projectId={pid} />}
+        {tab === 'Transcribe' && <RecordingsView projectId={pid} />}
         {tab === 'Browser' && <BrowserView projectId={pid} />}
-        {tab === 'Visualizer' && <VisualizerView projectId={pid} projectPath={projectPath} />}
+        {tab === 'Visualize' && <VisualizerView projectId={pid} projectPath={projectPath} />}
         {tab === 'Activity' && <ActivityView projectId={pid} />}
         {tab === 'Docs' && <DocsView projectId={pid} />}
         {tab === 'Reviews' && <ReviewsView projectId={pid} />}
-        {!['Sessions','Files','Memory','Services','Rules','Git','Images','Recordings','Browser','Visualizer','Activity','Docs','Reviews'].includes(tab) && (
+        {!['Sessions','Files','Memory','Services','Rules','Git','Images','Transcribe','Browser','Visualize','Activity','Docs','Reviews'].includes(tab) && (
           <div className="flex-1 p-4 overflow-y-auto">
             <h2 className="text-title text-neutral-300">{tab}</h2>
             <p className="text-sm text-neutral-600 mt-1">Coming soon</p>
@@ -256,7 +270,7 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
         <UpdateBanner />
 
         {/* Tab bar */}
-        <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+        <TabBar activeTab={activeTab} onTabChange={setActiveTab} hiddenTabs={hiddenTabs} />
 
         {/* Content: view + terminal/chat columns (swappable via drag) */}
         <div

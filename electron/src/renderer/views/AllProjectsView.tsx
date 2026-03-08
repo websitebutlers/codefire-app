@@ -43,7 +43,8 @@ export default function AllProjectsView() {
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-neutral-800 shrink-0">
         <ListTodo size={16} className="text-codefire-orange" />
-        <h1 className="text-sm font-semibold text-neutral-200">All projects</h1>
+        <h1 className="text-sm font-semibold text-neutral-200">Planner</h1>
+        <span className="text-xs text-neutral-500">Global tasks & emails</span>
         <div className="flex-1" />
         <SortControls sort={sort} onChange={setSort} />
         <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">

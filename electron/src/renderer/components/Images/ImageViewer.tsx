@@ -1,5 +1,5 @@
-import { Image, Copy, FolderOpen, Maximize2, Clipboard, Check, RefreshCw, Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { Image, Copy, FolderOpen, Maximize2, Clipboard, Check, RefreshCw, Loader2, Download } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
 import type { GeneratedImage } from '@shared/models'
 import { api } from '@renderer/lib/api'
 
@@ -8,8 +8,6 @@ interface ImageViewerProps {
   onVariation?: (newImage: GeneratedImage) => void
 }
 
-const API_KEY_STORAGE = 'codefire_openrouter_key'
-
 export default function ImageViewer({ image, onVariation }: ImageViewerProps) {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -17,11 +15,31 @@ export default function ImageViewer({ image, onVariation }: ImageViewerProps) {
   const [editMode, setEditMode] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+  const [imageSrc, setImageSrc] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!image?.filePath) {
+      setImageSrc(null)
+      return
+    }
+    api.images.readFile(image.filePath).then((dataUrl) => {
+      setImageSrc(dataUrl)
+    })
+  }, [image?.filePath])
+
+  const handleDownload = useCallback(() => {
+    if (!imageSrc || !image) return
+    const a = document.createElement('a')
+    a.href = imageSrc
+    const timestamp = new Date(image.createdAt).toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    a.download = `codefire-${timestamp}.png`
+    a.click()
+  }, [imageSrc, image])
 
   async function handleCopyToClipboard() {
-    if (!image) return
+    if (!image || !imageSrc) return
     try {
-      const response = await fetch(`file://${image.filePath}`)
+      const response = await fetch(imageSrc)
       const blob = await response.blob()
       await navigator.clipboard.write([
         new ClipboardItem({ [blob.type]: blob }),
@@ -43,11 +61,14 @@ export default function ImageViewer({ image, onVariation }: ImageViewerProps) {
   async function handleGenerateVariation() {
     if (!image || generating) return
     const prompt = editPrompt.trim() || image.prompt
-    let apiKey = localStorage.getItem(API_KEY_STORAGE)
+    let apiKey: string | undefined
+    try {
+      const config = await api.settings.get()
+      apiKey = config?.openRouterKey
+    } catch {}
     if (!apiKey) {
-      apiKey = window.prompt('Enter your OpenRouter API key:')
-      if (!apiKey) return
-      localStorage.setItem(API_KEY_STORAGE, apiKey)
+      setEditError('OpenRouter API key not configured. Set it in Settings > Engine.')
+      return
     }
 
     setGenerating(true)
@@ -58,7 +79,7 @@ export default function ImageViewer({ image, onVariation }: ImageViewerProps) {
         prompt,
         apiKey,
         aspectRatio: image.aspectRatio ?? '1:1',
-        imageSize: '1024x1024',
+        imageSize: '1K',
       })
       if (result.error) {
         setEditError(result.error)
@@ -125,6 +146,14 @@ export default function ImageViewer({ image, onVariation }: ImageViewerProps) {
           </button>
           <button
             type="button"
+            onClick={handleDownload}
+            className="text-neutral-500 hover:text-neutral-300 transition-colors"
+            title="Save image as..."
+          >
+            <Download size={14} />
+          </button>
+          <button
+            type="button"
             onClick={handleRevealInExplorer}
             className="text-neutral-500 hover:text-neutral-300 transition-colors"
             title="Reveal in explorer"
@@ -177,11 +206,19 @@ export default function ImageViewer({ image, onVariation }: ImageViewerProps) {
 
         {/* Image display */}
         <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-neutral-950/50">
-          <img
-            src={`file://${image.filePath}`}
-            alt={image.prompt}
-            className="max-w-full max-h-full object-contain rounded-lg"
-          />
+          {imageSrc ? (
+            <img
+              src={imageSrc}
+              alt={image.prompt}
+              className="max-w-full max-h-full object-contain rounded-lg"
+              onContextMenu={(e) => {
+                e.preventDefault()
+                handleDownload()
+              }}
+            />
+          ) : (
+            <div className="w-8 h-8 border-2 border-neutral-700 border-t-codefire-orange rounded-full animate-spin" />
+          )}
         </div>
 
         {/* Prompt display */}
@@ -200,7 +237,7 @@ export default function ImageViewer({ image, onVariation }: ImageViewerProps) {
       </div>
 
       {/* Fullscreen overlay */}
-      {isFullscreen && (
+      {isFullscreen && imageSrc && (
         <div
           className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center cursor-pointer"
           onClick={() => setIsFullscreen(false)}
@@ -209,7 +246,7 @@ export default function ImageViewer({ image, onVariation }: ImageViewerProps) {
           tabIndex={0}
         >
           <img
-            src={`file://${image.filePath}`}
+            src={imageSrc}
             alt={image.prompt}
             className="max-w-[90vw] max-h-[90vh] object-contain"
           />

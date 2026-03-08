@@ -1,11 +1,31 @@
 import { Image, Trash2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import type { GeneratedImage } from '@shared/models'
+import { api } from '@renderer/lib/api'
 
 interface ImageHistoryListProps {
   images: GeneratedImage[]
   selectedId: number | null
   onSelect: (image: GeneratedImage) => void
   onDelete: (id: number) => void
+}
+
+function Thumbnail({ filePath }: { filePath: string }) {
+  const [src, setSrc] = useState<string | null>(null)
+
+  useEffect(() => {
+    api.images.readFile(filePath).then((dataUrl) => setSrc(dataUrl))
+  }, [filePath])
+
+  if (!src) return null
+
+  return (
+    <img
+      src={src}
+      alt=""
+      className="w-full h-full object-cover"
+    />
+  )
 }
 
 export default function ImageHistoryList({
@@ -45,14 +65,7 @@ export default function ImageHistoryList({
           >
             <div className="flex items-start gap-2">
               <div className="w-10 h-10 rounded bg-neutral-800 overflow-hidden shrink-0 mt-0.5">
-                <img
-                  src={`file://${img.filePath}`}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    ;(e.target as HTMLImageElement).style.display = 'none'
-                  }}
-                />
+                <Thumbnail filePath={img.filePath} />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-neutral-300 line-clamp-2">

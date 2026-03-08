@@ -2,7 +2,7 @@ import { net } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { app } from 'electron'
-const MODEL = 'google/gemini-3.1-flash-image-preview'
+const MODEL = 'google/gemini-2.5-flash-image'
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions'
 
 interface GenerationResult {
