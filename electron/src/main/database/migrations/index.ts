@@ -652,4 +652,27 @@ export const migrations: Migration[] = [
       }
     },
   },
+
+  // Migration 26: Add INSERT triggers for tasks and notes so new items enter syncState.
+  // The existing triggers only fire on UPDATE, meaning newly created tasks/notes never
+  // get marked dirty and are invisible to the SyncEngine push pipeline.
+  {
+    version: 26,
+    name: 'v25_addSyncInsertTriggers',
+    up: (db) => {
+      db.exec(`
+        CREATE TRIGGER IF NOT EXISTS sync_task_dirty_insert
+        AFTER INSERT ON taskItems BEGIN
+          INSERT OR IGNORE INTO syncState (entityType, localId, projectId, dirty)
+          VALUES ('task', CAST(NEW.id AS TEXT), NEW.projectId, 1);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS sync_note_dirty_insert
+        AFTER INSERT ON notes BEGIN
+          INSERT OR IGNORE INTO syncState (entityType, localId, projectId, dirty)
+          VALUES ('note', CAST(NEW.id AS TEXT), NEW.projectId, 1);
+        END;
+      `)
+    },
+  },
 ]

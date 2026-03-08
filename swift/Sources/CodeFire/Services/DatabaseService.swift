@@ -566,6 +566,27 @@ class DatabaseService {
             }
         }
 
+        // Migration: Add INSERT triggers for tasks and notes so new items enter syncState.
+        // The existing triggers only fire on UPDATE, meaning newly created tasks/notes
+        // are invisible to the SyncEngine push pipeline.
+        migrator.registerMigration("v22_addSyncInsertTriggers") { db in
+            try db.execute(sql: """
+                CREATE TRIGGER IF NOT EXISTS sync_task_dirty_insert
+                AFTER INSERT ON taskItems BEGIN
+                    INSERT OR IGNORE INTO syncState (entityType, localId, projectId, dirty)
+                    VALUES ('task', CAST(NEW.id AS TEXT), NEW.projectId, 1);
+                END
+            """)
+
+            try db.execute(sql: """
+                CREATE TRIGGER IF NOT EXISTS sync_note_dirty_insert
+                AFTER INSERT ON notes BEGIN
+                    INSERT OR IGNORE INTO syncState (entityType, localId, projectId, dirty)
+                    VALUES ('note', CAST(NEW.id AS TEXT), NEW.projectId, 1);
+                END
+            """)
+        }
+
         return migrator
     }
 }
