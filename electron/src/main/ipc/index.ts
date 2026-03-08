@@ -24,6 +24,7 @@ import { registerMCPHandlers } from './mcp-handlers'
 import { registerBriefingHandlers } from './briefing-handlers'
 import { registerChatHandlers } from './chat-handlers'
 import { registerUpdateHandlers } from './update-handlers'
+import { registerProjectDocHandlers } from './project-doc-handlers'
 import type { WindowManager } from '../windows/WindowManager'
 import type { TerminalService } from '../services/TerminalService'
 import type { GitService } from '../services/GitService'
@@ -83,6 +84,7 @@ export function registerAllHandlers(
   registerChatHandlers(db)
   registerBriefingHandlers(db)
   registerUpdateHandlers()
+  registerProjectDocHandlers(db)
   if (mcpManager) {
     registerMCPHandlers(mcpManager)
   }

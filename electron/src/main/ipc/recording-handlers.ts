@@ -1,4 +1,4 @@
-import { ipcMain, app } from 'electron'
+import { ipcMain, app, dialog, BrowserWindow } from 'electron'
 import Database from 'better-sqlite3'
 import { RecordingDAO } from '../database/dao/RecordingDAO'
 import * as path from 'node:path'
@@ -74,6 +74,45 @@ export function registerRecordingHandlers(db: Database.Database) {
   )
 
   ipcMain.handle(
+    'recordings:importFile',
+    async (_e, projectId: string) => {
+      const win = BrowserWindow.getFocusedWindow()
+      const result = await dialog.showOpenDialog(win ?? BrowserWindow.getAllWindows()[0], {
+        title: 'Import Audio File',
+        filters: [
+          { name: 'Audio Files', extensions: ['mp3', 'wav', 'webm', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'mp4'] },
+          { name: 'All Files', extensions: ['*'] },
+        ],
+        properties: ['openFile'],
+      })
+
+      if (result.canceled || result.filePaths.length === 0) return null
+
+      const sourcePath = result.filePaths[0]
+      const ext = path.extname(sourcePath)
+      const baseName = path.basename(sourcePath, ext)
+
+      const recordingsDir = path.join(app.getPath('userData'), 'recordings')
+      if (!fs.existsSync(recordingsDir)) {
+        fs.mkdirSync(recordingsDir, { recursive: true })
+      }
+
+      const audioPath = path.join(
+        recordingsDir,
+        `${Date.now()}-${baseName.replace(/[^a-zA-Z0-9]/g, '_')}${ext}`
+      )
+
+      fs.copyFileSync(sourcePath, audioPath)
+
+      return recordingDAO.create({
+        projectId,
+        title: baseName,
+        audioPath,
+      })
+    }
+  )
+
+  ipcMain.handle(
     'recordings:transcribe',
     async (_e, id: string, apiKey: string) => {
       const recording = recordingDAO.getById(id)
@@ -86,9 +125,17 @@ export function registerRecordingHandlers(db: Database.Database) {
 
       try {
         const audioBuffer = fs.readFileSync(recording.audioPath)
+        const ext = path.extname(recording.audioPath).toLowerCase()
+        const mimeTypes: Record<string, string> = {
+          '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.webm': 'audio/webm',
+          '.ogg': 'audio/ogg', '.m4a': 'audio/mp4', '.flac': 'audio/flac',
+          '.aac': 'audio/aac', '.wma': 'audio/x-ms-wma', '.mp4': 'audio/mp4',
+        }
+        const mimeType = mimeTypes[ext] || 'audio/webm'
+        const fileName = `recording${ext || '.webm'}`
         const formData = new FormData()
-        const blob = new Blob([audioBuffer], { type: 'audio/webm' })
-        formData.append('file', blob, 'recording.webm')
+        const blob = new Blob([audioBuffer], { type: mimeType })
+        formData.append('file', blob, fileName)
         formData.append('model', 'whisper-1')
         formData.append('response_format', 'verbose_json')
 

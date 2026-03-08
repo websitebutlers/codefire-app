@@ -14,7 +14,10 @@ export interface MemoryEntry {
  * Replaces '/' with '-' and prepends '-'.
  */
 function encodeProjectPath(projectPath: string): string {
-  return '-' + projectPath.replace(/\//g, '-')
+  // Replace colons, forward slashes, and backslashes with dashes
+  // e.g. "C:\Users\foo\project" → "C--Users-foo-project"
+  // e.g. "/Users/foo/project" → "-Users-foo-project"
+  return projectPath.replace(/[:/\\]/g, '-')
 }
 
 /**

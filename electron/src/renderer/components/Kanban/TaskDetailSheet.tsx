@@ -76,7 +76,7 @@ export default function TaskDetailSheet({
   onUpdate,
   onDelete,
 }: TaskDetailSheetProps) {
-  const { notes, addNote } = useTaskNotes(task?.id ?? null)
+  const { notes, addNote, deleteNote } = useTaskNotes(task?.id ?? null)
   const [noteInput, setNoteInput] = useState('')
   const [sending, setSending] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
@@ -680,7 +680,7 @@ export default function TaskDetailSheet({
               return (
                 <div
                   key={note.id}
-                  className="bg-neutral-800/50 rounded-lg p-2.5 border border-neutral-700/30"
+                  className="bg-neutral-800/50 rounded-lg p-2.5 border border-neutral-700/30 group/note"
                 >
                   <p className="text-xs text-neutral-300 whitespace-pre-wrap">{note.content}</p>
                   <div className="flex items-center justify-between mt-1.5">
@@ -688,12 +688,21 @@ export default function TaskDetailSheet({
                       <NoteIcon size={10} className="text-neutral-600" />
                       <span className="text-[10px] text-neutral-600">{note.source ?? 'manual'}</span>
                     </div>
-                    <span className="text-[10px] text-neutral-600">
-                      {new Date(note.createdAt).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-neutral-600">
+                        {new Date(note.createdAt).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </span>
+                      <button
+                        onClick={() => deleteNote(note.id)}
+                        className="text-neutral-600 hover:text-red-400 transition-colors opacity-0 group-hover/note:opacity-100"
+                        title="Delete note"
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )

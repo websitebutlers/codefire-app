@@ -34,6 +34,21 @@ export default function RecordingsView({ projectId }: RecordingsViewProps) {
     }
   }
 
+  async function handleImportFile() {
+    try {
+      const recording = await api.recordings.importFile(projectId)
+      if (recording) {
+        const updated = await api.recordings.update(recording.id, { status: 'recorded' })
+        if (updated) {
+          setRecordings((prev) => [updated, ...prev])
+          setSelected(updated)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to import audio file:', err)
+    }
+  }
+
   async function handleTranscribe(id: string) {
     const apiKey = localStorage.getItem('openai_api_key')
     if (!apiKey) {
@@ -80,7 +95,7 @@ export default function RecordingsView({ projectId }: RecordingsViewProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <RecordingBar onRecordingComplete={handleRecordingComplete} />
+      <RecordingBar onRecordingComplete={handleRecordingComplete} onImportFile={handleImportFile} />
       <div className="flex flex-1 overflow-hidden">
         <div className="w-64 border-r border-neutral-800 flex flex-col shrink-0">
           <RecordingsList

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Loader2, Search } from 'lucide-react'
 import { useSessions } from '@renderer/hooks/useSessions'
 import { api } from '@renderer/lib/api'
@@ -16,6 +16,13 @@ export default function SessionsView({ projectId }: SessionsViewProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Session[] | null>(null)
   const [searching, setSearching] = useState(false)
+
+  // Auto-select the most recent session on initial load
+  useEffect(() => {
+    if (!loading && sessions.length > 0 && !selectedSession) {
+      setSelectedSession(sessions[0])
+    }
+  }, [loading, sessions])
 
   const handleSearch = async (query: string) => {
     setSearchQuery(query)

@@ -107,4 +107,8 @@ export function registerTaskHandlers(db: Database.Database) {
       }
     ) => taskNoteDAO.create(data)
   )
+
+  ipcMain.handle('taskNotes:delete', (_e, noteId: number) =>
+    taskNoteDAO.delete(noteId)
+  )
 }

@@ -675,4 +675,22 @@ export const migrations: Migration[] = [
       `)
     },
   },
+  {
+    version: 27,
+    name: 'v26_createProjectDocs',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS projectDocs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL DEFAULT '',
+          sortOrder INTEGER NOT NULL DEFAULT 0,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_projectDocs_projectId ON projectDocs(projectId);
+      `)
+    },
+  },
 ]

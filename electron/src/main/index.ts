@@ -218,7 +218,7 @@ registerAllHandlers(db, windowManager, terminalService, gitService, undefined, u
 // Register Agent Arena handler
 import { openAgentArena } from './windows/AgentArenaWindow'
 ipcMain.handle('arena:open', () => {
-  openAgentArena()
+  openAgentArena(liveWatcher ?? undefined)
 })
 
 let isQuitting = false

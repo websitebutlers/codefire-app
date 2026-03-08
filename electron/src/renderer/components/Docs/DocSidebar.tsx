@@ -1,12 +1,12 @@
 import { Plus, FileText, Trash2 } from 'lucide-react'
-import type { ProjectDoc } from '@shared/premium-models'
+import type { LocalDoc } from '@renderer/hooks/useProjectDocs'
 
 interface DocSidebarProps {
-  docs: ProjectDoc[]
-  selectedDocId: string | null
-  onSelect: (docId: string) => void
+  docs: LocalDoc[]
+  selectedDocId: number | null
+  onSelect: (docId: number) => void
   onCreate: () => void
-  onDelete: (docId: string) => void
+  onDelete: (docId: number) => void
 }
 
 export default function DocSidebar({ docs, selectedDocId, onSelect, onCreate, onDelete }: DocSidebarProps) {

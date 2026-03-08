@@ -1,4 +1,6 @@
 import { ipcMain } from 'electron'
+import fs from 'fs'
+import path from 'path'
 import Database from 'better-sqlite3'
 import { ImageDAO } from '../database/dao/ImageDAO'
 import { ImageGenerationService } from '../services/ImageGenerationService'
@@ -36,6 +38,17 @@ export function registerImageHandlers(db: Database.Database) {
     imageDAO.delete(id)
   )
 
+  ipcMain.handle('images:readFile', (_e, filePath: string) => {
+    try {
+      const data = fs.readFileSync(filePath)
+      const ext = path.extname(filePath).toLowerCase().replace('.', '')
+      const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext || 'png'}`
+      return `data:${mime};base64,${data.toString('base64')}`
+    } catch {
+      return null
+    }
+  })
+
   ipcMain.handle(
     'images:generate',
     async (
@@ -64,7 +77,7 @@ export function registerImageHandlers(db: Database.Database) {
         projectId: data.projectId,
         prompt: data.prompt,
         filePath: result.imagePath,
-        model: 'google/gemini-3.1-flash-image-preview',
+        model: 'google/gemini-2.5-flash-image',
         responseText: result.responseText ?? undefined,
         aspectRatio: data.aspectRatio,
         imageSize: data.imageSize,

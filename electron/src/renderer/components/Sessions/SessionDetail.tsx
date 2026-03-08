@@ -12,6 +12,7 @@ import {
   ListTodo,
   Loader2,
   Check,
+  Share2,
 } from 'lucide-react'
 import type { Session } from '@shared/models'
 import { api } from '@renderer/lib/api'
@@ -68,6 +69,8 @@ export default function SessionDetail({ session }: SessionDetailProps) {
   const [resuming, setResuming] = useState(false)
   const [summarizing, setSummarizing] = useState(false)
   const [extracting, setExtracting] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [shareResult, setShareResult] = useState<string | null>(null)
   const [extractResult, setExtractResult] = useState<string | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
 
@@ -189,6 +192,36 @@ export default function SessionDetail({ session }: SessionDetailProps) {
     }
   }
 
+  async function handleShare() {
+    if (!session) return
+    setSharing(true)
+    setAiError(null)
+    setShareResult(null)
+    try {
+      const durationMs =
+        session.startedAt && session.endedAt
+          ? new Date(session.endedAt).getTime() - new Date(session.startedAt).getTime()
+          : 0
+
+      await api.premium.shareSessionSummary({
+        projectId: session.projectId,
+        sessionSlug: session.slug || undefined,
+        model: session.model || undefined,
+        gitBranch: session.gitBranch || undefined,
+        summary: session.summary || `Session ${session.slug || session.id.slice(0, 12)}`,
+        filesChanged: filesChanged.length > 0 ? filesChanged : undefined,
+        durationMins: durationMs > 0 ? Math.round(durationMs / 60000) : undefined,
+        startedAt: session.startedAt || undefined,
+        endedAt: session.endedAt || undefined,
+      })
+      setShareResult('Shared to team')
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'Failed to share session')
+    } finally {
+      setSharing(false)
+    }
+  }
+
   return (
     <div className="p-4 overflow-y-auto h-full">
       {/* Header */}
@@ -240,6 +273,17 @@ export default function SessionDetail({ session }: SessionDetailProps) {
           {extracting ? <Loader2 size={12} className="animate-spin" /> : <ListTodo size={12} />}
           Extract Tasks
         </button>
+        <button
+          onClick={handleShare}
+          disabled={sharing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-cf
+                     bg-cyan-500/10 border border-cyan-500/20
+                     text-cyan-400 text-xs font-medium
+                     hover:bg-cyan-500/15 transition-colors disabled:opacity-50"
+        >
+          {sharing ? <Loader2 size={12} className="animate-spin" /> : <Share2 size={12} />}
+          Share to Team
+        </button>
       </div>
 
       {/* AI error/result messages */}
@@ -248,10 +292,10 @@ export default function SessionDetail({ session }: SessionDetailProps) {
           {aiError}
         </div>
       )}
-      {extractResult && (
+      {(extractResult || shareResult) && (
         <div className="mb-4 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded text-xs text-green-400 flex items-center gap-1.5">
           <Check size={12} />
-          {extractResult}
+          {extractResult || shareResult}
         </div>
       )}
 

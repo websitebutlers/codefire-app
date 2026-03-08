@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Folder, Radio, Code, FolderOpen, Bell } from 'lucide-react'
+import { Folder, Radio, Code, FolderOpen, Newspaper } from 'lucide-react'
 
 interface ProjectHeaderBarProps {
   projectName: string
@@ -31,7 +31,7 @@ function truncatePath(p: string, maxLen = 50): string {
 export function ProjectHeaderLeft({ projectName, projectPath }: { projectName: string; projectPath: string }) {
   return (
     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50" title={projectPath}>
-      <Folder className="w-3 h-3 text-codefire-orange" />
+      <Folder className="w-3 h-3 text-codefire-orange fill-codefire-orange" />
       <span className="text-[11px] font-medium text-neutral-300 max-w-32 truncate">{projectName}</span>
     </div>
   )
@@ -76,7 +76,7 @@ export function ProjectHeaderRight({
             className="p-1 rounded-md text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors relative"
             title="Briefing"
           >
-            <Bell className="w-3.5 h-3.5" />
+            <Newspaper className="w-3.5 h-3.5" />
             {(briefingCount ?? 0) > 0 && (
               <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-codefire-orange text-white text-[7px] font-bold flex items-center justify-center">
                 {briefingCount! > 9 ? '9+' : briefingCount}

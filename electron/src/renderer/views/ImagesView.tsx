@@ -9,8 +9,6 @@ interface ImagesViewProps {
   projectId: string
 }
 
-const API_KEY_STORAGE = 'codefire_openrouter_key'
-
 const ASPECT_RATIOS = [
   { value: '1:1', label: '1:1' },
   { value: '16:9', label: '16:9' },
@@ -20,9 +18,9 @@ const ASPECT_RATIOS = [
 ]
 
 const IMAGE_SIZES = [
-  { value: '1024x1024', label: '1K' },
-  { value: '2048x2048', label: '2K' },
-  { value: '4096x4096', label: '4K' },
+  { value: '1K', label: '1K' },
+  { value: '2K', label: '2K' },
+  { value: '4K', label: '4K' },
 ]
 
 export default function ImagesView({ projectId }: ImagesViewProps) {
@@ -32,7 +30,7 @@ export default function ImagesView({ projectId }: ImagesViewProps) {
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [aspectRatio, setAspectRatio] = useState('1:1')
-  const [imageSize, setImageSize] = useState('1024x1024')
+  const [imageSize, setImageSize] = useState('1K')
 
   const fetchImages = useCallback(async () => {
     const imgs = await api.images.list(projectId)
@@ -44,21 +42,19 @@ export default function ImagesView({ projectId }: ImagesViewProps) {
     fetchImages()
   }, [fetchImages])
 
-  function getApiKey(): string | null {
-    let key = localStorage.getItem(API_KEY_STORAGE)
-    if (!key) {
-      key = window.prompt('Enter your OpenRouter API key:')
-      if (key) localStorage.setItem(API_KEY_STORAGE, key)
-    }
-    return key
-  }
-
   async function handleGenerate() {
     const trimmed = prompt.trim()
     if (!trimmed || generating) return
 
-    const apiKey = getApiKey()
-    if (!apiKey) return
+    let apiKey: string | undefined
+    try {
+      const config = await api.settings.get()
+      apiKey = config?.openRouterKey
+    } catch {}
+    if (!apiKey) {
+      setError('OpenRouter API key not configured. Set it in Settings > Engine.')
+      return
+    }
 
     setGenerating(true)
     setError(null)

@@ -5,6 +5,15 @@ import type { SyncEngine } from '../services/premium/SyncEngine'
 import type { PresenceService } from '../services/premium/PresenceService'
 import { getSupabaseClient } from '../services/premium/SupabaseClient'
 
+/** Ensure thrown values are proper Error instances so Electron IPC serializes the message */
+function ensureError(err: unknown): Error {
+  if (err instanceof Error) return err
+  if (typeof err === 'object' && err !== null && 'message' in err) {
+    return new Error(String((err as any).message))
+  }
+  return new Error(String(err))
+}
+
 export function registerPremiumHandlers(
   authService: AuthService,
   teamService: TeamService,
@@ -56,7 +65,7 @@ export function registerPremiumHandlers(
     const body: Record<string, unknown> = { plan, extraSeats: extraSeats || 0 }
     if (teamId) body.teamId = teamId
     const { data, error } = await client.functions.invoke('create-checkout', { body })
-    if (error) throw error
+    if (error) throw ensureError(error)
     return data
   })
 
@@ -66,7 +75,7 @@ export function registerPremiumHandlers(
     const { data, error } = await client.functions.invoke('billing-portal', {
       body: { teamId }
     })
-    if (error) throw error
+    if (error) throw ensureError(error)
     return data
   })
 
@@ -156,7 +165,7 @@ export function registerPremiumHandlers(
       })
       .select('*, user:users(id, email, display_name, avatar_url)')
       .single()
-    if (error) throw error
+    if (error) throw ensureError(error)
     return data
   })
 
@@ -279,7 +288,7 @@ export function registerPremiumHandlers(
       })
       .select()
       .single()
-    if (error) throw error
+    if (error) throw ensureError(error)
     return {
       id: data.id,
       projectId: data.project_id,
@@ -309,7 +318,7 @@ export function registerPremiumHandlers(
       .eq('id', docId)
       .select()
       .single()
-    if (error) throw error
+    if (error) throw ensureError(error)
     return {
       id: data.id,
       projectId: data.project_id,
@@ -327,7 +336,7 @@ export function registerPremiumHandlers(
     const client = getSupabaseClient()
     if (!client) throw new Error('Premium not configured')
     const { error } = await client.from('project_docs').delete().eq('id', docId)
-    if (error) throw error
+    if (error) throw ensureError(error)
   })
 
   // ─── Review Requests ──────────────────────────────────────────────────────────
@@ -355,7 +364,7 @@ export function registerPremiumHandlers(
       })
       .select('*')
       .single()
-    if (error) throw error
+    if (error) throw ensureError(error)
 
     // Create a notification for the assigned reviewer
     const { data: profile } = await client.from('users').select('display_name').eq('id', user.id).single()
@@ -387,7 +396,7 @@ export function registerPremiumHandlers(
       .eq('id', reviewId)
       .select('*')
       .single()
-    if (error) throw error
+    if (error) throw ensureError(error)
 
     // Notify the requester that the review was resolved
     const { data: profile } = await client.from('users').select('display_name').eq('id', user.id).single()
@@ -466,7 +475,7 @@ export function registerPremiumHandlers(
       expires_at: grant.expiresAt || null,
       granted_by: user.id,
     }).select().single()
-    if (error) throw error
+    if (error) throw ensureError(error)
     return data
   })
 
@@ -474,6 +483,6 @@ export function registerPremiumHandlers(
     const client = getSupabaseClient()
     if (!client) throw new Error('Not configured')
     const { error } = await client.from('team_grants').delete().eq('id', grantId)
-    if (error) throw error
+    if (error) throw ensureError(error)
   })
 }

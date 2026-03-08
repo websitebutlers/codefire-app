@@ -14,6 +14,7 @@ interface FileTreeProps {
   rootPath: string
   selectedFile: string | null
   onSelectFile: (filePath: string) => void
+  searchQuery?: string
 }
 
 interface TreeNode {
@@ -23,7 +24,7 @@ interface TreeNode {
   isExpanded: boolean
 }
 
-export default function FileTree({ rootPath, selectedFile, onSelectFile }: FileTreeProps) {
+export default function FileTree({ rootPath, selectedFile, onSelectFile, searchQuery = '' }: FileTreeProps) {
   const [nodes, setNodes] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -118,9 +119,11 @@ export default function FileTree({ rootPath, selectedFile, onSelectFile }: FileT
     )
   }
 
+  const query = searchQuery.toLowerCase().trim()
+
   return (
     <div className="overflow-y-auto h-full py-1">
-      {renderNodes(nodes, [], 0, selectedFile, onSelectFile, toggleDirectory)}
+      {renderNodes(nodes, [], 0, selectedFile, onSelectFile, toggleDirectory, query)}
     </div>
   )
 }
@@ -141,17 +144,31 @@ function navigateToNode(nodes: TreeNode[], path: string[]): TreeNode | null {
   return current ?? null
 }
 
+/** Check if a node or any descendant matches the search query */
+function nodeMatchesQuery(node: TreeNode, query: string): boolean {
+  if (!query) return true
+  if (node.entry.name.toLowerCase().includes(query)) return true
+  if (node.children) {
+    return node.children.some((child) => nodeMatchesQuery(child, query))
+  }
+  return false
+}
+
 function renderNodes(
   nodes: TreeNode[],
   pathPrefix: string[],
   depth: number,
   selectedFile: string | null,
   onSelectFile: (filePath: string) => void,
-  onToggle: (path: string[]) => void
+  onToggle: (path: string[]) => void,
+  query: string = ''
 ): React.ReactNode[] {
   const elements: React.ReactNode[] = []
 
   nodes.forEach((node, idx) => {
+    // Skip nodes that don't match search
+    if (query && !nodeMatchesQuery(node, query)) return
+
     const currentPath = [...pathPrefix, String(idx)]
     const key = node.entry.path
 
@@ -160,7 +177,7 @@ function renderNodes(
         key={key}
         name={node.entry.name}
         isDirectory={node.entry.isDirectory}
-        isExpanded={node.isExpanded}
+        isExpanded={node.isExpanded || (!!query && node.entry.isDirectory)}
         isSelected={selectedFile === node.entry.path}
         depth={depth}
         onClick={() => {
@@ -173,7 +190,7 @@ function renderNodes(
       />
     )
 
-    if (node.isExpanded && node.children) {
+    if ((node.isExpanded || !!query) && node.children) {
       elements.push(
         ...renderNodes(
           node.children,
@@ -181,7 +198,8 @@ function renderNodes(
           depth + 1,
           selectedFile,
           onSelectFile,
-          onToggle
+          onToggle,
+          query
         )
       )
     }

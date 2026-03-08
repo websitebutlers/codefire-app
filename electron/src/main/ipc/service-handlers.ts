@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
+import { scanArchitecture, scanSchema } from '../services/ProjectAnalyzer'
 
 export interface DetectedService {
   name: string
@@ -26,7 +27,7 @@ const KNOWN_SERVICES: ServiceDefinition[] = [
   },
   {
     name: 'Supabase',
-    configFiles: ['supabase/config.toml', 'supabase/.temp/project-ref'],
+    configFiles: ['supabase/config.toml', 'supabase/.temp/project-ref', 'supabase/migrations'],
     dashboardUrl: 'https://supabase.com/dashboard',
     icon: 'Database',
   },
@@ -124,6 +125,46 @@ export function registerServiceHandlers() {
             // Ignore permission errors etc.
           }
         }
+      }
+
+      // Scan package.json dependencies for additional services
+      try {
+        const pkgPath = path.join(projectPath, 'package.json')
+        if (fs.existsSync(pkgPath)) {
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))
+          const allDeps = {
+            ...pkg.dependencies,
+            ...pkg.devDependencies,
+          }
+          const depServices: Array<{ name: string; dep: string; icon: string; dashboardUrl: string | null }> = [
+            { name: 'Supabase', dep: '@supabase/supabase-js', icon: 'Database', dashboardUrl: 'https://supabase.com/dashboard' },
+            { name: 'Firebase', dep: 'firebase', icon: 'Flame', dashboardUrl: 'https://console.firebase.google.com' },
+            { name: 'Prisma', dep: 'prisma', icon: 'Database', dashboardUrl: null },
+            { name: 'Drizzle', dep: 'drizzle-orm', icon: 'Database', dashboardUrl: null },
+            { name: 'Stripe', dep: 'stripe', icon: 'CreditCard', dashboardUrl: 'https://dashboard.stripe.com' },
+            { name: 'Auth0', dep: 'auth0', icon: 'Shield', dashboardUrl: 'https://manage.auth0.com' },
+            { name: 'Clerk', dep: '@clerk/clerk-sdk-node', icon: 'Shield', dashboardUrl: 'https://dashboard.clerk.com' },
+            { name: 'Sentry', dep: '@sentry/node', icon: 'Bug', dashboardUrl: 'https://sentry.io' },
+            { name: 'Redis', dep: 'redis', icon: 'Database', dashboardUrl: null },
+            { name: 'MongoDB', dep: 'mongodb', icon: 'Database', dashboardUrl: 'https://cloud.mongodb.com' },
+            { name: 'Mongoose', dep: 'mongoose', icon: 'Database', dashboardUrl: 'https://cloud.mongodb.com' },
+          ]
+
+          for (const svc of depServices) {
+            if (allDeps[svc.dep] && !seen.has(svc.name)) {
+              seen.add(svc.name)
+              detected.push({
+                name: svc.name,
+                configFile: `package.json (${svc.dep})`,
+                configPath: pkgPath,
+                dashboardUrl: svc.dashboardUrl,
+                icon: svc.icon,
+              })
+            }
+          }
+        }
+      } catch {
+        // Ignore package.json parse errors
       }
 
       // Also scan for .env files
@@ -328,6 +369,28 @@ export function registerServiceHandlers() {
       }
 
       return results
+    }
+  )
+
+  // ── Scan architecture (import graph) ─────────────────────────────────────
+  ipcMain.handle(
+    'services:scanArchitecture',
+    (_event, projectPath: string) => {
+      if (!projectPath || typeof projectPath !== 'string') {
+        throw new Error('projectPath is required')
+      }
+      return scanArchitecture(projectPath)
+    }
+  )
+
+  // ── Scan database schema ─────────────────────────────────────────────────
+  ipcMain.handle(
+    'services:scanSchema',
+    (_event, projectPath: string) => {
+      if (!projectPath || typeof projectPath !== 'string') {
+        throw new Error('projectPath is required')
+      }
+      return scanSchema(projectPath)
     }
   )
 }
