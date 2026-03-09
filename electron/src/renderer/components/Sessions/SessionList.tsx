@@ -6,6 +6,7 @@ import {
   formatDuration,
 } from '@renderer/hooks/useSessions'
 import CostBadge from './CostBadge'
+import { getSessionDisplayName } from './sessionUtils'
 
 interface SessionListProps {
   sessions: Session[]
@@ -78,10 +79,15 @@ export default function SessionList({ sessions, selectedId, onSelect }: SessionL
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm text-neutral-200 truncate">
-                    {session.slug || session.id.slice(0, 8)}
+                    {getSessionDisplayName(session)}
                   </span>
                   <CostBadge cost={cost} />
                 </div>
+                {session.summary && (
+                  <p className="text-xs text-neutral-500 truncate mt-0.5">
+                    {session.slug || session.id.slice(0, 8)}
+                  </p>
+                )}
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs text-neutral-500">{session.model || 'unknown'}</span>
                   <span className="text-xs text-neutral-600">|</span>

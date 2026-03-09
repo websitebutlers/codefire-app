@@ -6,6 +6,7 @@ import {
   formatDuration,
   formatTokens,
 } from '@renderer/hooks/useSessions'
+import { getSessionDisplayName } from '@renderer/components/Sessions/sessionUtils'
 
 interface LiveSessionCardProps {
   sessions: Session[]
@@ -41,7 +42,7 @@ function SessionRow({ session }: { session: Session }) {
     <div className="flex items-center gap-3 px-2 py-1.5 rounded-cf hover:bg-neutral-700/30 transition-colors">
       <div className="flex-1 min-w-0">
         <div className="text-sm text-neutral-200 truncate">
-          {session.slug || session.id.slice(0, 8)}
+          {getSessionDisplayName(session)}
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-xs text-neutral-500">

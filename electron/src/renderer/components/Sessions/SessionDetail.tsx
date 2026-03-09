@@ -23,6 +23,7 @@ import {
   formatTokens,
 } from '@renderer/hooks/useSessions'
 import CostBadge from './CostBadge'
+import { getSessionDisplayName } from './sessionUtils'
 
 interface SessionDetailProps {
   session: Session | null
@@ -104,7 +105,16 @@ export default function SessionDetail({ session }: SessionDetailProps) {
       const command = cli === 'claude'
         ? `claude --resume ${session.id}`
         : `${cli} --resume ${session.id}`
-      window.api.send('terminal:writeToActive', command + '\n')
+
+      // Fetch project path so we can create a terminal in the right directory
+      const project = await api.projects.get(session.projectId) as { path?: string } | undefined
+      const projectPath = project?.path ?? '.'
+      const termId = `session-resume-${session.id}-${Date.now()}`
+      await window.api.invoke('terminal:create', termId, projectPath)
+      // Brief delay for shell initialization, then write the resume command
+      setTimeout(() => {
+        window.api.send('terminal:write', termId, command + '\n')
+      }, 300)
     } catch (err) {
       console.error('Failed to resume session:', err)
     } finally {
@@ -228,7 +238,7 @@ export default function SessionDetail({ session }: SessionDetailProps) {
       <div className="mb-4">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-title text-neutral-100 font-medium">
-            {session.slug || session.id.slice(0, 12)}
+            {getSessionDisplayName(session, 80)}
           </h2>
           <CostBadge cost={cost} />
         </div>

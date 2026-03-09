@@ -175,21 +175,53 @@ export function parseSessionFile(content: string, sessionId: string): ParsedSess
   result.toolNames = toolNamesList
   result.userMessages = userMessagesList
 
-  // Generate summary from first user message + files changed (matches Swift)
+  // Generate summary from first meaningful user message + files changed (matches Swift)
   if (userMessagesList.length > 0) {
-    let topic = userMessagesList[0].slice(0, 200).trim()
-    if (userMessagesList[0].length > 200) topic += '…'
-    if (result.filesChanged.length > 0) {
-      const maxFiles = 5
-      const fileList = result.filesChanged.slice(0, maxFiles).join(', ')
-      const extra = result.filesChanged.length > maxFiles ? ` (+${result.filesChanged.length - maxFiles} more)` : ''
-      result.summary = `${topic} | Files: ${fileList}${extra}`
-    } else {
-      result.summary = topic
+    // Find the first user message that contains actual user text (not just system tags)
+    let rawTopic = ''
+    for (const msg of userMessagesList) {
+      const cleaned = extractUserText(msg)
+      if (cleaned.length > 0) {
+        rawTopic = cleaned
+        break
+      }
+    }
+    if (rawTopic.length > 0) {
+      let topic = rawTopic.slice(0, 200).trim()
+      if (rawTopic.length > 200) topic += '…'
+      if (result.filesChanged.length > 0) {
+        const maxFiles = 5
+        const fileList = result.filesChanged.slice(0, maxFiles).join(', ')
+        const extra = result.filesChanged.length > maxFiles ? ` (+${result.filesChanged.length - maxFiles} more)` : ''
+        result.summary = `${topic} | Files: ${fileList}${extra}`
+      } else {
+        result.summary = topic
+      }
     }
   }
 
   return result
+}
+
+/**
+ * Strip system/XML tags from user messages to extract the actual user intent.
+ * Claude Code session JSONL user messages often contain system tags like
+ * <local-command-caveat>, <system-reminder>, <command-name>, etc.
+ */
+function extractUserText(raw: string): string {
+  // Remove XML-style tags and their content for known system tags
+  let text = raw
+    .replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g, '')
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
+    .replace(/<command-name>[\s\S]*?<\/command-name>/g, '')
+    .replace(/<command-message>[\s\S]*?<\/command-message>/g, '')
+    .replace(/<command-args>[\s\S]*?<\/command-args>/g, '')
+    .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g, '')
+    .replace(/<available-deferred-tools>[\s\S]*?<\/available-deferred-tools>/g, '')
+    .replace(/<[\w-]+>[\s\S]*?<\/antml:[\w-]+>/g, '')
+  // Clean up whitespace
+  text = text.replace(/\s+/g, ' ').trim()
+  return text
 }
 
 // ─── Live Session State ───────────────────────────────────────────────────────
