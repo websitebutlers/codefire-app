@@ -1,15 +1,22 @@
 import { useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { Plus } from 'lucide-react'
+import { Plus, Circle, CircleDot, CheckCircle2 } from 'lucide-react'
 import type { TaskItem } from '@shared/models'
 import TaskCard from './TaskCard'
+
+const COLUMN_ICONS = {
+  'circle': Circle,
+  'circle-dot': CircleDot,
+  'check-circle': CheckCircle2,
+} as const
 
 interface KanbanColumnProps {
   id: string
   title: string
   tasks: TaskItem[]
   color: string
+  icon?: keyof typeof COLUMN_ICONS
   onTaskClick: (task: TaskItem) => void
   onAddTask: (title: string) => void
   projectNames?: Record<string, string>
@@ -20,6 +27,7 @@ export default function KanbanColumn({
   title,
   tasks,
   color,
+  icon,
   onTaskClick,
   onAddTask,
   projectNames,
@@ -44,7 +52,12 @@ export default function KanbanColumn({
     >
       {/* Column header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-neutral-800 shrink-0">
-        <div className={`w-2 h-2 rounded-full ${color}`} />
+        {(() => {
+          const IconComponent = icon ? COLUMN_ICONS[icon] : null
+          return IconComponent
+            ? <IconComponent size={12} className={color} />
+            : <div className={`w-2 h-2 rounded-full ${color}`} />
+        })()}
         <span className="text-sm text-neutral-300 font-medium">{title}</span>
         <span className="text-xs text-neutral-500 ml-auto">{tasks.length}</span>
         <button

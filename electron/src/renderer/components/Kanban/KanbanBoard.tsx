@@ -32,9 +32,9 @@ interface KanbanBoardProps {
 }
 
 const COLUMNS = [
-  { id: 'todo', title: 'Todo', color: 'bg-orange-400' },
-  { id: 'in_progress', title: 'In Progress', color: 'bg-codefire-orange' },
-  { id: 'done', title: 'Done', color: 'bg-success' },
+  { id: 'todo', title: 'Todo', color: 'text-orange-400', icon: 'circle' as const },
+  { id: 'in_progress', title: 'In Progress', color: 'text-blue-400', icon: 'circle-dot' as const },
+  { id: 'done', title: 'Done', color: 'text-green-400', icon: 'check-circle' as const },
 ] as const
 
 export default function KanbanBoard({
@@ -109,6 +109,7 @@ export default function KanbanBoard({
               id={col.id}
               title={col.title}
               color={col.color}
+              icon={col.icon}
               tasks={getTasksForColumn(col.id)}
               onTaskClick={(task) => setSelectedTask(task)}
               onAddTask={(title) => onAddTask(title, col.id)}

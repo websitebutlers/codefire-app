@@ -170,8 +170,8 @@ export default function ProjectTaskSummary() {
                     <span
                       className="text-[9px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
                       style={{
-                        backgroundColor: summary.client.color + '20',
-                        color: summary.client.color,
+                        backgroundColor: summary.client.color || '#6b7280',
+                        color: 'rgba(255,255,255,0.9)',
                       }}
                     >
                       {summary.client.name}

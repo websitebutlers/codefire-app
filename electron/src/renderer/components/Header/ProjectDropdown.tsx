@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Folder, FolderOpen, Settings, Plus, ChevronDown, Check, X, LayoutGrid } from 'lucide-react'
+import { Folder, FolderOpen, Settings, Plus, ChevronDown, Check, X, LayoutGrid, Users, Tag, Trash2 } from 'lucide-react'
 import type { Project, Client } from '@shared/models'
 import { api } from '@renderer/lib/api'
 import SettingsModal from '@renderer/components/Settings/SettingsModal'
@@ -13,6 +13,28 @@ function displayName(project: Project): string {
   return name
 }
 
+function firstTag(project: Project): string | null {
+  const tags = project.tags
+  if (!tags) return null
+  const trimmed = tags.trim()
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed) && parsed.length > 0) return String(parsed[0])
+    } catch { /* fall through */ }
+  }
+  const first = trimmed.split(',').map((t) => t.trim()).filter(Boolean)[0]
+  return first ?? null
+}
+
+interface ProjectContextMenu {
+  x: number
+  y: number
+  project: Project
+  submenu?: 'group' | 'tag'
+  tagInput?: string
+}
+
 export default function ProjectDropdown() {
   const [open, setOpen] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
@@ -22,9 +44,11 @@ export default function ProjectDropdown() {
   const [showAddGroup, setShowAddGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [newGroupColor, setNewGroupColor] = useState('#F97316')
-  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
+  const [collapsedClients, setCollapsedClients] = useState<Set<string>>(new Set())
+  const [contextMenu, setContextMenu] = useState<ProjectContextMenu | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const addGroupInputRef = useRef<HTMLInputElement>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
     try {
@@ -88,7 +112,7 @@ export default function ProjectDropdown() {
   }
 
   const toggleClient = (clientId: string) => {
-    setExpandedClients((prev) => {
+    setCollapsedClients((prev) => {
       const next = new Set(prev)
       if (next.has(clientId)) next.delete(clientId)
       else next.add(clientId)
@@ -132,6 +156,46 @@ export default function ProjectDropdown() {
     load()
   }
 
+  function handleProjectContextMenu(e: React.MouseEvent, project: Project) {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ x: e.clientX, y: e.clientY, project })
+  }
+
+  async function handleSetGroup(project: Project, clientId: string | null) {
+    await api.projects.update(project.id, { clientId })
+    setContextMenu(null)
+    load()
+  }
+
+  async function handleSetTag(project: Project, tag: string) {
+    const trimmed = tag.trim()
+    await api.projects.update(project.id, {
+      tags: trimmed ? JSON.stringify([trimmed]) : null,
+    })
+    setContextMenu(null)
+    load()
+  }
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!contextMenu) return
+    const handleClick = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null)
+      }
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null)
+    }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [contextMenu])
+
   return (
     <div className="relative" ref={dropdownRef}>
       {/* Trigger button */}
@@ -159,8 +223,7 @@ export default function ProjectDropdown() {
                 {/* Client groups */}
                 {clients.map((client) => {
                   const clientProjects = clientProjectMap.get(client.id) ?? []
-                  if (clientProjects.length === 0) return null
-                  const isExpanded = expandedClients.has(client.id)
+                  const isExpanded = !collapsedClients.has(client.id)
                   return (
                     <div key={client.id}>
                       <button
@@ -172,20 +235,35 @@ export default function ProjectDropdown() {
                           style={{ backgroundColor: client.color || '#737373' }}
                         />
                         <span className="truncate font-semibold uppercase tracking-wider">{client.name}</span>
+                        <span className="text-neutral-600 text-[10px] ml-1">{clientProjects.length}</span>
                         <span className="ml-auto text-neutral-600">
                           <ChevronDown size={11} className={`transition-transform duration-150 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
                         </span>
                       </button>
-                      {isExpanded && clientProjects.map((project) => (
-                        <button
-                          key={project.id}
-                          onClick={() => handleOpenProject(project.id)}
-                          className="w-full flex items-center gap-2 pl-7 pr-3 py-1.5 text-[12px] transition-colors text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-200"
-                        >
-                          <Folder size={12} className="flex-shrink-0 text-neutral-600" />
-                          <span className="truncate">{displayName(project)}</span>
-                        </button>
-                      ))}
+                      {isExpanded && clientProjects.length === 0 && (
+                        <div className="pl-7 pr-3 py-1.5 text-[11px] text-neutral-600 italic">
+                          No projects — right-click a project to assign
+                        </div>
+                      )}
+                      {isExpanded && clientProjects.map((project) => {
+                        const tag = firstTag(project)
+                        return (
+                          <button
+                            key={project.id}
+                            onClick={() => handleOpenProject(project.id)}
+                            onContextMenu={(e) => handleProjectContextMenu(e, project)}
+                            className="w-full flex items-center gap-2 pl-7 pr-3 py-1.5 text-[12px] transition-colors text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-200"
+                          >
+                            <Folder size={12} className="flex-shrink-0 text-neutral-600" />
+                            <span className="truncate">{displayName(project)}</span>
+                            {tag && (
+                              <span className="text-[9px] font-medium text-neutral-500 px-1.5 py-0.5 rounded-full bg-neutral-800 shrink-0 ml-auto">
+                                {tag}
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
                     </div>
                   )
                 })}
@@ -198,16 +276,25 @@ export default function ProjectDropdown() {
                         <span className="text-[10px] font-semibold text-neutral-600 uppercase tracking-wider">Projects</span>
                       </div>
                     )}
-                    {ungrouped.map((project) => (
-                      <button
-                        key={project.id}
-                        onClick={() => handleOpenProject(project.id)}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] transition-colors text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-200"
-                      >
-                        <Folder size={12} className="flex-shrink-0 text-neutral-600" />
-                        <span className="truncate">{displayName(project)}</span>
-                      </button>
-                    ))}
+                    {ungrouped.map((project) => {
+                      const tag = firstTag(project)
+                      return (
+                        <button
+                          key={project.id}
+                          onClick={() => handleOpenProject(project.id)}
+                          onContextMenu={(e) => handleProjectContextMenu(e, project)}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] transition-colors text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-200"
+                        >
+                          <Folder size={12} className="flex-shrink-0 text-neutral-600" />
+                          <span className="truncate">{displayName(project)}</span>
+                          {tag && (
+                            <span className="text-[9px] font-medium text-neutral-500 px-1.5 py-0.5 rounded-full bg-neutral-800 shrink-0 ml-auto">
+                              {tag}
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
                   </>
                 )}
 
@@ -297,6 +384,134 @@ export default function ProjectDropdown() {
 
       {/* Settings Modal */}
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+
+      {/* Project Context Menu */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-[9999] min-w-[180px] bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl py-1 text-[12px]"
+          style={{
+            left: Math.min(contextMenu.x, window.innerWidth - 200),
+            top: Math.min(contextMenu.y, window.innerHeight - 200),
+          }}
+        >
+          {!contextMenu.submenu && (
+            <>
+              <button
+                onClick={() => setContextMenu({ ...contextMenu, submenu: 'tag', tagInput: firstTag(contextMenu.project) ?? '' })}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-neutral-300 hover:bg-white/[0.06] hover:text-neutral-100"
+              >
+                <Tag size={13} />
+                Set Tag...
+              </button>
+              <button
+                onClick={() => setContextMenu({ ...contextMenu, submenu: 'group' })}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-neutral-300 hover:bg-white/[0.06] hover:text-neutral-100"
+              >
+                <Users size={13} />
+                Set Group
+              </button>
+              <button
+                onClick={() => {
+                  if (contextMenu.project.path) api.shell.showInExplorer(contextMenu.project.path)
+                  setContextMenu(null)
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-neutral-300 hover:bg-white/[0.06] hover:text-neutral-100"
+              >
+                <FolderOpen size={13} />
+                Show in Explorer
+              </button>
+            </>
+          )}
+
+          {contextMenu.submenu === 'tag' && (
+            <div className="px-2 py-1.5 space-y-1.5">
+              <div className="flex items-center gap-1">
+                <input
+                  autoFocus
+                  type="text"
+                  value={contextMenu.tagInput ?? ''}
+                  onChange={(e) => setContextMenu({ ...contextMenu, tagInput: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSetTag(contextMenu.project, contextMenu.tagInput ?? '')
+                    if (e.key === 'Escape') setContextMenu({ ...contextMenu, submenu: undefined })
+                  }}
+                  placeholder="e.g. prod, api, web"
+                  className="flex-1 bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-codefire-orange"
+                />
+                <button
+                  onClick={() => handleSetTag(contextMenu.project, contextMenu.tagInput ?? '')}
+                  className="p-1 rounded text-green-400 hover:bg-green-500/10"
+                >
+                  <Check size={13} />
+                </button>
+                <button
+                  onClick={() => setContextMenu({ ...contextMenu, submenu: undefined })}
+                  className="p-1 rounded text-neutral-500 hover:text-neutral-300"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+              {firstTag(contextMenu.project) && (
+                <button
+                  onClick={() => handleSetTag(contextMenu.project, '')}
+                  className="text-[11px] text-neutral-500 hover:text-red-400 transition-colors"
+                >
+                  Clear tag
+                </button>
+              )}
+            </div>
+          )}
+
+          {contextMenu.submenu === 'group' && (
+            <div className="py-0.5">
+              <button
+                onClick={() => setContextMenu({ ...contextMenu, submenu: undefined })}
+                className="w-full flex items-center gap-2 px-3 py-1 text-neutral-500 hover:bg-white/[0.06] hover:text-neutral-300 text-[11px]"
+              >
+                <X size={11} />
+                Back
+              </button>
+              <div className="mx-2 my-1 border-t border-neutral-800" />
+              {contextMenu.project.clientId && (
+                <>
+                  <button
+                    onClick={() => handleSetGroup(contextMenu.project, null)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200"
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full border border-neutral-600" />
+                    No Group
+                  </button>
+                  <div className="mx-2 my-1 border-t border-neutral-800" />
+                </>
+              )}
+              {clients.map((client) => (
+                <button
+                  key={client.id}
+                  onClick={() => handleSetGroup(contextMenu.project, client.id)}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.06] ${
+                    contextMenu.project.clientId === client.id ? 'text-codefire-orange' : 'text-neutral-300 hover:text-neutral-100'
+                  }`}
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: client.color ?? '#6B7280' }}
+                  />
+                  {client.name}
+                  {contextMenu.project.clientId === client.id && (
+                    <Check size={12} className="ml-auto text-codefire-orange" />
+                  )}
+                </button>
+              ))}
+              {clients.length === 0 && (
+                <div className="px-3 py-2 text-[11px] text-neutral-600">
+                  No groups yet. Create one first.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
