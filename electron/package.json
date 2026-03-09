@@ -15,11 +15,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build:mcp": "npm run build && node -e \"require('fs').copyFileSync('dist-electron/mcp/server.js','mcp-server/server.js')\" && cd mcp-server && npm install",
-    "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist:linux": "npm run build && electron-builder --linux",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:all": "npm run build && electron-builder --win --linux --mac",
+    "dist": "npm run build:mcp && electron-builder",
+    "dist:win": "npm run build:mcp && electron-builder --win",
+    "dist:linux": "npm run build:mcp && electron-builder --linux",
+    "dist:mac": "npm run build:mcp && electron-builder --mac",
+    "dist:all": "npm run build:mcp && electron-builder --win --linux --mac",
     "postinstall": "electron-rebuild --only=better-sqlite3 && node scripts/patch-vite-plugin-electron.js"
   },
   "dependencies": {
@@ -114,6 +114,13 @@
       {
         "from": "resources",
         "to": ".",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "mcp-server",
+        "to": "mcp-server",
         "filter": [
           "**/*"
         ]

@@ -57,6 +57,9 @@ const gitService = new GitService()
 // Read config early (lightweight)
 const config = readConfig()
 
+// On Linux AppImage, copy the MCP server to a stable path before anything else
+MCPServerManager.syncMcpServerForLinux()
+
 // Initialize MCP server manager (polls for active MCP connections)
 const mcpManager = new MCPServerManager()
 
