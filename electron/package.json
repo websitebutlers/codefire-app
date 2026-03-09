@@ -1,6 +1,6 @@
 {
   "name": "codefire-electron",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "CodeFire — Cross-platform companion for AI coding CLIs",
   "main": "dist-electron/main/index.js",
   "author": {
