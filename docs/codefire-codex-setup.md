@@ -19,16 +19,19 @@ Add to `%APPDATA%\.codex\config.toml`:
 ```toml
 [mcp_servers.codefire]
 command = "node"
-args = ["%APPDATA%\\CodeFire\\resources\\mcp-server.js"]
+args = ["%APPDATA%\\CodeFire\\resources\\mcp-server\\server.js"]
 ```
 
 ### Linux (Electron app)
 
 Add to `~/.codex/config.toml`:
 ```toml
+# AppImage (path auto-synced on first launch)
 [mcp_servers.codefire]
 command = "node"
-args = ["~/.config/CodeFire/resources/mcp-server.js"]
+args = ["~/.local/share/CodeFire/mcp-server/server.js"]
+
+# deb package: use /opt/CodeFire/resources/mcp-server/server.js instead
 ```
 
 ### Verify it's connected

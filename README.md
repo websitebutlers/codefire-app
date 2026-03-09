@@ -85,8 +85,14 @@ The fastest way is the one-click install — visit [codefire.app/getting-started
 Or configure manually:
 
 ```bash
-# Claude Code
+# Claude Code — macOS (Swift)
 claude mcp add codefire ~/Library/Application\ Support/CodeFire/bin/CodeFireMCP
+
+# Claude Code — Linux (AppImage, auto-synced on first launch)
+claude mcp add codefire node ~/.local/share/CodeFire/mcp-server/server.js
+
+# Claude Code — Windows
+claude mcp add codefire node "%APPDATA%\CodeFire\resources\mcp-server\server.js"
 ```
 
 <details>
@@ -123,7 +129,7 @@ args = []
 }
 ```
 
-> Electron users: the MCP server path differs by platform. See the setup guides below for exact paths.
+> Electron users: the MCP server path differs by platform. See the [setup guides](#4-add-system-instructions) for exact paths. Linux AppImage users: the MCP server is automatically synced to `~/.local/share/CodeFire/mcp-server/` on first launch.
 
 </details>
 

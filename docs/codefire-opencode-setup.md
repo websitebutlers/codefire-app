@@ -26,7 +26,7 @@ Add to `opencode.jsonc`:
   "mcpServers": {
     "codefire": {
       "type": "local",
-      "command": ["node", "%APPDATA%\\CodeFire\\resources\\mcp-server.js"]
+      "command": ["node", "%APPDATA%\\CodeFire\\resources\\mcp-server\\server.js"]
     }
   }
 }
@@ -40,11 +40,13 @@ Add to `opencode.jsonc`:
   "mcpServers": {
     "codefire": {
       "type": "local",
-      "command": ["node", "~/.config/CodeFire/resources/mcp-server.js"]
+      "command": ["node", "~/.local/share/CodeFire/mcp-server/server.js"]
     }
   }
 }
 ```
+
+> **Note:** The AppImage auto-syncs the MCP server to `~/.local/share/CodeFire/mcp-server/` on first launch. For deb installs, use `/opt/CodeFire/resources/mcp-server/server.js` instead.
 
 ### Verify it's connected
 

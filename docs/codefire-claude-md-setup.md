@@ -15,14 +15,17 @@ claude mcp add codefire ~/Library/Application\ Support/CodeFire/bin/CodeFireMCP
 
 ```bash
 # Claude Code
-claude mcp add codefire node "%APPDATA%\CodeFire\resources\mcp-server.js"
+claude mcp add codefire node "%APPDATA%\CodeFire\resources\mcp-server\server.js"
 ```
 
 ### Linux (Electron app)
 
 ```bash
-# Claude Code
-claude mcp add codefire node ~/.config/CodeFire/resources/mcp-server.js
+# Claude Code (AppImage — path is auto-synced to a stable location on first launch)
+claude mcp add codefire node ~/.local/share/CodeFire/mcp-server/server.js
+
+# Claude Code (deb package)
+claude mcp add codefire node /opt/CodeFire/resources/mcp-server/server.js
 ```
 
 ### Verify it's connected

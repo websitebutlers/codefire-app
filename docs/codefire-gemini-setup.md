@@ -26,7 +26,7 @@ Add to `%APPDATA%\.gemini\settings.json`:
   "mcpServers": {
     "codefire": {
       "command": "node",
-      "args": ["%APPDATA%\\CodeFire\\resources\\mcp-server.js"]
+      "args": ["%APPDATA%\\CodeFire\\resources\\mcp-server\\server.js"]
     }
   }
 }
@@ -40,11 +40,13 @@ Add to `~/.gemini/settings.json`:
   "mcpServers": {
     "codefire": {
       "command": "node",
-      "args": ["~/.config/CodeFire/resources/mcp-server.js"]
+      "args": ["~/.local/share/CodeFire/mcp-server/server.js"]
     }
   }
 }
 ```
+
+> **Note:** The AppImage auto-syncs the MCP server to `~/.local/share/CodeFire/mcp-server/` on first launch. For deb installs, use `/opt/CodeFire/resources/mcp-server/server.js` instead.
 
 ### Verify it's connected
 
