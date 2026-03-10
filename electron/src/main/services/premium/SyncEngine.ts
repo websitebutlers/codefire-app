@@ -176,15 +176,15 @@ export class SyncEngine {
           project_id: remoteProjectId,
           local_id: String(task.id),
           title: task.title,
+          description: task.description || null,
           status: task.status,
           priority: task.priority,
           source: task.source,
           created_by: userId,
           created_at: task.createdAt,
           updated_at: task.updatedAt || task.createdAt,
+          completed_at: task.completedAt || null,
         }
-        if (task.description) body.description = task.description
-        if (task.completedAt) body.completed_at = task.completedAt
         if (task.labels) {
           try { body.labels = JSON.parse(task.labels) } catch { /* skip */ }
         }
@@ -380,10 +380,10 @@ export class SyncEngine {
           const localUpdated = localTask?.updatedAt || localTask?.createdAt || '1970-01-01'
           const remoteUpdated = remote.updated_at || '1970-01-01'
 
-          if (remoteUpdated >= localUpdated) {
+          if (remoteUpdated > localUpdated) {
             this.applyRemoteTask(remote, Number(existing.localId))
           }
-          // else: local is newer, skip remote — will be pushed next cycle
+          // else: local is same or newer, skip remote — will be pushed next cycle if dirty
 
           // Must reset dirty = 0 because applyRemoteTask triggers sync_task_dirty_update
           // which sets dirty = 1 via INSERT OR REPLACE
@@ -470,16 +470,33 @@ export class SyncEngine {
 
   private applyRemoteTask(remote: Record<string, any>, localId: number): void {
     const labels = remote.labels ? JSON.stringify(remote.labels) : null
+
+    // Determine status: prefer remote, fall back to local, last resort 'todo'
+    let status = remote.status
+    if (!status) {
+      const localTask = this.db.prepare(
+        `SELECT status FROM taskItems WHERE id = ?`
+      ).get(localId) as { status: string } | undefined
+      status = localTask?.status || 'todo'
+    }
+
+    // Enforce consistency: if remote has completed_at but status is not 'done',
+    // the completedAt is the stronger signal — respect it
+    const completedAt = remote.completed_at || null
+    if (completedAt && status !== 'done') {
+      status = 'done'
+    }
+
     this.db.prepare(
       `UPDATE taskItems SET title = ?, description = ?, status = ?, priority = ?,
        labels = ?, completedAt = ?, updatedAt = ? WHERE id = ?`
     ).run(
       remote.title,
       remote.description || null,
-      remote.status || 'todo',
+      status,
       remote.priority || 0,
       labels,
-      remote.completed_at || null,
+      completedAt,
       remote.updated_at || new Date().toISOString(),
       localId
     )

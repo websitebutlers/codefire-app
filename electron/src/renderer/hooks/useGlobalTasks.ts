@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { TaskItem } from '@shared/models'
 import { api } from '@renderer/lib/api'
 
@@ -6,10 +6,19 @@ export function useGlobalTasks() {
   const [tasks, setTasks] = useState<TaskItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const initialLoadDone = useRef(false)
+  // Generation counter: discard results from stale fetches
+  const fetchGeneration = useRef(0)
+  // Allow callers to pause polling (e.g. during drag operations)
+  const pollingPaused = useRef(false)
 
   const fetchTasks = useCallback(async () => {
+    const gen = ++fetchGeneration.current
     try {
-      setLoading(true)
+      // Only show loading spinner on initial load, not polling refetches
+      if (!initialLoadDone.current) {
+        setLoading(true)
+      }
       setError(null)
       // Fetch all projects, then fetch tasks for each + global tasks
       const projects = await api.projects.list()
@@ -18,6 +27,8 @@ export function useGlobalTasks() {
         api.tasks.listGlobal(),
         ...projectIds.map((id) => api.tasks.list(id)),
       ])
+      // Discard result if a newer fetch was started while this one was in flight
+      if (gen !== fetchGeneration.current) return
       // Deduplicate by task id (global tasks might also appear in a project list)
       const seen = new Set<number>()
       const merged: TaskItem[] = []
@@ -36,19 +47,25 @@ export function useGlobalTasks() {
         return bTime.localeCompare(aTime)
       })
       setTasks(merged)
+      initialLoadDone.current = true
     } catch (err) {
+      if (gen !== fetchGeneration.current) return
       setError(err instanceof Error ? err.message : 'Failed to load tasks')
     } finally {
-      setLoading(false)
+      if (gen === fetchGeneration.current) {
+        setLoading(false)
+      }
     }
   }, [])
 
   useEffect(() => {
     fetchTasks()
-    const interval = setInterval(fetchTasks, 5000)
+    const interval = setInterval(() => {
+      if (!pollingPaused.current) fetchTasks()
+    }, 5000)
     // Listen for cross-window task updates (from other windows or MCP)
     const unsub = window.api.on('tasks:updated', () => {
-      fetchTasks()
+      if (!pollingPaused.current) fetchTasks()
     })
     return () => {
       clearInterval(interval)
@@ -84,17 +101,19 @@ export function useGlobalTasks() {
       }
     ) => {
       await api.tasks.update(id, data)
-      await fetchTasks()
+      // Don't call fetchTasks() here — the broadcast from the main process
+      // will trigger the 'tasks:updated' listener which handles the refetch.
+      // Calling it here too caused duplicate/racing fetches.
     },
-    [fetchTasks]
+    []
   )
 
   const deleteTask = useCallback(
     async (id: number) => {
       await api.tasks.delete(id)
-      await fetchTasks()
+      // Same as updateTask: let the broadcast trigger the refetch
     },
-    [fetchTasks]
+    []
   )
 
   const sortByRecent = (a: TaskItem, b: TaskItem) => {
@@ -117,5 +136,6 @@ export function useGlobalTasks() {
     updateTask,
     deleteTask,
     refetch: fetchTasks,
+    pollingPaused,
   }
 }

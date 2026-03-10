@@ -9,26 +9,36 @@ export function useTasks(projectId: string) {
 
   const initialLoadDone = useRef(false)
 
+  // Generation counter: discard results from stale fetches
+  const fetchGeneration = useRef(0)
+  // Allow callers to pause polling (e.g. during drag operations)
+  const pollingPaused = useRef(false)
+
   const fetchTasks = useCallback(async () => {
+    const gen = ++fetchGeneration.current
     try {
       if (!initialLoadDone.current) setLoading(true)
       setError(null)
       const data = await api.tasks.list(projectId)
+      if (gen !== fetchGeneration.current) return
       setTasks(data)
       initialLoadDone.current = true
     } catch (err) {
+      if (gen !== fetchGeneration.current) return
       setError(err instanceof Error ? err.message : 'Failed to load tasks')
     } finally {
-      setLoading(false)
+      if (gen === fetchGeneration.current) setLoading(false)
     }
   }, [projectId])
 
   useEffect(() => {
     fetchTasks()
-    const interval = setInterval(fetchTasks, 5000)
+    const interval = setInterval(() => {
+      if (!pollingPaused.current) fetchTasks()
+    }, 5000)
     // Also listen for cross-window task updates (from other windows or MCP)
     const unsub = window.api.on('tasks:updated', () => {
-      fetchTasks()
+      if (!pollingPaused.current) fetchTasks()
     })
     return () => {
       clearInterval(interval)
@@ -60,17 +70,17 @@ export function useTasks(projectId: string) {
       }
     ) => {
       await api.tasks.update(id, data)
-      await fetchTasks()
+      // Don't call fetchTasks() — the broadcast from main process triggers refetch
     },
-    [fetchTasks]
+    []
   )
 
   const deleteTask = useCallback(
     async (id: number) => {
       await api.tasks.delete(id)
-      await fetchTasks()
+      // Don't call fetchTasks() — the broadcast from main process triggers refetch
     },
-    [fetchTasks]
+    []
   )
 
   // Group tasks by status
@@ -109,6 +119,7 @@ export function useTasks(projectId: string) {
     updateTask,
     deleteTask,
     refetch: fetchTasks,
+    pollingPaused,
   }
 }
 
