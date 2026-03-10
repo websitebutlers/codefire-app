@@ -15,6 +15,17 @@ function ensureError(err: unknown): Error {
   return new Error(String(err))
 }
 
+/**
+ * Resolve a local project ID to its remote (synced) project ID.
+ * All collaborative features (presence, activity, docs, reviews, sessions)
+ * must use the remote ID so all team members share the same namespace.
+ * Falls back to local ID if no mapping exists (project not yet synced).
+ */
+async function resolveProjectId(syncEngine: SyncEngine, localProjectId: string): Promise<string> {
+  const remoteId = await syncEngine.getRemoteProjectId(localProjectId)
+  return remoteId ?? localProjectId
+}
+
 export function registerPremiumHandlers(
   authService: AuthService,
   teamService: TeamService,
@@ -113,10 +124,11 @@ export function registerPremiumHandlers(
   ipcMain.handle('premium:getActivityFeed', async (_e, projectId: string, limit?: number) => {
     const client = getSupabaseClient()
     if (!client) return []
+    const remoteId = await resolveProjectId(syncEngine, projectId)
     const { data } = await client
       .from('activity_events')
       .select('*, user:users(id, email, display_name, avatar_url)')
-      .eq('project_id', projectId)
+      .eq('project_id', remoteId)
       .order('created_at', { ascending: false })
       .limit(limit || 50)
     return data || []
@@ -126,10 +138,11 @@ export function registerPremiumHandlers(
   ipcMain.handle('premium:listSessionSummaries', async (_e, projectId: string) => {
     const client = getSupabaseClient()
     if (!client) return []
+    const remoteId = await resolveProjectId(syncEngine, projectId)
     const { data } = await client
       .from('session_summaries')
       .select('*, user:users(id, email, display_name, avatar_url)')
-      .eq('project_id', projectId)
+      .eq('project_id', remoteId)
       .order('shared_at', { ascending: false })
       .limit(50)
     return data || []
@@ -150,10 +163,11 @@ export function registerPremiumHandlers(
     if (!client) throw new Error('Premium not configured')
     const { data: { user } } = await client.auth.getUser()
     if (!user) throw new Error('Not authenticated')
+    const remoteId = await resolveProjectId(syncEngine, payload.projectId)
     const { data, error } = await client
       .from('session_summaries')
       .insert({
-        project_id: payload.projectId,
+        project_id: remoteId,
         user_id: user.id,
         session_slug: payload.sessionSlug || null,
         model: payload.model || null,
@@ -170,7 +184,7 @@ export function registerPremiumHandlers(
     return data
   })
 
-  // Presence
+  // Presence — resolve to remote project ID so all team members join the same channel
   ipcMain.handle('premium:joinPresence', async (_e, projectId: string) => {
     const client = getSupabaseClient()
     if (!client) return
@@ -179,7 +193,8 @@ export function registerPremiumHandlers(
     const { data: profile } = await client.from('users').select('display_name, avatar_url').eq('id', user.id).single()
     const localName = getConfigValue('profileName')
     const localAvatar = getConfigValue('profileAvatarUrl')
-    await presenceService.joinProject(projectId, {
+    const remoteId = await resolveProjectId(syncEngine, projectId)
+    await presenceService.joinProject(remoteId, {
       userId: user.id,
       displayName: localName || profile?.display_name || user.email || 'Unknown',
       avatarUrl: localAvatar || profile?.avatar_url || null,
@@ -190,11 +205,13 @@ export function registerPremiumHandlers(
   })
 
   ipcMain.handle('premium:leavePresence', async (_e, projectId: string) => {
-    await presenceService.leaveProject(projectId)
+    const remoteId = await resolveProjectId(syncEngine, projectId)
+    await presenceService.leaveProject(remoteId)
   })
 
-  ipcMain.handle('premium:getPresence', (_e, projectId: string) => {
-    return presenceService.getPresence(projectId)
+  ipcMain.handle('premium:getPresence', async (_e, projectId: string) => {
+    const remoteId = await resolveProjectId(syncEngine, projectId)
+    return presenceService.getPresence(remoteId)
   })
 
   // ─── Project Docs (Wiki) ────────────────────────────────────────────────────
@@ -202,10 +219,11 @@ export function registerPremiumHandlers(
   ipcMain.handle('premium:listProjectDocs', async (_e, projectId: string) => {
     const client = getSupabaseClient()
     if (!client) return []
+    const remoteId = await resolveProjectId(syncEngine, projectId)
     const { data } = await client
       .from('project_docs')
       .select('*, created_by_user:users!project_docs_created_by_fkey(id, email, display_name, avatar_url), last_edited_by_user:users!project_docs_last_edited_by_fkey(id, email, display_name, avatar_url)')
-      .eq('project_id', projectId)
+      .eq('project_id', remoteId)
       .order('sort_order', { ascending: true })
     return (data || []).map((d: any) => ({
       id: d.id,
@@ -272,11 +290,13 @@ export function registerPremiumHandlers(
     const { data: { user } } = await client.auth.getUser()
     if (!user) throw new Error('Not authenticated')
 
+    const remoteId = await resolveProjectId(syncEngine, input.projectId)
+
     // Get max sort_order for this project
     const { data: existing } = await client
       .from('project_docs')
       .select('sort_order')
-      .eq('project_id', input.projectId)
+      .eq('project_id', remoteId)
       .order('sort_order', { ascending: false })
       .limit(1)
     const nextOrder = existing && existing.length > 0 ? existing[0].sort_order + 1 : 0
@@ -284,7 +304,7 @@ export function registerPremiumHandlers(
     const { data, error } = await client
       .from('project_docs')
       .insert({
-        project_id: input.projectId,
+        project_id: remoteId,
         title: input.title,
         content: input.content,
         sort_order: nextOrder,
@@ -356,10 +376,12 @@ export function registerPremiumHandlers(
     const { data: { user } } = await client.auth.getUser()
     if (!user) throw new Error('Not authenticated')
 
+    const remoteId = await resolveProjectId(syncEngine, data.projectId)
+
     const { data: review, error } = await client
       .from('review_requests')
       .insert({
-        project_id: data.projectId,
+        project_id: remoteId,
         task_id: data.taskId,
         requested_by: user.id,
         assigned_to: data.assignedTo,
@@ -374,7 +396,7 @@ export function registerPremiumHandlers(
     const { data: profile } = await client.from('users').select('display_name').eq('id', user.id).single()
     await client.from('notifications').insert({
       user_id: data.assignedTo,
-      project_id: data.projectId,
+      project_id: remoteId,
       type: 'review_request',
       title: 'Review requested',
       body: `${profile?.display_name || user.email || 'A team member'} requested your review`,
@@ -421,10 +443,11 @@ export function registerPremiumHandlers(
   ipcMain.handle('premium:listReviewRequests', async (_e, projectId: string) => {
     const client = getSupabaseClient()
     if (!client) return []
+    const remoteId = await resolveProjectId(syncEngine, projectId)
     const { data } = await client
       .from('review_requests')
       .select('*, requestedByUser:users!review_requests_requested_by_fkey(id, email, display_name, avatar_url), assignedToUser:users!review_requests_assigned_to_fkey(id, email, display_name, avatar_url)')
-      .eq('project_id', projectId)
+      .eq('project_id', remoteId)
       .order('created_at', { ascending: false })
     return data || []
   })

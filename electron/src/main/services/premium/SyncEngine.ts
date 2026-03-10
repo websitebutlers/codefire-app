@@ -90,6 +90,27 @@ export class SyncEngine {
     }))
   }
 
+  /**
+   * Resolve a local project ID to its remote (synced) project ID.
+   * Used by all premium collaborative features (presence, activity, docs, reviews)
+   * so that all team members share the same remote project namespace.
+   */
+  async getRemoteProjectId(localProjectId: string): Promise<string | null> {
+    // Check cached mappings first
+    const cached = this.currentMappings.find((m) => m.localId === localProjectId)
+    if (cached) return cached.remoteId
+
+    // Fetch fresh mappings if cache is empty
+    try {
+      const mappings = await this.fetchProjectMappings()
+      this.currentMappings = mappings
+      const match = mappings.find((m) => m.localId === localProjectId)
+      return match?.remoteId ?? null
+    } catch {
+      return null
+    }
+  }
+
   /** Run a full sync cycle: push dirty entities, then pull remote updates */
   private async syncAll(): Promise<void> {
     const client = getSupabaseClient()

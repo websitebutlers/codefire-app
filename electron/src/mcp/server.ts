@@ -207,10 +207,10 @@ server.registerTool(
     const now = new Date().toISOString()
     const result = db
       .prepare(
-        `INSERT INTO taskItems (projectId, title, description, status, priority, source, isGlobal, createdAt)
-         VALUES (?, ?, ?, 'todo', ?, 'mcp', ?, ?)`
+        `INSERT INTO taskItems (projectId, title, description, status, priority, source, isGlobal, createdAt, updatedAt)
+         VALUES (?, ?, ?, 'todo', ?, 'mcp', ?, ?, ?)`
       )
-      .run(projectId, title, description ?? null, Math.min(4, Math.max(0, priority ?? 0)), isGlobal ? 1 : 0, now)
+      .run(projectId, title, description ?? null, Math.min(4, Math.max(0, priority ?? 0)), isGlobal ? 1 : 0, now, now)
     const task = db.prepare('SELECT * FROM taskItems WHERE id = ?').get(result.lastInsertRowid)
     return { content: [{ type: 'text' as const, text: JSON.stringify(task, null, 2) }] }
   }
@@ -234,20 +234,23 @@ server.registerTool(
     if (!existing) {
       return { content: [{ type: 'text' as const, text: `Task ${taskId} not found.` }] }
     }
+    const now = new Date().toISOString()
     const completedAt =
       status === 'done' && existing.status !== 'done'
-        ? new Date().toISOString()
+        ? now
         : status && status !== 'done'
           ? null
           : existing.completedAt
+    const updatedAt = (status && status !== existing.status) ? now : (existing.updatedAt ?? now)
     db.prepare(
-      `UPDATE taskItems SET title = ?, description = ?, status = ?, priority = ?, completedAt = ? WHERE id = ?`
+      `UPDATE taskItems SET title = ?, description = ?, status = ?, priority = ?, completedAt = ?, updatedAt = ? WHERE id = ?`
     ).run(
       title ?? existing.title,
       description ?? existing.description,
       status ?? existing.status,
       priority ?? existing.priority,
       completedAt,
+      updatedAt,
       taskId
     )
     const updated = db.prepare('SELECT * FROM taskItems WHERE id = ?').get(taskId)
