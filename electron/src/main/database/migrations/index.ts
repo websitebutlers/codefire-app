@@ -703,4 +703,18 @@ export const migrations: Migration[] = [
       `)
     },
   },
+
+  // Migration 29: Add remote owner columns for team-synced tasks and notes
+  {
+    version: 29,
+    name: 'v29_addRemoteOwnerColumns',
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE taskItems ADD COLUMN remoteOwnerId TEXT;
+        ALTER TABLE taskItems ADD COLUMN remoteOwnerName TEXT;
+        ALTER TABLE notes ADD COLUMN remoteOwnerId TEXT;
+        ALTER TABLE notes ADD COLUMN remoteOwnerName TEXT;
+      `)
+    },
+  },
 ]

@@ -70,6 +70,8 @@ export interface TaskItem {
   gmailThreadId: string | null
   gmailMessageId: string | null
   recordingId: string | null
+  remoteOwnerId: string | null
+  remoteOwnerName: string | null
   createdAt: string
   updatedAt: string | null
   completedAt: string | null
@@ -93,6 +95,8 @@ export interface Note {
   pinned: number // 0 or 1
   sessionId: string | null
   isGlobal: number // 0 or 1
+  remoteOwnerId: string | null
+  remoteOwnerName: string | null
   createdAt: string
   updatedAt: string
 }

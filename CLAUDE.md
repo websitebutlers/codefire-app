@@ -100,3 +100,10 @@ When creating a GitHub release:
 ## Testing
 
 Tests are in `electron/src/__tests__/` using Vitest with jsdom. Setup file at `electron/src/__tests__/setup.ts`.
+
+<!-- CodeFire managed section -->
+# CodeFire
+This project uses CodeFire for session memory.
+Use the `codefire` MCP tools to retrieve project history,
+active tasks, patterns, and codebase structure when needed.
+<!-- End CodeFire section -->

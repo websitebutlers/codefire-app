@@ -3,7 +3,7 @@ import {
   X, Calendar, Tag, MessageSquare, Send, FolderOpen,
   Sparkles, Play, ExternalLink, Bot, User, Mail, Cpu,
   Circle, ArrowUp, ArrowUpRight, Flame, AlertTriangle,
-  Loader2, Paperclip, ImagePlus, Trash2,
+  Loader2, Paperclip, ImagePlus, Trash2, Users,
 } from 'lucide-react'
 import type { TaskItem, Project, Session } from '@shared/models'
 import { api } from '@renderer/lib/api'
@@ -286,6 +286,12 @@ export default function TaskDetailSheet({
           <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${sourceBadge.bg} ${sourceBadge.color} shrink-0`}>
             {sourceBadge.label}
           </span>
+          {task.remoteOwnerName && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 flex items-center gap-1 shrink-0">
+              <Users size={9} />
+              {task.remoteOwnerName}
+            </span>
+          )}
           <div className="flex-1" />
           <button
             className="text-neutral-500 hover:text-neutral-300 transition-colors"

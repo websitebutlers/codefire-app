@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { MessageSquare, GripVertical, Bot, User, Mail, Cpu, FolderOpen, Play, Trash2, ArrowRight } from 'lucide-react'
+import { MessageSquare, GripVertical, Bot, User, Mail, Cpu, FolderOpen, Play, Trash2, ArrowRight, Users } from 'lucide-react'
 import type { TaskItem } from '@shared/models'
 
 interface TaskCardProps {
@@ -158,6 +158,12 @@ export default function TaskCard({ task, onClick, noteCount = 0, projectName, is
                 {PRIORITY_LABELS[task.priority] || `P${task.priority}`}
               </span>
             )}
+            {task.remoteOwnerName && (
+              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 flex items-center gap-1">
+                <Users size={9} />
+                TEAM
+              </span>
+            )}
             {(() => {
               const badge = SOURCE_BADGES[task.source ?? 'manual']
               return badge && task.source !== 'manual' ? (
@@ -179,8 +185,16 @@ export default function TaskCard({ task, onClick, noteCount = 0, projectName, is
             )}
           </div>
 
-          {/* Footer: project badge + note count + date */}
+          {/* Footer: avatar + project badge + note count + date */}
           <div className="flex items-center gap-2 mt-1.5 text-[10px] text-neutral-500">
+            {task.remoteOwnerName && (
+              <span
+                className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-500/25 text-indigo-300 text-[9px] font-bold shrink-0 ring-1 ring-indigo-500/40"
+                title={task.remoteOwnerName}
+              >
+                {task.remoteOwnerName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+              </span>
+            )}
             {projectName && (
               <span className="px-1.5 py-0.5 rounded bg-codefire-orange/12 text-codefire-orange border border-codefire-orange/20 font-medium truncate max-w-[100px]">
                 {projectName}

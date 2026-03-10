@@ -411,7 +411,8 @@ class SyncEngine: ObservableObject {
                         }
                     } else {
                         try Self.applyRemoteTask(remote, localId: localId, in: db)
-                        try db.execute(sql: "UPDATE syncState SET lastSyncedAt = CURRENT_TIMESTAMP WHERE entityType = 'task' AND localId = CAST(? AS TEXT)", arguments: [localId])
+                        // Must reset dirty = 0 because applyRemoteTask triggers sync_task_dirty_update
+                        try db.execute(sql: "UPDATE syncState SET dirty = 0, lastSyncedAt = CURRENT_TIMESTAMP WHERE entityType = 'task' AND localId = CAST(? AS TEXT)", arguments: [localId])
                     }
                 } else {
                     let localId = try Self.createLocalTask(from: remote, projectId: projectId, in: db)
@@ -456,7 +457,8 @@ class SyncEngine: ObservableObject {
                         }
                     } else {
                         try Self.applyRemoteNote(remote, localId: localId, in: db)
-                        try db.execute(sql: "UPDATE syncState SET lastSyncedAt = CURRENT_TIMESTAMP WHERE entityType = 'note' AND localId = CAST(? AS TEXT)", arguments: [localId])
+                        // Must reset dirty = 0 because applyRemoteNote triggers sync_note_dirty_update
+                        try db.execute(sql: "UPDATE syncState SET dirty = 0, lastSyncedAt = CURRENT_TIMESTAMP WHERE entityType = 'note' AND localId = CAST(? AS TEXT)", arguments: [localId])
                     }
                 } else {
                     let localId = try Self.createLocalNote(from: remote, projectId: projectId, in: db)

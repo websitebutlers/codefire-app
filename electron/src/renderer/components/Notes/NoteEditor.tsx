@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Pin, PinOff, Trash2 } from 'lucide-react'
+import { Pin, PinOff, Trash2, Users } from 'lucide-react'
 import MDEditor from '@uiw/react-md-editor'
 import type { Note } from '@shared/models'
 import { useAutoSave } from '@renderer/hooks/useNotes'
@@ -58,6 +58,12 @@ export default function NoteEditor({ note, onUpdate, onDelete, onTogglePin }: No
           onBlur={handleTitleBlur}
           placeholder="Note title..."
         />
+        {note.remoteOwnerName && (
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 flex items-center gap-1 shrink-0">
+            <Users size={9} />
+            {note.remoteOwnerName}
+          </span>
+        )}
         <button
           className={`p-1.5 rounded-cf transition-colors
             ${note.pinned ? 'text-codefire-orange hover:text-codefire-orange-hover' : 'text-neutral-500 hover:text-neutral-300'}`}

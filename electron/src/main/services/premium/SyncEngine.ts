@@ -138,9 +138,12 @@ export class SyncEngine {
     await this.pushDirtyTasks(localId, remoteId, userId, client)
     await this.pushDirtyNotes(localId, remoteId, userId, client)
     await this.pushDirtyTaskNotes(localId, remoteId, userId, client)
-    await this.pullRemoteTasks(localId, remoteId, client)
-    await this.pullRemoteNotes(localId, remoteId, client)
+    await this.pullRemoteTasks(localId, remoteId, userId, client)
+    await this.pullRemoteNotes(localId, remoteId, userId, client)
   }
+
+  /** Cache of remote user profiles: userId → displayName */
+  private userNameCache = new Map<string, string>()
 
   // ─── Push: Tasks ──────────────────────────────────────────────────────────────
 
@@ -327,7 +330,7 @@ export class SyncEngine {
   // ─── Pull: Tasks ──────────────────────────────────────────────────────────────
 
   private async pullRemoteTasks(
-    projectId: string, remoteProjectId: string,
+    projectId: string, remoteProjectId: string, currentUserId: string,
     client: NonNullable<ReturnType<typeof getSupabaseClient>>
   ): Promise<void> {
     const { data: remoteTasks, error } = await client
@@ -369,15 +372,31 @@ export class SyncEngine {
           }
           // else: local wins, will be pushed next cycle
         } else {
-          // No conflict, apply remote
-          this.applyRemoteTask(remote, Number(existing.localId))
+          // No conflict, but still check timestamps — remote may be stale
+          const localTask = this.db.prepare(
+            `SELECT updatedAt, createdAt FROM taskItems WHERE id = ?`
+          ).get(Number(existing.localId)) as { updatedAt: string | null; createdAt: string } | undefined
+
+          const localUpdated = localTask?.updatedAt || localTask?.createdAt || '1970-01-01'
+          const remoteUpdated = remote.updated_at || '1970-01-01'
+
+          if (remoteUpdated >= localUpdated) {
+            this.applyRemoteTask(remote, Number(existing.localId))
+          }
+          // else: local is newer, skip remote — will be pushed next cycle
+
+          // Must reset dirty = 0 because applyRemoteTask triggers sync_task_dirty_update
+          // which sets dirty = 1 via INSERT OR REPLACE
           this.db.prepare(
-            `UPDATE syncState SET lastSyncedAt = datetime('now') WHERE entityType = 'task' AND localId = ?`
+            `UPDATE syncState SET dirty = 0, lastSyncedAt = datetime('now') WHERE entityType = 'task' AND localId = ?`
           ).run(existing.localId)
         }
       } else {
         // New remote task — create locally
-        const localId = this.createLocalTask(remote, projectId)
+        const ownerName = remote.created_by && remote.created_by !== currentUserId
+          ? await this.resolveUserName(remote.created_by, client)
+          : null
+        const localId = this.createLocalTask(remote, projectId, remote.created_by !== currentUserId ? remote.created_by : null, ownerName)
         this.db.prepare(
           `INSERT OR REPLACE INTO syncState (entityType, localId, remoteId, projectId, dirty, lastSyncedAt)
            VALUES ('task', ?, ?, ?, 0, datetime('now'))`
@@ -389,7 +408,7 @@ export class SyncEngine {
   // ─── Pull: Notes ──────────────────────────────────────────────────────────────
 
   private async pullRemoteNotes(
-    projectId: string, remoteProjectId: string,
+    projectId: string, remoteProjectId: string, currentUserId: string,
     client: NonNullable<ReturnType<typeof getSupabaseClient>>
   ): Promise<void> {
     const { data: remoteNotes, error } = await client
@@ -428,12 +447,17 @@ export class SyncEngine {
           }
         } else {
           this.applyRemoteNote(remote, Number(existing.localId))
+          // Must reset dirty = 0 because applyRemoteNote triggers sync_note_dirty_update
+          // which sets dirty = 1 via INSERT OR REPLACE
           this.db.prepare(
-            `UPDATE syncState SET lastSyncedAt = datetime('now') WHERE entityType = 'note' AND localId = ?`
+            `UPDATE syncState SET dirty = 0, lastSyncedAt = datetime('now') WHERE entityType = 'note' AND localId = ?`
           ).run(existing.localId)
         }
       } else {
-        const localId = this.createLocalNote(remote, projectId)
+        const ownerName = remote.created_by && remote.created_by !== currentUserId
+          ? await this.resolveUserName(remote.created_by, client)
+          : null
+        const localId = this.createLocalNote(remote, projectId, remote.created_by !== currentUserId ? remote.created_by : null, ownerName)
         this.db.prepare(
           `INSERT OR REPLACE INTO syncState (entityType, localId, remoteId, projectId, dirty, lastSyncedAt)
            VALUES ('note', ?, ?, ?, 0, datetime('now'))`
@@ -461,12 +485,12 @@ export class SyncEngine {
     )
   }
 
-  private createLocalTask(remote: Record<string, any>, projectId: string): number {
+  private createLocalTask(remote: Record<string, any>, projectId: string, remoteOwnerId?: string | null, remoteOwnerName?: string | null): number {
     const now = new Date().toISOString()
     const labels = remote.labels ? JSON.stringify(remote.labels) : null
     const result = this.db.prepare(
-      `INSERT INTO taskItems (projectId, title, description, status, priority, source, labels, createdAt, updatedAt, completedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO taskItems (projectId, title, description, status, priority, source, labels, createdAt, updatedAt, completedAt, remoteOwnerId, remoteOwnerName)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       projectId,
       remote.title || '',
@@ -477,7 +501,9 @@ export class SyncEngine {
       labels,
       remote.created_at || now,
       remote.updated_at || now,
-      remote.completed_at || null
+      remote.completed_at || null,
+      remoteOwnerId || null,
+      remoteOwnerName || null
     )
     return Number(result.lastInsertRowid)
   }
@@ -494,20 +520,40 @@ export class SyncEngine {
     )
   }
 
-  private createLocalNote(remote: Record<string, any>, projectId: string): number {
+  private createLocalNote(remote: Record<string, any>, projectId: string, remoteOwnerId?: string | null, remoteOwnerName?: string | null): number {
     const now = new Date().toISOString()
     const result = this.db.prepare(
-      `INSERT INTO notes (projectId, title, content, pinned, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO notes (projectId, title, content, pinned, createdAt, updatedAt, remoteOwnerId, remoteOwnerName)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       projectId,
       remote.title || '',
       remote.content || '',
       remote.pinned ? 1 : 0,
       remote.created_at || now,
-      remote.updated_at || now
+      remote.updated_at || now,
+      remoteOwnerId || null,
+      remoteOwnerName || null
     )
     return Number(result.lastInsertRowid)
+  }
+
+  /** Resolve a Supabase user ID to a display name, with caching */
+  private async resolveUserName(
+    userId: string,
+    client: NonNullable<ReturnType<typeof getSupabaseClient>>
+  ): Promise<string | null> {
+    const cached = this.userNameCache.get(userId)
+    if (cached) return cached
+
+    try {
+      const { data } = await client.from('users').select('display_name').eq('id', userId).single()
+      const name = data?.display_name || null
+      if (name) this.userNameCache.set(userId, name)
+      return name
+    } catch {
+      return null
+    }
   }
 
   // ─── Project Mappings ─────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { Pin, FileText, Plus, Search } from 'lucide-react'
+import { Pin, FileText, Plus, Search, Users } from 'lucide-react'
 import type { Note } from '@shared/models'
 
 interface NoteListProps {
@@ -79,6 +79,14 @@ export default function NoteList({
                   {note.pinned === 1 && (
                     <Pin size={12} className="text-codefire-orange shrink-0" />
                   )}
+                  {note.remoteOwnerName && (
+                    <span
+                      className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-indigo-500/25 text-indigo-300 text-[8px] font-bold shrink-0 ring-1 ring-indigo-500/40"
+                      title={note.remoteOwnerName}
+                    >
+                      {note.remoteOwnerName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </span>
+                  )}
                   <span className="text-sm text-neutral-200 truncate font-medium">
                     {note.title}
                   </span>
@@ -86,11 +94,19 @@ export default function NoteList({
                 {preview && (
                   <p className="text-xs text-neutral-500 mt-1 line-clamp-2">{preview}</p>
                 )}
-                <div className="text-xs text-neutral-600 mt-1">
-                  {new Date(note.updatedAt).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                  })}
+                <div className="flex items-center gap-2 text-xs text-neutral-600 mt-1">
+                  {note.remoteOwnerName && (
+                    <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-indigo-500/20 text-indigo-300 flex items-center gap-0.5">
+                      <Users size={8} />
+                      TEAM
+                    </span>
+                  )}
+                  <span>
+                    {new Date(note.updatedAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </span>
                 </div>
               </button>
             )
