@@ -13,6 +13,7 @@ export default function RecordingsView({ projectId }: RecordingsViewProps) {
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [selected, setSelected] = useState<Recording | null>(null)
   const [isTranscribing, setIsTranscribing] = useState(false)
+  const [hasOpenAiKey, setHasOpenAiKey] = useState(false)
 
   useEffect(() => {
     api.recordings.list(projectId).then((recs) => {
@@ -20,6 +21,30 @@ export default function RecordingsView({ projectId }: RecordingsViewProps) {
       if (recs.length > 0) setSelected(recs[0])
     })
   }, [projectId])
+
+  // Check for OpenAI key on mount and periodically when window regains focus
+  useEffect(() => {
+    async function checkKey() {
+      const config = await window.api.invoke('settings:get') as { openAiKey?: string } | undefined
+      setHasOpenAiKey(!!config?.openAiKey)
+    }
+    checkKey()
+    window.addEventListener('focus', checkKey)
+    return () => window.removeEventListener('focus', checkKey)
+  }, [])
+
+  async function getOpenAiKey(): Promise<string | null> {
+    const config = await window.api.invoke('settings:get') as { openAiKey?: string } | undefined
+    return config?.openAiKey || null
+  }
+
+  async function autoTranscribeIfEnabled(id: string) {
+    const config = await window.api.invoke('settings:get') as { autoTranscribe?: boolean } | undefined
+    if (!config?.autoTranscribe) return
+    const key = await getOpenAiKey()
+    if (!key) return
+    handleTranscribe(id, key)
+  }
 
   async function handleRecordingComplete(blob: Blob, title: string) {
     const recording = await api.recordings.create({ projectId, title })
@@ -31,6 +56,7 @@ export default function RecordingsView({ projectId }: RecordingsViewProps) {
     if (updated) {
       setRecordings((prev) => [updated, ...prev])
       setSelected(updated)
+      autoTranscribeIfEnabled(updated.id)
     }
   }
 
@@ -42,6 +68,7 @@ export default function RecordingsView({ projectId }: RecordingsViewProps) {
         if (updated) {
           setRecordings((prev) => [updated, ...prev])
           setSelected(updated)
+          autoTranscribeIfEnabled(updated.id)
         }
       }
     } catch (err) {
@@ -49,20 +76,13 @@ export default function RecordingsView({ projectId }: RecordingsViewProps) {
     }
   }
 
-  async function handleTranscribe(id: string) {
-    const apiKey = localStorage.getItem('openai_api_key')
-    if (!apiKey) {
-      const key = window.prompt('Enter your OpenAI API key for Whisper transcription:')
-      if (!key) return
-      localStorage.setItem('openai_api_key', key)
-    }
+  async function handleTranscribe(id: string, providedKey?: string) {
+    const apiKey = providedKey || await getOpenAiKey()
+    if (!apiKey) return
 
     setIsTranscribing(true)
     try {
-      const updated = await api.recordings.transcribe(
-        id,
-        localStorage.getItem('openai_api_key')!
-      )
+      const updated = await api.recordings.transcribe(id, apiKey)
       if (updated) {
         setRecordings((prev) =>
           prev.map((r) => (r.id === id ? updated : r))
@@ -111,6 +131,7 @@ export default function RecordingsView({ projectId }: RecordingsViewProps) {
             onTranscribe={handleTranscribe}
             isTranscribing={isTranscribing}
             projectId={projectId}
+            hasOpenAiKey={hasOpenAiKey}
           />
         </div>
       </div>

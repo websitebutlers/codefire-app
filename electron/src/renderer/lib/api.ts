@@ -480,6 +480,8 @@ export const api = {
         sessionCount: number
       }>,
     getServerPath: () => invoke('mcp:getServerPath') as Promise<string>,
+    listConnections: () =>
+      invoke('mcp:listConnections') as Promise<import('@shared/models').MCPConnection[]>,
     start: () => invoke('mcp:start') as Promise<{ success: boolean }>,
     stop: () => invoke('mcp:stop') as Promise<{ success: boolean }>,
   },

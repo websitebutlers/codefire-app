@@ -47,7 +47,7 @@ export class MainWindow {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
-        // webviewTag not needed on main window — only ProjectWindow hosts the browser
+        webviewTag: true,
       },
     })
 

@@ -3,6 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import { app } from 'electron'
+import type { MCPConnection } from '@shared/models'
 
 /** Stable install directory for the MCP server on Linux (AppImage mounts to ephemeral /tmp paths) */
 const LINUX_MCP_DIR = path.join(os.homedir(), '.local', 'share', 'CodeFire', 'mcp-server')
@@ -86,6 +87,37 @@ export class MCPServerManager {
 
     // Clean up on app quit
     app.on('before-quit', () => clearInterval(interval))
+  }
+
+  /** Return details of all active MCP connections */
+  listConnections(): MCPConnection[] {
+    const connDir = this.getConnectionDir()
+    if (!fs.existsSync(connDir)) return []
+
+    const connections: MCPConnection[] = []
+    const files = fs.readdirSync(connDir).filter((f) => f.endsWith('.json'))
+
+    for (const file of files) {
+      const filePath = path.join(connDir, file)
+      try {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+        if (data.pid && this.isProcessAlive(data.pid)) {
+          connections.push({
+            pid: data.pid,
+            cwd: data.cwd ?? '',
+            projectId: data.projectId ?? null,
+            projectName: data.projectName ?? null,
+            connectedAt: data.connectedAt ?? '',
+          })
+        } else {
+          try { fs.unlinkSync(filePath) } catch { /* ignore */ }
+        }
+      } catch {
+        try { fs.unlinkSync(filePath) } catch { /* ignore */ }
+      }
+    }
+
+    return connections
   }
 
   private isProcessAlive(pid: number): boolean {

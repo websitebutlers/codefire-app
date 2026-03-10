@@ -7,6 +7,7 @@ const CONFIG_FILE = 'codefire-settings.json'
 
 /** Keys that contain secrets and should be encrypted at rest */
 const SECRET_KEYS: (keyof AppConfig)[] = [
+  'openAiKey',
   'openRouterKey',
   'googleClientId',
   'googleClientSecret',
@@ -31,6 +32,8 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   defaultTerminalPath: '',
 
   // Engine
+  openAiKey: '',
+  autoTranscribe: false,
   openRouterKey: '',
   contextSearchEnabled: true,
   embeddingModel: 'openai/text-embedding-3-small',

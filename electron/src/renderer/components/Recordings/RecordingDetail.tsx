@@ -1,4 +1,4 @@
-import { Mic, Play, Pause, Key, Loader2, ListTodo, Check } from 'lucide-react'
+import { Mic, Play, Pause, Key, Loader2, ListTodo, Check, Settings } from 'lucide-react'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Recording } from '@shared/models'
 import { api } from '@renderer/lib/api'
@@ -8,6 +8,7 @@ interface RecordingDetailProps {
   onTranscribe: (id: string) => void
   isTranscribing: boolean
   projectId?: string
+  hasOpenAiKey: boolean
 }
 
 export default function RecordingDetail({
@@ -15,6 +16,7 @@ export default function RecordingDetail({
   onTranscribe,
   isTranscribing,
   projectId,
+  hasOpenAiKey,
 }: RecordingDetailProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackProgress, setPlaybackProgress] = useState(0)
@@ -200,19 +202,29 @@ export default function RecordingDetail({
         </div>
 
         {recording.status !== 'done' && recording.status !== 'transcribing' && (
-          <button
-            type="button"
-            onClick={() => onTranscribe(recording.id)}
-            disabled={isTranscribing}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 rounded text-xs transition-colors disabled:opacity-50"
-          >
-            {isTranscribing ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <Key size={12} />
-            )}
-            Transcribe
-          </button>
+          hasOpenAiKey ? (
+            <button
+              type="button"
+              onClick={() => onTranscribe(recording.id)}
+              disabled={isTranscribing}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 rounded text-xs transition-colors disabled:opacity-50"
+            >
+              {isTranscribing ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Key size={12} />
+              )}
+              Transcribe
+            </button>
+          ) : (
+            <span
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 text-neutral-500 rounded text-xs cursor-default"
+              title="Add your OpenAI API key in Settings → Engine to enable transcription"
+            >
+              <Settings size={12} />
+              Transcribe (no API key)
+            </span>
+          )
         )}
         {recording.transcript && projectId && (
           <button
@@ -280,7 +292,9 @@ export default function RecordingDetail({
             <div className="flex flex-col items-center justify-center h-full text-neutral-500 gap-2">
               <p className="text-xs">No transcript yet</p>
               <p className="text-[10px] text-neutral-600">
-                Click &quot;Transcribe&quot; to generate one with OpenAI Whisper
+                {hasOpenAiKey
+                  ? 'Click "Transcribe" to generate one with OpenAI Whisper'
+                  : 'Add your OpenAI API key in Settings → Engine to enable transcription'}
               </p>
             </div>
           )

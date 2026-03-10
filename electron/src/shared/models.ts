@@ -291,6 +291,16 @@ export interface AgentMonitorState {
   agents: AgentInfo[]
 }
 
+// ─── MCP Connection ──────────────────────────────────────────────────────────
+
+export interface MCPConnection {
+  pid: number
+  cwd: string
+  projectId: string | null
+  projectName: string | null
+  connectedAt: string
+}
+
 // ─── App Config ──────────────────────────────────────────────────────────────
 
 export interface AppConfig {
@@ -312,6 +322,8 @@ export interface AppConfig {
   defaultTerminalPath: string
 
   // Engine
+  openAiKey: string
+  autoTranscribe: boolean
   openRouterKey: string
   contextSearchEnabled: boolean
   embeddingModel: string

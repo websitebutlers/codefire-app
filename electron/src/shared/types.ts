@@ -107,7 +107,7 @@ export type RecordingChannel =
   | 'recordings:transcribe'
   | 'recordings:importFile'
 
-export type MCPChannel = 'mcp:status' | 'mcp:getServerPath' | 'mcp:start' | 'mcp:stop'
+export type MCPChannel = 'mcp:status' | 'mcp:getServerPath' | 'mcp:listConnections' | 'mcp:start' | 'mcp:stop'
 
 export type BriefingChannel =
   | 'briefing:listDigests'
@@ -124,6 +124,7 @@ export type ChatChannel =
   | 'chat:listMessages'
   | 'chat:sendMessage'
   | 'chat:deleteConversation'
+  | 'chat:getContext'
   | 'chat:browserCommand'
 
 export type UpdateChannel = 'update:check' | 'update:download'

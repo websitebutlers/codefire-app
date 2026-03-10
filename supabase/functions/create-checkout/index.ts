@@ -62,14 +62,14 @@ serve(async (req: Request) => {
     const { teamId, plan, extraSeats = 0 } = await req.json()
 
     if (!plan || !['starter', 'agency'].includes(plan)) {
-      return new Response(JSON.stringify({ error: 'Invalid request. Required: plan (starter|agency)' }), {
+      return new Response(JSON.stringify({ error: `Invalid plan: "${plan}". Must be "starter" or "agency".` }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
     if (typeof extraSeats !== 'number' || extraSeats < 0) {
-      return new Response(JSON.stringify({ error: 'extraSeats must be a non-negative number' }), {
+      return new Response(JSON.stringify({ error: `extraSeats must be a non-negative number, got: ${typeof extraSeats} (${extraSeats})` }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })

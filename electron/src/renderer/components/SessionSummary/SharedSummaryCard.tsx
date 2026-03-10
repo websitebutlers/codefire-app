@@ -111,7 +111,7 @@ export default function SharedSummaryCard({ summary }: SharedSummaryCardProps) {
       )}
 
       {/* Files changed */}
-      {summary.filesChanged.length > 0 && (
+      {summary.filesChanged && summary.filesChanged.length > 0 && (
         <div className="mt-2 pt-2 border-t border-neutral-800">
           <div className="flex items-center gap-1 mb-1">
             <FileCode size={10} className="text-neutral-500" />

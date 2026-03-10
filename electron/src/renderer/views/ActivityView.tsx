@@ -66,7 +66,7 @@ function getEventDescription(event: ActivityEvent): string {
     case 'session_shared':
       return `shared a session${meta.summary ? `: ${meta.summary}` : ''}`
     default:
-      return event.eventType.replace(/_/g, ' ')
+      return (event.eventType || 'unknown event').replace(/_/g, ' ')
   }
 }
 

@@ -53,6 +53,8 @@ const ALLOWED_SETTINGS_KEYS = new Set<keyof AppConfig>([
   // Credentials — allowed because the Settings UI needs to set them,
   // but they go through the same writeConfig path. The real protection
   // is that they are written to the same file the user already controls.
+  'openAiKey',
+  'autoTranscribe',
   'openRouterKey',
   'googleClientId',
   'googleClientSecret',

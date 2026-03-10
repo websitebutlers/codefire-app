@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, Trash2, Database, CheckCircle, XCircle, Loader2, Plug } from 'lucide-react'
+import { RefreshCw, Trash2, Database, CheckCircle, XCircle, Loader2, Plug, AlertTriangle } from 'lucide-react'
 import type { AppConfig, Project, IndexState } from '@shared/models'
 import { api } from '../../lib/api'
 import { Section, TextInput, Select, Toggle, NumberInput } from './SettingsField'
@@ -201,13 +201,21 @@ function MCPInstallPanel() {
 export default function SettingsTabEngine({ config, onChange }: Props) {
   return (
     <div className="space-y-6">
-      <Section title="API Key">
+      <Section title="API Keys">
         <TextInput
           label="OpenRouter API Key"
           hint="Used for embeddings, chat, and image generation. Get one at openrouter.ai"
           placeholder="sk-or-..."
           value={config.openRouterKey}
           onChange={(v) => onChange({ openRouterKey: v })}
+          secret
+        />
+        <TextInput
+          label="OpenAI API Key"
+          hint="Used for Whisper audio transcription. Get one at platform.openai.com"
+          placeholder="sk-..."
+          value={config.openAiKey}
+          onChange={(v) => onChange({ openAiKey: v })}
           secret
         />
       </Section>
@@ -252,6 +260,20 @@ export default function SettingsTabEngine({ config, onChange }: Props) {
       </Section>
 
       <Section title="Automation">
+        <Toggle
+          label="Auto-transcribe recordings"
+          hint="Automatically transcribe recordings with OpenAI Whisper when they finish"
+          value={config.autoTranscribe}
+          onChange={(v) => onChange({ autoTranscribe: v })}
+        />
+        {config.autoTranscribe && !config.openAiKey && (
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded bg-yellow-500/10 border border-yellow-500/20">
+            <AlertTriangle size={12} className="text-yellow-400 shrink-0" />
+            <span className="text-[10px] text-yellow-400">
+              Auto-transcribe is enabled but no OpenAI API key is set. Add one above for transcription to work.
+            </span>
+          </div>
+        )}
         <Toggle
           label="Semantic code search"
           hint="Enable vector-based code search across projects"
