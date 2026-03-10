@@ -33,6 +33,44 @@ export class ImageGenerationService {
     return this.callAPI(apiKey, aspectRatio, imageSize)
   }
 
+  /**
+   * Edit an existing image with a prompt. Sends the original image + edit instructions
+   * to the API as a multi-turn conversation.
+   */
+  async editImage(
+    originalImagePath: string,
+    editPrompt: string,
+    apiKey: string,
+    aspectRatio = '1:1',
+    imageSize = '1K'
+  ): Promise<GenerationResult> {
+    if (!apiKey) {
+      return { imagePath: null, responseText: null, error: 'OpenRouter API key not configured' }
+    }
+
+    // Read original image as base64 data URL
+    let imageDataUrl: string
+    try {
+      const imgData = fs.readFileSync(originalImagePath)
+      imageDataUrl = `data:image/png;base64,${imgData.toString('base64')}`
+    } catch (err) {
+      return { imagePath: null, responseText: null, error: `Failed to read image: ${err instanceof Error ? err.message : String(err)}` }
+    }
+
+    // Build edit conversation: original image + edit instruction
+    this.conversationHistory = [
+      {
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: imageDataUrl } },
+          { type: 'text', text: editPrompt },
+        ],
+      },
+    ]
+
+    return this.callAPI(apiKey, aspectRatio, imageSize)
+  }
+
   resetConversation() {
     this.conversationHistory = []
   }

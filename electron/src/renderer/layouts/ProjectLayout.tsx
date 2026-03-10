@@ -22,6 +22,7 @@ import NotesView from '@renderer/views/NotesView'
 const SessionsView = lazy(() => import('@renderer/views/SessionsView'))
 const FilesView = lazy(() => import('@renderer/views/FilesView'))
 const MemoryView = lazy(() => import('@renderer/views/MemoryView'))
+
 const ServicesView = lazy(() => import('@renderer/views/ServicesView'))
 const RulesView = lazy(() => import('@renderer/views/RulesView'))
 const GitView = lazy(() => import('@renderer/views/GitView'))
@@ -146,7 +147,7 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
     // Eager-loaded views (default tab + lightweight — work with just projectId)
     switch (tab) {
       case 'Tasks':
-        return <TasksView projectId={pid} />
+        return <TasksView projectId={pid} projectPath={projectPath} />
       case 'Dashboard':
         return <DashboardView projectId={pid} projectPath={projectPath} onTabChange={onTabChange} />
       case 'Notes':
@@ -162,6 +163,7 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
         {tab === 'Sessions' && <SessionsView projectId={pid} />}
         {tab === 'Files' && <FilesView projectId={pid} projectPath={projectPath} />}
         {tab === 'Memory' && <MemoryView projectId={pid} projectPath={projectPath} />}
+
         {tab === 'Services' && <ServicesView projectId={pid} projectPath={projectPath} />}
         {tab === 'Rules' && <RulesView projectId={pid} projectPath={projectPath} />}
         {tab === 'Git' && <GitView projectId={pid} projectPath={projectPath} />}

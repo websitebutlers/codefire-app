@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import type { Client, Project } from '@shared/models'
 import ProjectItem from './ProjectItem'
 
@@ -41,7 +41,7 @@ export default function ClientGroup({
           {client.name}
         </span>
         <span className="ml-auto flex-shrink-0 text-neutral-600">
-          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <ChevronDown size={12} className={`transition-transform duration-150 ${expanded ? 'rotate-0' : '-rotate-90'}`} />
         </span>
       </button>
 

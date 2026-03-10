@@ -4,9 +4,14 @@ import path from 'path'
 export default defineConfig({
   test: {
     globals: true,
-    environment: 'jsdom',
+    environment: 'node',
     setupFiles: ['./src/__tests__/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    environmentMatchGlobs: [
+      // Use jsdom only for renderer/component tests
+      ['src/__tests__/renderer/**', 'jsdom'],
+      ['src/__tests__/components/**', 'jsdom'],
+    ],
   },
   resolve: {
     alias: {

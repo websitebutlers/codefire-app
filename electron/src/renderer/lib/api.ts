@@ -16,6 +16,7 @@ import type {
   BriefingItem,
   ChatConversation,
   ChatMessage,
+  Pattern,
 } from '@shared/models'
 import type {
   PremiumStatus,
@@ -136,6 +137,27 @@ export const api = {
       invoke('notes:search', projectId, query, isGlobal) as Promise<Note[]>,
   },
 
+  patterns: {
+    list: (projectId: string, category?: string) =>
+      invoke('patterns:list', projectId, category) as Promise<Pattern[]>,
+    get: (id: number) => invoke('patterns:get', id) as Promise<Pattern | undefined>,
+    create: (data: {
+      projectId: string
+      category: string
+      title: string
+      description: string
+      sourceSession?: string
+      autoDetected?: boolean
+    }) => invoke('patterns:create', data) as Promise<Pattern>,
+    update: (
+      id: number,
+      data: { category?: string; title?: string; description?: string }
+    ) => invoke('patterns:update', id, data) as Promise<Pattern | undefined>,
+    delete: (id: number) => invoke('patterns:delete', id) as Promise<boolean>,
+    categories: (projectId: string) =>
+      invoke('patterns:categories', projectId) as Promise<string[]>,
+  },
+
   sessions: {
     list: (projectId: string) =>
       invoke('sessions:list', projectId) as Promise<Session[]>,
@@ -241,6 +263,8 @@ export const api = {
       invoke('rules:write', filePath, content) as Promise<void>,
     create: (filePath: string, template?: string) =>
       invoke('rules:create', filePath, template) as Promise<void>,
+    generate: (projectPath: string, scope: string) =>
+      invoke('rules:generate', projectPath, scope) as Promise<string>,
   },
 
   services: {
@@ -318,6 +342,17 @@ export const api = {
         error: string | null
         image: GeneratedImage | null
       }>,
+    edit: (data: {
+      imageId: number
+      prompt: string
+      apiKey: string
+      aspectRatio?: string
+      imageSize?: string
+    }) =>
+      invoke('images:edit', data) as Promise<{
+        error: string | null
+        image: GeneratedImage | null
+      }>,
     readFile: (filePath: string) =>
       invoke('images:readFile', filePath) as Promise<string | null>,
   },
@@ -373,6 +408,8 @@ export const api = {
       invoke('git:stage', projectPath, files) as Promise<void>,
     unstage: (projectPath: string, files: string[]) =>
       invoke('git:unstage', projectPath, files) as Promise<void>,
+    discard: (projectPath: string, files: string[], untracked: boolean = false) =>
+      invoke('git:discard', projectPath, files, untracked) as Promise<void>,
     commit: (projectPath: string, message: string) =>
       invoke('git:commit', projectPath, message) as Promise<{ hash: string }>,
   },
@@ -445,6 +482,19 @@ export const api = {
     getServerPath: () => invoke('mcp:getServerPath') as Promise<string>,
     start: () => invoke('mcp:start') as Promise<{ success: boolean }>,
     stop: () => invoke('mcp:stop') as Promise<{ success: boolean }>,
+  },
+
+  context: {
+    installMCP: (cli: string) =>
+      invoke('context:installMCP', cli) as Promise<{ success: boolean; error?: string }>,
+    setupProject: (cli: string, projectPath: string) =>
+      invoke('context:setupProject', cli, projectPath) as Promise<{ success: boolean; error?: string }>,
+    injectInstruction: (cli: string, projectPath: string) =>
+      invoke('context:injectInstruction', cli, projectPath) as Promise<{ success: boolean }>,
+    removeInstruction: (cli: string, projectPath: string) =>
+      invoke('context:removeInstruction', cli, projectPath) as Promise<{ success: boolean }>,
+    hasInstruction: (cli: string, projectPath: string) =>
+      invoke('context:hasInstruction', cli, projectPath) as Promise<boolean>,
   },
 
   briefing: {

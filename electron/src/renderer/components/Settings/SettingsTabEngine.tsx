@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, Trash2, Database } from 'lucide-react'
+import { RefreshCw, Trash2, Database, CheckCircle, XCircle, Loader2, Plug } from 'lucide-react'
 import type { AppConfig, Project, IndexState } from '@shared/models'
 import { api } from '../../lib/api'
 import { Section, TextInput, Select, Toggle, NumberInput } from './SettingsField'
@@ -114,6 +114,90 @@ function IndexStatusPanel() {
   )
 }
 
+const CLI_PROVIDERS = [
+  { id: 'claude', label: 'Claude Code', description: 'Installs MCP server in ~/.claude.json' },
+  { id: 'gemini', label: 'Gemini CLI', description: 'Installs MCP server in ~/.gemini/settings.json' },
+  { id: 'codex', label: 'Codex CLI', description: 'Installs MCP server in ~/.codex/config.toml' },
+] as const
+
+function MCPInstallPanel() {
+  const [installing, setInstalling] = useState<string | null>(null)
+  const [results, setResults] = useState<Record<string, { success: boolean; error?: string }>>({})
+  const [mcpStatus, setMcpStatus] = useState<string>('unknown')
+
+  useEffect(() => {
+    api.mcp.status().then((s) => setMcpStatus(s.status)).catch(() => {})
+  }, [])
+
+  async function handleInstall(cli: string) {
+    setInstalling(cli)
+    try {
+      const result = await api.context.installMCP(cli) as { success: boolean; error?: string }
+      setResults((prev) => ({ ...prev, [cli]: result }))
+    } catch (err) {
+      setResults((prev) => ({
+        ...prev,
+        [cli]: { success: false, error: err instanceof Error ? err.message : 'Install failed' },
+      }))
+    } finally {
+      setInstalling(null)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 mb-2">
+        <div className={`w-2 h-2 rounded-full ${
+          mcpStatus === 'connected' ? 'bg-green-400' :
+          mcpStatus === 'error' ? 'bg-red-400' : 'bg-neutral-600'
+        }`} />
+        <span className="text-[10px] text-neutral-500">
+          MCP Server: {mcpStatus === 'connected' ? 'Running' : mcpStatus === 'error' ? 'Error' : 'Not running'}
+        </span>
+      </div>
+      {CLI_PROVIDERS.map((cli) => {
+        const result = results[cli.id]
+        const isInstalling = installing === cli.id
+        return (
+          <div
+            key={cli.id}
+            className="flex items-center gap-2 px-2.5 py-2 rounded bg-neutral-800 border border-neutral-700"
+          >
+            <Plug size={12} className="text-neutral-500 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <span className="text-xs text-neutral-300">{cli.label}</span>
+              <span className="text-[10px] text-neutral-600 block">{cli.description}</span>
+            </div>
+            {result ? (
+              result.success ? (
+                <CheckCircle size={14} className="text-green-400 shrink-0" />
+              ) : (
+                <span className="flex items-center gap-1 shrink-0" title={result.error}>
+                  <XCircle size={14} className="text-red-400" />
+                </span>
+              )
+            ) : null}
+            <button
+              type="button"
+              onClick={() => handleInstall(cli.id)}
+              disabled={isInstalling}
+              className="px-2.5 py-1 text-[10px] font-medium bg-codefire-orange/15 text-codefire-orange hover:bg-codefire-orange/25 rounded transition-colors disabled:opacity-40 shrink-0"
+            >
+              {isInstalling ? (
+                <Loader2 size={10} className="animate-spin" />
+              ) : result?.success ? (
+                'Reinstall'
+              ) : (
+                'Install'
+              )}
+            </button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function SettingsTabEngine({ config, onChange }: Props) {
   return (
     <div className="space-y-6">
@@ -204,6 +288,13 @@ export default function SettingsTabEngine({ config, onChange }: Props) {
           max={120}
           step={5}
         />
+      </Section>
+
+      <Section title="MCP Server Installation">
+        <p className="text-[10px] text-neutral-600 mb-2">
+          Install the CodeFire MCP server into your AI coding CLI so it can access your projects, tasks, notes, and sessions.
+        </p>
+        <MCPInstallPanel />
       </Section>
 
       <Section title="Index Status">

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   X, RefreshCw, Loader2, Newspaper, ExternalLink,
-  Bookmark, BookmarkCheck, ChevronDown, ChevronRight,
+  Bookmark, BookmarkCheck, ChevronDown,
 } from 'lucide-react'
 import type { BriefingDigest, BriefingItem } from '@shared/models'
 import { api } from '@renderer/lib/api'
@@ -94,7 +94,7 @@ export default function BriefingDrawer({ projectId, onClose }: BriefingDrawerPro
       <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800 shrink-0">
         <div className="flex items-center gap-2">
           <Newspaper size={16} className="text-codefire-orange" />
-          <span className="text-sm font-medium text-neutral-200">Briefing</span>
+          <span className="text-[13px] font-semibold text-neutral-200">Briefing</span>
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -188,7 +188,7 @@ export default function BriefingDrawer({ projectId, onClose }: BriefingDrawerPro
               onClick={() => setShowPast(!showPast)}
               className="flex items-center gap-1.5 text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
             >
-              {showPast ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              <ChevronDown size={12} className={`transition-transform duration-150 ${showPast ? 'rotate-0' : '-rotate-90'}`} />
               Past Briefings ({digests.length - 1})
             </button>
             {showPast && (

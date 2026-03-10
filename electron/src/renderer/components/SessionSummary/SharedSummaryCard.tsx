@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Clock, GitBranch, FileCode, ChevronDown, ChevronUp, Cpu } from 'lucide-react'
+import { Clock, GitBranch, FileCode, ChevronDown, Cpu } from 'lucide-react'
 import type { SessionSummary } from '@shared/premium-models'
 
 function formatRelativeTime(dateStr: string): string {
@@ -105,15 +105,8 @@ export default function SharedSummaryCard({ summary }: SharedSummaryCardProps) {
           onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-0.5 mt-1 text-[10px] text-codefire-orange hover:text-orange-400 transition-colors"
         >
-          {expanded ? (
-            <>
-              Show less <ChevronUp size={10} />
-            </>
-          ) : (
-            <>
-              Show more <ChevronDown size={10} />
-            </>
-          )}
+          {expanded ? 'Show less' : 'Show more'}
+          <ChevronDown size={10} className={`transition-transform duration-150 ${expanded ? 'rotate-180' : 'rotate-0'}`} />
         </button>
       )}
 

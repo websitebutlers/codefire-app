@@ -4,7 +4,22 @@ import { useBrowserTabs } from '@renderer/hooks/useBrowserTabs'
 import BrowserTabStrip from '@renderer/components/Browser/BrowserTabStrip'
 import BrowserToolbar from '@renderer/components/Browser/BrowserToolbar'
 import CaptureIssueSheet from '@renderer/components/Browser/CaptureIssueSheet'
+import ScreenshotAnnotation from '@renderer/components/Browser/ScreenshotAnnotation'
 import DevToolsPanel from '@renderer/components/Browser/DevToolsPanel'
+
+/** Block dangerous URL schemes and cloud metadata endpoints */
+function isUrlSafe(url: string): boolean {
+  const lower = url.trim().toLowerCase()
+  const blocked = ['javascript:', 'file:', 'data:', 'blob:', 'vbscript:']
+  if (blocked.some((scheme) => lower.startsWith(scheme))) return false
+  // Block cloud metadata IPs
+  try {
+    const parsed = new URL(lower.startsWith('http') ? lower : `https://${lower}`)
+    const host = parsed.hostname
+    if (host === '169.254.169.254' || host === '100.100.100.200' || host === 'metadata.google.internal') return false
+  } catch { /* not a valid URL — let the browser handle it */ }
+  return true
+}
 
 interface BrowserViewProps {
   projectId: string
@@ -36,6 +51,9 @@ export default function BrowserView({ projectId }: BrowserViewProps) {
   const [showConsole, setShowConsole] = useState(false)
   const [showCaptureIssue, setShowCaptureIssue] = useState(false)
   const [captureScreenshot, setCaptureScreenshot] = useState<string | null>(null)
+  const [showAnnotation, setShowAnnotation] = useState(false)
+  const [annotationScreenshot, setAnnotationScreenshot] = useState<string | null>(null)
+  const urlBarRef = useRef<HTMLInputElement>(null)
 
   // Resize webviews to match container using explicit pixel dimensions
   useEffect(() => {
@@ -164,6 +182,7 @@ export default function BrowserView({ projectId }: BrowserViewProps) {
         switch (tool) {
           case 'browser_navigate': {
             if (!wv) throw new Error('No active webview')
+            if (!isUrlSafe(args.url)) throw new Error(`Blocked navigation to unsafe URL: ${args.url}`)
             await new Promise<void>((resolve, reject) => {
               const timeout = setTimeout(() => reject(new Error('Navigation timed out')), 30_000)
               const onStop = () => { clearTimeout(timeout); resolve() }
@@ -239,6 +258,37 @@ export default function BrowserView({ projectId }: BrowserViewProps) {
     return cleanup
   }, [activeTabId, consoleEntries])
 
+  // Keyboard shortcuts: Ctrl/Cmd+T, W, R, L
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const mod = e.metaKey || e.ctrlKey
+      if (!mod) return
+
+      switch (e.key.toLowerCase()) {
+        case 't':
+          e.preventDefault()
+          addTab()
+          break
+        case 'w':
+          e.preventDefault()
+          closeTab(activeTabId)
+          break
+        case 'r':
+          e.preventDefault()
+          getActiveWebview()?.reload()
+          break
+        case 'l':
+          e.preventDefault()
+          urlBarRef.current?.focus()
+          urlBarRef.current?.select()
+          break
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [activeTabId, addTab, closeTab, getActiveWebview])
+
   function handleNavigate(url: string) {
     // Normalize URL
     let normalized = url.trim()
@@ -249,6 +299,8 @@ export default function BrowserView({ projectId }: BrowserViewProps) {
         normalized = `https://www.google.com/search?q=${encodeURIComponent(normalized)}`
       }
     }
+
+    if (!isUrlSafe(normalized)) return
 
     navigateTab(activeTabId, normalized)
 
@@ -265,12 +317,32 @@ export default function BrowserView({ projectId }: BrowserViewProps) {
     if (wv && wv.capturePage) {
       wv.capturePage().then((img: any) => {
         const dataUrl = img.toDataURL()
-        const w = window.open('')
-        if (w) {
-          w.document.write(`<img src="${dataUrl}" style="max-width:100%">`)
-        }
+        setAnnotationScreenshot(dataUrl)
+        setShowAnnotation(true)
       })
     }
+  }
+
+  function handleAnnotationDone(dataUrl: string) {
+    setShowAnnotation(false)
+    setAnnotationScreenshot(null)
+    // Save the annotated screenshot via IPC
+    try {
+      window.api.invoke(
+        'browser:saveScreenshot' as any,
+        projectId,
+        dataUrl,
+        activeTab.url,
+        activeTab.title || activeTab.url
+      )
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  function handleAnnotationCancel() {
+    setShowAnnotation(false)
+    setAnnotationScreenshot(null)
   }
 
   function handleCaptureIssue() {
@@ -308,6 +380,7 @@ export default function BrowserView({ projectId }: BrowserViewProps) {
         onCaptureIssue={handleCaptureIssue}
         canGoBack={canGoBack}
         canGoForward={canGoForward}
+        urlInputRef={urlBarRef}
       />
 
       {/* Webview container */}
@@ -353,6 +426,15 @@ export default function BrowserView({ projectId }: BrowserViewProps) {
           pageTitle={activeTab.title || activeTab.url}
           consoleEntries={consoleEntries}
           onClose={() => setShowCaptureIssue(false)}
+        />
+      )}
+
+      {/* Screenshot Annotation Overlay */}
+      {showAnnotation && annotationScreenshot && (
+        <ScreenshotAnnotation
+          imageDataUrl={annotationScreenshot}
+          onDone={handleAnnotationDone}
+          onCancel={handleAnnotationCancel}
         />
       )}
     </div>

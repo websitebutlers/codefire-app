@@ -160,18 +160,21 @@ export class SessionWatcher {
 
       const parsed = parseSessionFile(content, sessionId)
 
+      const updateData = {
+        endedAt: parsed.endedAt ?? undefined,
+        summary: parsed.summary ?? undefined,
+        messageCount: parsed.messageCount,
+        toolUseCount: parsed.toolUseCount,
+        filesChanged:
+          parsed.filesChanged.length > 0 ? JSON.stringify(parsed.filesChanged) : undefined,
+        inputTokens: parsed.inputTokens,
+        outputTokens: parsed.outputTokens,
+        cacheCreationTokens: parsed.cacheCreationTokens,
+        cacheReadTokens: parsed.cacheReadTokens,
+      }
+
       if (existing) {
-        sessionDAO.update(sessionId, {
-          endedAt: parsed.endedAt ?? undefined,
-          messageCount: parsed.messageCount,
-          toolUseCount: parsed.toolUseCount,
-          filesChanged:
-            parsed.filesChanged.length > 0 ? JSON.stringify(parsed.filesChanged) : undefined,
-          inputTokens: parsed.inputTokens,
-          outputTokens: parsed.outputTokens,
-          cacheCreationTokens: parsed.cacheCreationTokens,
-          cacheReadTokens: parsed.cacheReadTokens,
-        })
+        sessionDAO.update(sessionId, updateData)
       } else {
         sessionDAO.create({
           id: sessionId,
@@ -181,17 +184,7 @@ export class SessionWatcher {
           model: parsed.model ?? undefined,
           gitBranch: parsed.gitBranch ?? undefined,
         })
-        sessionDAO.update(sessionId, {
-          endedAt: parsed.endedAt ?? undefined,
-          messageCount: parsed.messageCount,
-          toolUseCount: parsed.toolUseCount,
-          filesChanged:
-            parsed.filesChanged.length > 0 ? JSON.stringify(parsed.filesChanged) : undefined,
-          inputTokens: parsed.inputTokens,
-          outputTokens: parsed.outputTokens,
-          cacheCreationTokens: parsed.cacheCreationTokens,
-          cacheReadTokens: parsed.cacheReadTokens,
-        })
+        sessionDAO.update(sessionId, updateData)
       }
 
       // Notify listeners

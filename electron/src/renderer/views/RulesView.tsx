@@ -72,7 +72,7 @@ export default function RulesView({ projectId, projectPath }: RulesViewProps) {
   const handleCreate = useCallback(
     async (file: RuleFile) => {
       try {
-        await api.rules.create(file.path)
+        await api.rules.create(file.path, file.scope)
         const updatedFiles = await loadFiles()
         setSelectedScope(file.scope)
 
@@ -158,6 +158,7 @@ export default function RulesView({ projectId, projectPath }: RulesViewProps) {
           filePath={selectedFile?.path ?? ''}
           exists={selectedFile?.exists ?? false}
           content={editorContent}
+          projectPath={projectPath}
           onSave={handleSave}
           onCreate={handleEditorCreate}
         />

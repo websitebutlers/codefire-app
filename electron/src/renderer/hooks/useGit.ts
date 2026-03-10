@@ -121,6 +121,14 @@ export function useGit(projectPath: string) {
     }
   }, [projectPath, state.staged, refresh])
 
+  const discardFiles = useCallback(
+    async (paths: string[], untracked: boolean = false) => {
+      await api.git.discard(projectPath, paths, untracked)
+      await refresh()
+    },
+    [projectPath, refresh]
+  )
+
   const commit = useCallback(
     async (message: string) => {
       const result = await api.git.commit(projectPath, message)
@@ -144,6 +152,7 @@ export function useGit(projectPath: string) {
     unstageFiles,
     stageAll,
     unstageAll,
+    discardFiles,
     commit,
     getDiff,
   }

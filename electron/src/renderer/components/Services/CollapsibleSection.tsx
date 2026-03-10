@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 
 interface CollapsibleSectionProps {
   title: string
@@ -25,11 +25,10 @@ export default function CollapsibleSection({
         onClick={() => setOpen(!open)}
         className="flex items-center gap-2 w-full px-3 py-2 hover:bg-neutral-800/60 transition-colors"
       >
-        {open ? (
-          <ChevronDown size={14} className="text-neutral-500 shrink-0" />
-        ) : (
-          <ChevronRight size={14} className="text-neutral-500 shrink-0" />
-        )}
+        <ChevronDown
+          size={14}
+          className={`text-neutral-500 shrink-0 transition-transform duration-150 ${open ? 'rotate-0' : '-rotate-90'}`}
+        />
         {icon && <span className="shrink-0">{icon}</span>}
         <span className="text-xs font-medium uppercase tracking-wide text-neutral-300">
           {title}

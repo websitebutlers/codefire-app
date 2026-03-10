@@ -8,6 +8,8 @@ import type {
   ProcessedEmail,
   TaskItem,
 } from '@shared/models'
+import { triageEmails, findMatchingRule } from './EmailTriageService'
+import { NotificationService } from './NotificationService'
 
 /** Minimal representation of a Gmail message header */
 interface GmailMessageMetadata {
@@ -199,22 +201,74 @@ export class GmailService {
   }
 
   /**
-   * Process new emails and create tasks for each one.
+   * Process new emails: poll, classify with AI triage, and create tasks.
+   *
+   * Flow:
+   * 1. Poll for new whitelist-matched emails
+   * 2. Send batch to Claude CLI for AI classification (title, priority, type)
+   * 3. Merge AI priority with whitelist rule priority (take the higher one)
+   * 4. Create tasks with AI-generated titles/descriptions for actionable emails
+   * 5. Store triageType on processedEmails records
    */
   async processNewEmails(
     accountId: string,
     projectId: string
   ): Promise<TaskItem[]> {
     const emails = await this.pollEmails(accountId)
+    if (emails.length === 0) return []
+
+    // Run AI triage on the batch — returns null for non-actionable emails
+    const triageResults = await triageEmails(
+      emails.map((e) => ({
+        from: e.fromAddress,
+        subject: e.subject,
+        body: e.snippet ?? '',
+      }))
+    )
+
+    // Get whitelist rules for priority merging
+    const rules = this.gmailDAO.listRules()
+
     const tasks: TaskItem[] = []
 
-    for (const email of emails) {
+    for (let i = 0; i < emails.length; i++) {
+      const email = emails[i]
+      const triage = triageResults[i]
+
+      // Determine triageType — use AI result if available, default to 'fyi'
+      const triageType = triage?.type ?? 'fyi'
+
+      // Update processedEmails with triageType
+      this.db
+        .prepare('UPDATE processedEmails SET triageType = ? WHERE id = ?')
+        .run(triageType, email.id)
+
+      // Determine priority by merging AI triage + whitelist rule priority
+      const ruleMatch = findMatchingRule(email.fromAddress, email.subject, rules)
+      const aiPriority = triage?.priority ?? 0
+      const rulePriority = ruleMatch?.priority ?? 0
+      const mergedPriority = Math.max(aiPriority, rulePriority)
+
+      // Use AI-generated title/description when available, fallback to raw email data
+      const title = triage?.title || email.subject || '(No subject)'
+      const fromLine = `From: ${email.fromName ? `${email.fromName} <${email.fromAddress}>` : email.fromAddress}`
+      const subjectLine = `Subject: ${email.subject || '(No subject)'}`
+      const bodyText = email.body || email.snippet || ''
+      const description = triage?.description
+        ? `${fromLine}\n${subjectLine}\n\n${triage.description}\n\n---\n\n**Original Email:**\n\n${bodyText}`
+        : `${fromLine}\n${subjectLine}\n\n${bodyText}`
+
+      // Determine labels based on triage type
+      const labels = ['gmail']
+      if (triageType !== 'fyi') labels.push(triageType)
+
       const task = this.taskDAO.create({
         projectId,
-        title: email.subject || '(No subject)',
-        description: `From: ${email.fromAddress}\nSnippet: ${email.snippet ?? ''}`,
-        source: 'ai-extracted',
-        labels: ['gmail'],
+        title,
+        description,
+        source: 'email',
+        priority: mergedPriority,
+        labels,
       })
 
       // Link the task to the processed email
@@ -228,6 +282,11 @@ export class GmailService {
         .run(task.id, email.id)
 
       tasks.push(this.taskDAO.getById(task.id)!)
+    }
+
+    // Send native OS notification for new email tasks
+    if (tasks.length > 0) {
+      NotificationService.getInstance().notifyNewEmails(tasks.length)
     }
 
     return tasks

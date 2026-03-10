@@ -22,6 +22,10 @@ vi.mock('electron', () => ({
   BrowserWindow: {
     fromWebContents: vi.fn(() => mockBrowserWindow),
   },
+  Notification: class MockNotification {
+    static isSupported() { return false }
+    show() {}
+  },
 }))
 
 // ─── Mock TerminalService ─────────────────────────────────────────────────────

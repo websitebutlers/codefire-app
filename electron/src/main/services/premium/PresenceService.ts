@@ -25,19 +25,24 @@ export class PresenceService {
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState()
-        const states: PresenceState[] = []
+        const seen = new Map<string, PresenceState>()
         for (const [, presences] of Object.entries(state)) {
+          // Each key can have multiple connections — take only the latest per userId
           for (const p of presences as any[]) {
-            states.push({
-              userId: p.userId,
-              displayName: p.displayName,
-              activeFile: p.activeFile,
-              gitBranch: p.gitBranch,
-              onlineAt: p.onlineAt,
-              status: 'active',
-            })
+            if (!seen.has(p.userId)) {
+              seen.set(p.userId, {
+                userId: p.userId,
+                displayName: p.displayName,
+                avatarUrl: p.avatarUrl || null,
+                activeFile: p.activeFile,
+                gitBranch: p.gitBranch,
+                onlineAt: p.onlineAt,
+                status: 'active',
+              })
+            }
           }
         }
+        const states = Array.from(seen.values())
         this.presenceState.set(projectId, states)
         this.onPresenceChange?.(projectId, states)
       })
@@ -46,6 +51,7 @@ export class PresenceService {
           await channel.track({
             userId: userState.userId,
             displayName: userState.displayName,
+            avatarUrl: userState.avatarUrl,
             activeFile: userState.activeFile,
             gitBranch: userState.gitBranch,
             onlineAt: new Date().toISOString(),

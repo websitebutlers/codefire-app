@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Trash2, Plus, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
+import { Trash2, Plus, RefreshCw } from 'lucide-react'
 import type { AppConfig, GmailAccount, WhitelistRule, Client } from '@shared/models'
 import { api } from '../../lib/api'
 import { Section, TextInput, Toggle, NumberInput } from './SettingsField'

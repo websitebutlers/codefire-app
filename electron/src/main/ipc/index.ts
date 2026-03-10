@@ -25,6 +25,8 @@ import { registerBriefingHandlers } from './briefing-handlers'
 import { registerChatHandlers } from './chat-handlers'
 import { registerUpdateHandlers } from './update-handlers'
 import { registerProjectDocHandlers } from './project-doc-handlers'
+import { registerPatternHandlers } from './pattern-handlers'
+import { registerBrowserScreenshotHandlers } from './browser-screenshot-handlers'
 import type { WindowManager } from '../windows/WindowManager'
 import type { TerminalService } from '../services/TerminalService'
 import type { GitService } from '../services/GitService'
@@ -34,6 +36,8 @@ import type { SearchEngine } from '../services/SearchEngine'
 import type { ContextEngine } from '../services/ContextEngine'
 import type { MCPServerManager } from '../services/MCPServerManager'
 import type { FileWatcher } from '../services/FileWatcher'
+import type { AgentProcessWatcher } from '../services/AgentProcessWatcher'
+import { registerAgentHandlers } from './agent-handlers'
 
 export function registerAllHandlers(
   db: Database.Database,
@@ -45,7 +49,9 @@ export function registerAllHandlers(
   searchEngine?: SearchEngine,
   contextEngine?: ContextEngine,
   mcpManager?: MCPServerManager,
-  fileWatcher?: FileWatcher
+  fileWatcher?: FileWatcher,
+  agentWatcher?: AgentProcessWatcher,
+  browserSessionToken?: string
 ) {
   registerProjectHandlers(db)
   registerTaskHandlers(db)
@@ -81,12 +87,17 @@ export function registerAllHandlers(
   registerImageHandlers(db)
   registerRecordingHandlers(db)
   registerSettingsHandlers(db)
-  registerChatHandlers(db)
+  registerChatHandlers(db, browserSessionToken)
   registerBriefingHandlers(db)
   registerUpdateHandlers()
   registerProjectDocHandlers(db)
+  registerPatternHandlers(db)
+  registerBrowserScreenshotHandlers(db)
   if (mcpManager) {
     registerMCPHandlers(mcpManager)
+  }
+  if (agentWatcher) {
+    registerAgentHandlers(agentWatcher)
   }
 
   // Run project discovery at startup to populate claudeProject links (deferred to not block startup)

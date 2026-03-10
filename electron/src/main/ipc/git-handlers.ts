@@ -88,6 +88,25 @@ export function registerGitHandlers(gitService: GitService) {
   )
 
   ipcMain.handle(
+    'git:discard',
+    (_event, projectPath: string, files: string[], untracked: boolean = false) => {
+      if (!projectPath || typeof projectPath !== 'string') {
+        throw new Error('projectPath is required and must be a string')
+      }
+      if (!Array.isArray(files) || files.length === 0) {
+        throw new Error('files must be a non-empty array of strings')
+      }
+      getPathValidator().assertAllowed(projectPath)
+      for (const file of files) {
+        if (typeof file !== 'string') throw new Error('Each file must be a string')
+        if (path.isAbsolute(file)) throw new Error('File paths must be relative')
+        if (file.includes('..')) throw new Error('File paths must not contain ..')
+      }
+      return gitService.discard(projectPath, files, untracked)
+    }
+  )
+
+  ipcMain.handle(
     'git:commit',
     (_event, projectPath: string, message: string) => {
       if (!projectPath || typeof projectPath !== 'string') {

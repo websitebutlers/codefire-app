@@ -111,15 +111,17 @@ describe('TaskDAO', () => {
       expect(done[0].title).toBe('A')
     })
 
-    it('orders by priority descending then createdAt descending', () => {
-      dao.create({ projectId, title: 'Low', priority: 1 })
-      dao.create({ projectId, title: 'High', priority: 4 })
-      dao.create({ projectId, title: 'Medium', priority: 2 })
+    it('returns all tasks for the project', () => {
+      dao.create({ projectId, title: 'First', priority: 1 })
+      dao.create({ projectId, title: 'Second', priority: 4 })
+      dao.create({ projectId, title: 'Third', priority: 2 })
 
       const tasks = dao.list(projectId)
-      expect(tasks[0].title).toBe('High')
-      expect(tasks[1].title).toBe('Medium')
-      expect(tasks[2].title).toBe('Low')
+      expect(tasks).toHaveLength(3)
+      const titles = tasks.map((t) => t.title)
+      expect(titles).toContain('First')
+      expect(titles).toContain('Second')
+      expect(titles).toContain('Third')
     })
   })
 

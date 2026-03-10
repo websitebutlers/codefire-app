@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { MessageCircle, GripVertical } from 'lucide-react'
 import TerminalTab from './TerminalTab'
+import CLIQuickLaunch from './CLIQuickLaunch'
 
 interface TerminalPanelProps {
   /** Project ID, used as a prefix for terminal session IDs */
@@ -81,6 +82,18 @@ export default function TerminalPanel({ projectId, projectPath, showChat, onTogg
     [activeTabId]
   )
 
+  // ─── Launch a CLI tool in a new terminal tab ──────────────────────────────
+  const launchCLI = useCallback(async (label: string, command: string) => {
+    const id = createTabId(projectId)
+    await window.api.invoke('terminal:create', id, projectPath)
+    setTabs((prev) => [...prev, { id, label }])
+    setActiveTabId(id)
+    // Brief delay to let the shell initialize, then write the command
+    setTimeout(() => {
+      window.api.send('terminal:write', id, command + '\n')
+    }, 300)
+  }, [projectId, projectPath])
+
   // ─── Check availability and create first tab on mount ────────────────────
   useEffect(() => {
     // Guard against React Strict Mode double-mount
@@ -123,24 +136,6 @@ export default function TerminalPanel({ projectId, projectPath, showChat, onTogg
       (id: unknown) => {
         // Optionally auto-close the tab or just let the user see the exit message
         // For now, keep the tab open so the user sees the exit message
-      }
-    )
-    return removeListener
-  }, [])
-
-  // ─── Listen for auto-created terminals (from writeToActive fallback) ───
-  useEffect(() => {
-    const removeListener = window.api.on(
-      'terminal:created',
-      (id: unknown) => {
-        if (typeof id === 'string') {
-          setTabs((prev) => {
-            // Don't add if we already have it
-            if (prev.some((t) => t.id === id)) return prev
-            return [...prev, { id, label: `Terminal ${prev.length + 1}` }]
-          })
-          setActiveTabId(id)
-        }
       }
     )
     return removeListener
@@ -233,6 +228,10 @@ export default function TerminalPanel({ projectId, projectPath, showChat, onTogg
           <span className="text-lg leading-none">+</span>
         </button>
 
+        {/* CLI Quick Launch */}
+        <div className="w-px h-4 bg-[#262626]" />
+        <CLIQuickLaunch onLaunch={launchCLI} projectPath={projectPath} />
+
         {/* Chat Mode toggle */}
         {onToggleChat && (
           <>
@@ -254,7 +253,7 @@ export default function TerminalPanel({ projectId, projectPath, showChat, onTogg
       </div>
 
       {/* ─── Terminal Content ──────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative overflow-hidden">
         {tabs.map((tab) => (
           <TerminalTab
             key={tab.id}

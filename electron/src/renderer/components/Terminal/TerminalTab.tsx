@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -19,10 +19,51 @@ interface TerminalTabProps {
  * - Auto-resizes via FitAddon + ResizeObserver
  * - Supports clickable URLs via WebLinksAddon
  */
+/**
+ * Paste text from clipboard, or if clipboard contains an image (no text),
+ * save it to a temp file and insert the file path into the terminal.
+ */
+async function pasteWithImageFallback(termId: string) {
+  // Try text first
+  const text = await navigator.clipboard.readText().catch(() => '')
+  if (text) {
+    window.api.send('terminal:write', termId, text)
+    return
+  }
+
+  // No text — check for image in clipboard
+  try {
+    const items = await navigator.clipboard.read()
+    for (const item of items) {
+      const imageType = item.types.find((t) => t.startsWith('image/'))
+      if (imageType) {
+        const blob = await item.getType(imageType)
+        const buffer = await blob.arrayBuffer()
+        const ext = imageType.split('/')[1] || 'png'
+        // Save via IPC and get the temp file path back
+        const filePath = await window.api.invoke(
+          'terminal:saveClipboardImage',
+          Array.from(new Uint8Array(buffer)),
+          ext
+        )
+        if (typeof filePath === 'string') {
+          // Insert the path, shell-escaped
+          const escaped = filePath.includes(' ') ? `"${filePath}"` : filePath
+          window.api.send('terminal:write', termId, escaped)
+        }
+        return
+      }
+    }
+  } catch {
+    // Clipboard API may not be available or permission denied — ignore
+  }
+}
+
 export default function TerminalTab({ terminalId, isActive }: TerminalTabProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const [dragOver, setDragOver] = useState(false)
 
   useEffect(() => {
     const container = containerRef.current
@@ -87,11 +128,9 @@ export default function TerminalTab({ terminalId, isActive }: TerminalTabProps) 
         }
         return false
       }
-      // Ctrl+Shift+V: paste
+      // Ctrl+Shift+V: paste (text or image)
       if (event.ctrlKey && event.shiftKey && event.key === 'V' && event.type === 'keydown') {
-        navigator.clipboard.readText().then((text) => {
-          window.api.send('terminal:write', terminalId, text)
-        })
+        pasteWithImageFallback(terminalId)
         return false
       }
       // Ctrl+C with selection: copy instead of sending SIGINT
@@ -102,11 +141,9 @@ export default function TerminalTab({ terminalId, isActive }: TerminalTabProps) 
           return false
         }
       }
-      // Ctrl+V: paste
+      // Ctrl+V: paste (text or image)
       if (event.ctrlKey && !event.shiftKey && event.key === 'v' && event.type === 'keydown') {
-        navigator.clipboard.readText().then((text) => {
-          window.api.send('terminal:write', terminalId, text)
-        })
+        pasteWithImageFallback(terminalId)
         return false
       }
       return true
@@ -179,14 +216,60 @@ export default function TerminalTab({ terminalId, isActive }: TerminalTabProps) 
     }
   }, [isActive])
 
+  // Shell-escape a file path for safe pasting into terminal
+  const shellEscape = (path: string): string => {
+    // On Windows, wrap in double quotes if path contains spaces
+    if (path.includes(' ') || path.includes('(') || path.includes(')')) {
+      return `"${path.replace(/"/g, '\\"')}"`
+    }
+    return path
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.dataTransfer.types.includes('Files')) {
+      e.dataTransfer.dropEffect = 'copy'
+      setDragOver(true)
+    }
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(false)
+
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) {
+      const paths = files.map((f) => shellEscape(f.path)).join(' ')
+      window.api.send('terminal:write', terminalId, paths)
+    }
+  }
+
   return (
     <div
-      ref={containerRef}
-      className="h-full w-full"
-      style={{
-        display: isActive ? 'block' : 'none',
-        backgroundColor: '#171717',
-      }}
-    />
+      className="h-full w-full relative"
+      style={{ display: isActive ? 'block' : 'none' }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <div
+        ref={containerRef}
+        className="h-full w-full"
+        style={{ backgroundColor: '#171717', padding: '8px 4px 4px 8px' }}
+      />
+      {dragOver && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40 border-2 border-dashed border-codefire-orange/60 rounded pointer-events-none z-10">
+          <span className="text-codefire-orange text-sm font-medium">Drop files to insert paths</span>
+        </div>
+      )}
+    </div>
   )
 }

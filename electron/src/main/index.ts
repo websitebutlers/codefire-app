@@ -1,4 +1,5 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, session } from 'electron'
+import { randomBytes } from 'crypto'
 import path from 'path'
 import { getDatabase, closeDatabase } from './database/connection'
 import { initPathValidator } from './services/PathValidator'
@@ -19,6 +20,8 @@ import { ContextEngine } from './services/ContextEngine'
 import { EmbeddingClient } from './services/EmbeddingClient'
 import { BrowserCommandExecutor } from './services/BrowserCommandExecutor'
 import { LiveSessionWatcher } from './services/LiveSessionWatcher'
+import { AgentProcessWatcher } from './services/AgentProcessWatcher'
+import { SessionWatcher } from './services/SessionWatcher'
 import { FileWatcher } from './services/FileWatcher'
 import { ProjectDAO } from './database/dao/ProjectDAO'
 import { AuthService } from './services/premium/AuthService'
@@ -63,13 +66,23 @@ MCPServerManager.syncMcpServerForLinux()
 // Initialize MCP server manager (polls for active MCP connections)
 const mcpManager = new MCPServerManager()
 
+// Initialize agent process watcher (detects running Claude Code agents)
+const agentWatcher = new AgentProcessWatcher()
+
 // Deferred services — initialized after window shows for faster startup
 let gmailService: GmailService | undefined
 let searchEngine: SearchEngine
 let contextEngine: ContextEngine
 let fileWatcher: FileWatcher
 let browserExecutor: BrowserCommandExecutor | null = null
+/** Session token for browser command auth — shared between IPC handlers, executor, and MCP server */
+const browserSessionToken = randomBytes(32).toString('hex')
+// Write token to app data so MCP server can read it
+import * as fs from 'fs'
+const tokenPath = path.join(app.getPath('userData'), '.browser-session-token')
+try { fs.writeFileSync(tokenPath, browserSessionToken, { mode: 0o600 }) } catch { /* ignore */ }
 let liveWatcher: LiveSessionWatcher
+let sessionWatcher: SessionWatcher
 
 function initDeferredServices() {
   // Gmail
@@ -103,12 +116,31 @@ function initDeferredServices() {
   }
 
   // Browser command executor
-  browserExecutor = new BrowserCommandExecutor(db)
+  browserExecutor = new BrowserCommandExecutor(db, browserSessionToken)
   browserExecutor.start()
+
+  // Start agent process watcher
+  agentWatcher.start()
 
   // Live session watcher
   liveWatcher = new LiveSessionWatcher()
   liveWatcher.start()
+
+  // Session watcher — auto-import sessions from Claude project directories
+  sessionWatcher = new SessionWatcher(db)
+  sessionWatcher.onSessionChange((sessionId, projectId) => {
+    // Notify all windows that sessions changed
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('sessions:updated', { sessionId, projectId })
+    }
+  })
+  // Watch all projects that have a claudeProject directory
+  const allProjects = projectDAO.list()
+  for (const project of allProjects) {
+    if (project.claudeProject) {
+      sessionWatcher.watchProject(project.id, project.claudeProject)
+    }
+  }
 
   // Register deferred IPC handlers
   registerSearchHandlers(db, searchEngine, contextEngine)
@@ -238,7 +270,7 @@ app.on('open-url', (event, url) => {
 })
 
 // Register essential IPC handlers immediately (db, window, terminal, git, MCP)
-registerAllHandlers(db, windowManager, terminalService, gitService, undefined, undefined, undefined, undefined, mcpManager, undefined)
+registerAllHandlers(db, windowManager, terminalService, gitService, undefined, undefined, undefined, undefined, mcpManager, undefined, agentWatcher, browserSessionToken)
 
 
 let isQuitting = false
@@ -418,8 +450,10 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   isQuitting = true
+  agentWatcher.stop()
   if (fileWatcher) fileWatcher.unwatchAll()
   if (liveWatcher) liveWatcher.stop()
+  if (sessionWatcher) sessionWatcher.unwatchAll()
   if (browserExecutor) browserExecutor.stop()
   trayManager.destroy()
   terminalService?.killAll()

@@ -1,4 +1,4 @@
-import { X, Plus, Loader2 } from 'lucide-react'
+import { X, Plus, Loader2, Globe } from 'lucide-react'
 import type { BrowserTab } from '@renderer/hooks/useBrowserTabs'
 
 interface BrowserTabStripProps {
@@ -30,8 +30,10 @@ export default function BrowserTabStrip({
                 : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
             }`}
           >
-            {tab.isLoading && (
-              <Loader2 size={10} className="animate-spin shrink-0" />
+            {tab.isLoading ? (
+              <Loader2 size={10} className="text-codefire-orange animate-spin shrink-0" />
+            ) : (
+              <Globe size={10} className={`shrink-0 ${tab.id === activeTabId ? 'text-neutral-400' : 'text-neutral-600'}`} />
             )}
             <span className="truncate">{tab.title}</span>
             <button

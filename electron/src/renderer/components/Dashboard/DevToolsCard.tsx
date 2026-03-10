@@ -144,7 +144,7 @@ export default function DevToolsCard({ projectPath }: DevToolsCardProps) {
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">
         <Terminal size={14} className="text-codefire-orange" />
-        <h3 className="text-xs font-medium text-neutral-300">Dev Tools</h3>
+        <h3 className="text-[13px] font-semibold text-neutral-200">Dev Tools</h3>
         <span className="text-[10px] text-neutral-600 bg-neutral-800 px-1.5 py-0.5 rounded">
           {projectType.label}
           {projectType.packageManager ? ` (${projectType.packageManager})` : ''}

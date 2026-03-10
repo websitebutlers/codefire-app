@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3'
 import type { Session } from '@shared/models'
+import { sanitizeFtsQuery } from '../fts-utils'
 
 export class SessionDAO {
   constructor(private db: Database.Database) {}
@@ -90,6 +91,9 @@ export class SessionDAO {
   }
 
   searchFTS(query: string): Session[] {
+    const sanitized = sanitizeFtsQuery(query)
+    if (!sanitized) return []
+
     return this.db
       .prepare(
         `SELECT sessions.* FROM sessions
@@ -97,6 +101,6 @@ export class SessionDAO {
          WHERE sessionsFts MATCH ?
          ORDER BY rank`
       )
-      .all(query) as Session[]
+      .all(sanitized) as Session[]
   }
 }

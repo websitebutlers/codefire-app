@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import { BrowserWindow, ipcMain } from 'electron'
+import { randomBytes } from 'crypto'
 
 interface BrowserCommand {
   id: number
@@ -9,15 +10,19 @@ interface BrowserCommand {
   result: string | null
   createdAt: string
   completedAt: string | null
+  authToken: string | null
 }
 
 export class BrowserCommandExecutor {
   private db: Database.Database
   private timer: ReturnType<typeof setInterval> | null = null
   private processing = false
+  /** Session token — only commands with a matching token are executed */
+  readonly sessionToken: string
 
-  constructor(db: Database.Database) {
+  constructor(db: Database.Database, sessionToken?: string) {
     this.db = db
+    this.sessionToken = sessionToken ?? randomBytes(32).toString('hex')
   }
 
   start(): void {
@@ -42,6 +47,14 @@ export class BrowserCommandExecutor {
       ).get() as BrowserCommand | undefined
 
       if (!cmd) return
+
+      // Validate auth token — reject commands from unauthorized sources
+      if (cmd.authToken !== this.sessionToken) {
+        this.db.prepare(
+          "UPDATE browserCommands SET status = 'error', result = ?, completedAt = datetime('now') WHERE id = ?"
+        ).run(JSON.stringify({ error: 'Invalid auth token — command rejected' }), cmd.id)
+        return
+      }
 
       // Mark as executing
       this.db.prepare(

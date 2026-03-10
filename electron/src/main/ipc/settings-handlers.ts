@@ -2,9 +2,11 @@ import { ipcMain } from 'electron'
 import { readConfig, writeConfig } from '../services/ConfigStore'
 import { GoogleOAuth } from '../services/GoogleOAuth'
 import { GmailService } from '../services/GmailService'
+import { ContextInjector } from '../services/ContextInjector'
 import { registerGmailHandlers } from './gmail-handlers'
 import type Database from 'better-sqlite3'
 import type { AppConfig } from '@shared/models'
+import type { CLIProvider } from '../services/DeepLinkService'
 
 /**
  * Keys the renderer is allowed to set.
@@ -12,6 +14,9 @@ import type { AppConfig } from '@shared/models'
  * a compromised renderer from redirecting API traffic.
  */
 const ALLOWED_SETTINGS_KEYS = new Set<keyof AppConfig>([
+  // Profile (Me)
+  'profileName',
+  'profileAvatarUrl',
   // General
   'checkForUpdates',
   'notifyOnNewEmail',
@@ -85,6 +90,40 @@ export function registerSettingsHandlers(
       onGmailReady?.(gmailService)
     }
 
+    // If instructionInjection was toggled, inject or remove from all projects
+    if ('instructionInjection' in filtered) {
+      const injector = new ContextInjector(db)
+      const cli = (config.preferredCLI || 'claude') as CLIProvider
+      if (filtered.instructionInjection) {
+        injector.injectAllProjects(cli)
+      } else {
+        injector.removeAllInjections(cli)
+      }
+    }
+
     return { success: true }
+  })
+
+  // Context injection handlers
+  const injector = new ContextInjector(db)
+
+  ipcMain.handle('context:setupProject', (_event, cli: CLIProvider, projectPath: string) => {
+    return injector.setupProject(cli, projectPath)
+  })
+
+  ipcMain.handle('context:injectInstruction', (_event, cli: CLIProvider, projectPath: string) => {
+    return injector.updateInstructionFile(cli, projectPath)
+  })
+
+  ipcMain.handle('context:removeInstruction', (_event, cli: CLIProvider, projectPath: string) => {
+    return injector.removeInstructionFile(cli, projectPath)
+  })
+
+  ipcMain.handle('context:hasInstruction', (_event, cli: CLIProvider, projectPath: string) => {
+    return injector.hasInstructionFile(cli, projectPath)
+  })
+
+  ipcMain.handle('context:installMCP', (_event, cli: CLIProvider) => {
+    return injector.installMCP(cli)
   })
 }

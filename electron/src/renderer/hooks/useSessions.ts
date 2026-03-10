@@ -81,7 +81,17 @@ export function useSessions(projectId: string) {
 
   useEffect(() => {
     fetchSessions()
-  }, [fetchSessions])
+
+    // Auto-refresh when SessionWatcher imports new sessions
+    const cleanup = window.api.on('sessions:updated', (...args: unknown[]) => {
+      const data = args[0] as { sessionId: string; projectId: string } | undefined
+      if (data?.projectId === projectId) {
+        fetchSessions()
+      }
+    })
+
+    return () => { cleanup?.() }
+  }, [fetchSessions, projectId])
 
   const totalCost = useMemo(() => calculateTotalCost(sessions), [sessions])
 

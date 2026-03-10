@@ -28,6 +28,9 @@ const ALLOWED_RECEIVE_CHANNELS = new Set<string>([
   'menu:openSettings',
   'browser:commandRequest',
   'sessions:liveUpdate',
+  'sessions:updated',
+  'tasks:updated',
+  'agent:update',
 ])
 
 function isSendAllowed(channel: string): boolean {

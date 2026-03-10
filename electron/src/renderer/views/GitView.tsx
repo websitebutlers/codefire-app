@@ -114,6 +114,7 @@ export default function GitView({ projectPath }: GitViewProps) {
                       action="stage"
                       onClick={() => toggleDiff(file.path, false)}
                       onAction={() => git.stageFiles([file.path])}
+                      onDiscard={() => git.discardFiles([file.path])}
                     />
                     {expandedFile === key && <DiffViewer diff={diffContent} />}
                   </div>
@@ -140,6 +141,7 @@ export default function GitView({ projectPath }: GitViewProps) {
                   action="stage"
                   onClick={() => {}}
                   onAction={() => git.stageFiles([file.path])}
+                  onDiscard={() => git.discardFiles([file.path], true)}
                 />
               ))}
             </div>
@@ -161,6 +163,7 @@ export default function GitView({ projectPath }: GitViewProps) {
                   hash={commit.hash}
                   subject={commit.subject}
                   date={commit.date}
+                  author={commit.author}
                 />
               ))}
             </div>

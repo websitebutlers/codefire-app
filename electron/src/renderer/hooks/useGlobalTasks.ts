@@ -29,8 +29,12 @@ export function useGlobalTasks() {
           }
         }
       }
-      // Sort by most recent first (createdAt desc)
-      merged.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+      // Sort by most recently updated first (updatedAt falls back to createdAt)
+      merged.sort((a, b) => {
+        const aTime = a.updatedAt || a.createdAt || ''
+        const bTime = b.updatedAt || b.createdAt || ''
+        return bTime.localeCompare(aTime)
+      })
       setTasks(merged)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tasks')
@@ -41,6 +45,11 @@ export function useGlobalTasks() {
 
   useEffect(() => {
     fetchTasks()
+    // Listen for cross-window task updates (from other windows or MCP)
+    const unsub = window.api.on('tasks:updated', () => {
+      fetchTasks()
+    })
+    return unsub
   }, [fetchTasks])
 
   const createTask = useCallback(
@@ -84,9 +93,14 @@ export function useGlobalTasks() {
     [fetchTasks]
   )
 
-  const todoTasks = tasks.filter((t) => t.status === 'todo')
-  const inProgressTasks = tasks.filter((t) => t.status === 'in_progress')
-  const doneTasks = tasks.filter((t) => t.status === 'done')
+  const sortByRecent = (a: TaskItem, b: TaskItem) => {
+    const aTime = a.updatedAt || a.createdAt || ''
+    const bTime = b.updatedAt || b.createdAt || ''
+    return bTime.localeCompare(aTime)
+  }
+  const todoTasks = tasks.filter((t) => t.status === 'todo').sort(sortByRecent)
+  const inProgressTasks = tasks.filter((t) => t.status === 'in_progress').sort(sortByRecent)
+  const doneTasks = tasks.filter((t) => t.status === 'done').sort(sortByRecent)
 
   return {
     tasks,

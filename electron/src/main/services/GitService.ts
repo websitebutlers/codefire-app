@@ -240,6 +240,29 @@ export class GitService {
     await this.exec(projectPath, ['reset', 'HEAD', '--', ...files])
   }
 
+  // ─── discard ─────────────────────────────────────────────────────────────
+
+  /**
+   * Discard working tree changes for tracked files, or remove untracked files.
+   *
+   * For tracked files: `git -C <path> checkout -- <files...>`
+   * For untracked files: `git -C <path> clean -f -- <files...>`
+   */
+  async discard(
+    projectPath: string,
+    files: string[],
+    untracked: boolean = false
+  ): Promise<void> {
+    if (files.length === 0) {
+      throw new Error('No files specified to discard')
+    }
+    if (untracked) {
+      await this.exec(projectPath, ['clean', '-f', '--', ...files])
+    } else {
+      await this.exec(projectPath, ['checkout', '--', ...files])
+    }
+  }
+
   // ─── commit ──────────────────────────────────────────────────────────────
 
   /**

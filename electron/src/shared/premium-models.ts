@@ -128,6 +128,7 @@ export interface ReviewRequest {
 export interface PresenceState {
   userId: string
   displayName: string
+  avatarUrl: string | null
   activeFile: string | null
   gitBranch: string | null
   onlineAt: string

@@ -71,8 +71,12 @@ const { mockWindowInstances, nextWindowId, MockBW } = vi.hoisted(() => {
 vi.mock('electron', () => ({
   app: {
     getPath: () => '/tmp',
+    isPackaged: false,
   },
   BrowserWindow: MockBW,
+  nativeImage: {
+    createFromPath: vi.fn(() => ({})),
+  },
   screen: {
     getAllDisplays: () => [{ bounds: { x: 0, y: 0, width: 1920, height: 1080 } }],
   },

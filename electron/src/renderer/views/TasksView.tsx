@@ -1,14 +1,15 @@
 import { useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, ListTodo } from 'lucide-react'
 import { useTasks } from '@renderer/hooks/useTasks'
 import KanbanBoard from '@renderer/components/Kanban/KanbanBoard'
 import { SortControls, sortTasks, type SortOption } from '@renderer/components/Kanban/SortControls'
 
 interface TasksViewProps {
   projectId: string
+  projectPath?: string
 }
 
-export default function TasksView({ projectId }: TasksViewProps) {
+export default function TasksView({ projectId, projectPath }: TasksViewProps) {
   const [sort, setSort] = useState<SortOption>({ field: 'recent', dir: 'desc' })
   const {
     todoTasks,
@@ -38,18 +39,18 @@ export default function TasksView({ projectId }: TasksViewProps) {
   }
 
   return (
-    <div className="flex flex-col h-full p-3">
-      <div className="flex items-center justify-between mb-3 shrink-0">
-        <h2 className="text-title text-neutral-200 font-medium">Tasks</h2>
-        <div className="flex items-center gap-3">
-          <SortControls sort={sort} onChange={setSort} />
-          <span className="text-xs text-neutral-500">
-            {todoTasks.length + inProgressTasks.length + doneTasks.length} total
-          </span>
-        </div>
+    <div className="flex flex-col h-full bg-neutral-900">
+      <div className="flex items-center gap-2 px-3 h-9 border-b border-neutral-800 bg-neutral-950 shrink-0">
+        <ListTodo size={16} className="text-codefire-orange" />
+        <h2 className="text-sm font-semibold text-neutral-200">Tasks</h2>
+        <span className="text-xs text-neutral-500">
+          {todoTasks.length + inProgressTasks.length + doneTasks.length} total
+        </span>
+        <div className="flex-1" />
+        <SortControls sort={sort} onChange={setSort} />
       </div>
 
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <KanbanBoard
           todoTasks={sortTasks(todoTasks, sort)}
           inProgressTasks={sortTasks(inProgressTasks, sort)}
@@ -57,6 +58,8 @@ export default function TasksView({ projectId }: TasksViewProps) {
           onUpdateTask={updateTask}
           onDeleteTask={deleteTask}
           onAddTask={createTask}
+          projectPath={projectPath}
+          projectId={projectId}
         />
       </div>
     </div>

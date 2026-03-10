@@ -9,6 +9,7 @@ const GMAIL_CHANNELS = [
   'gmail:addRule',
   'gmail:removeRule',
   'gmail:pollEmails',
+  'gmail:processNewEmails',
   'gmail:listRecentEmails',
   'gmail:getEmailByMessageId',
 ] as const
@@ -58,6 +59,10 @@ export function registerGmailHandlers(gmailService: GmailService) {
 
   ipcMain.handle('gmail:pollEmails', async (_e, accountId: string) => {
     return gmailService.pollEmails(accountId)
+  })
+
+  ipcMain.handle('gmail:processNewEmails', async (_e, accountId: string, projectId: string) => {
+    return gmailService.processNewEmails(accountId, projectId ?? '__global__')
   })
 
   ipcMain.handle('gmail:listRecentEmails', () => {

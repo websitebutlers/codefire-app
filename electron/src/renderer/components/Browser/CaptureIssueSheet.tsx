@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { X, Bug, Send, Loader2 } from 'lucide-react'
 import { api } from '@renderer/lib/api'
+import ScreenshotAnnotation from './ScreenshotAnnotation'
 
 interface ConsoleEntry {
   level: string
@@ -17,6 +18,8 @@ interface CaptureIssueSheetProps {
   onClose: () => void
 }
 
+type Phase = 'annotate' | 'form'
+
 export default function CaptureIssueSheet({
   projectId,
   screenshotDataUrl,
@@ -25,6 +28,8 @@ export default function CaptureIssueSheet({
   consoleEntries,
   onClose,
 }: CaptureIssueSheetProps) {
+  const [phase, setPhase] = useState<Phase>(screenshotDataUrl ? 'annotate' : 'form')
+  const [annotatedImage, setAnnotatedImage] = useState<string | null>(null)
   const [title, setTitle] = useState(`Bug: ${pageTitle}`)
   const [description, setDescription] = useState('')
   const [includeConsole, setIncludeConsole] = useState(true)
@@ -32,6 +37,18 @@ export default function CaptureIssueSheet({
   const [saving, setSaving] = useState(false)
 
   const errorEntries = consoleEntries.filter((e) => e.level === 'error' || e.level === 'warning')
+
+  const finalImage = annotatedImage ?? screenshotDataUrl
+
+  function handleAnnotationDone(dataUrl: string) {
+    setAnnotatedImage(dataUrl)
+    setPhase('form')
+  }
+
+  function handleAnnotationSkip() {
+    setAnnotatedImage(null)
+    setPhase('form')
+  }
 
   async function handleSubmit() {
     setSaving(true)
@@ -45,6 +62,25 @@ export default function CaptureIssueSheet({
           .map((e) => `[${e.level}] ${e.message}`)
           .join('\n')
         desc += '\n```'
+      }
+
+      // Save screenshot to disk if included
+      let screenshotPath: string | null = null
+      if (includeScreenshot && finalImage) {
+        try {
+          screenshotPath = (await window.api.invoke(
+            'browser:saveScreenshot' as any,
+            projectId,
+            finalImage,
+            pageUrl,
+            pageTitle
+          )) as string
+          if (screenshotPath) {
+            desc += `\n\n**Screenshot:** ${screenshotPath}`
+          }
+        } catch {
+          // Non-fatal — still create the task without screenshot
+        }
       }
 
       await api.tasks.create({
@@ -62,6 +98,18 @@ export default function CaptureIssueSheet({
     }
   }
 
+  // Phase 1: Annotation
+  if (phase === 'annotate' && screenshotDataUrl) {
+    return (
+      <ScreenshotAnnotation
+        imageDataUrl={screenshotDataUrl}
+        onDone={handleAnnotationDone}
+        onCancel={handleAnnotationSkip}
+      />
+    )
+  }
+
+  // Phase 2: Issue Form
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl w-[520px] max-h-[80vh] flex flex-col">
@@ -79,10 +127,12 @@ export default function CaptureIssueSheet({
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Screenshot preview */}
-          {screenshotDataUrl && (
+          {finalImage && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-[11px] text-neutral-500 uppercase tracking-wider">Screenshot</label>
+                <label className="text-[11px] text-neutral-500 uppercase tracking-wider">
+                  Screenshot {annotatedImage ? '(annotated)' : ''}
+                </label>
                 <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer">
                   <input
                     type="checkbox"
@@ -95,7 +145,7 @@ export default function CaptureIssueSheet({
               </div>
               {includeScreenshot && (
                 <img
-                  src={screenshotDataUrl}
+                  src={finalImage}
                   alt="Page screenshot"
                   className="w-full rounded border border-neutral-700 max-h-40 object-cover object-top"
                 />

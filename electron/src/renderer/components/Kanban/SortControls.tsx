@@ -54,14 +54,16 @@ export function sortTasks(tasks: TaskItem[], sort: SortOption): TaskItem[] {
   const dir = sort.dir === 'desc' ? -1 : 1
 
   sorted.sort((a, b) => {
+    const aTime = a.updatedAt || a.createdAt || ''
+    const bTime = b.updatedAt || b.createdAt || ''
     if (sort.field === 'priority') {
       const pDiff = ((a.priority ?? 0) - (b.priority ?? 0)) * dir
       if (pDiff !== 0) return pDiff
       // Secondary sort: recent desc
-      return (b.createdAt ?? '').localeCompare(a.createdAt ?? '')
+      return bTime.localeCompare(aTime)
     }
     // recent
-    return (a.createdAt ?? '').localeCompare(b.createdAt ?? '') * dir
+    return aTime.localeCompare(bTime) * dir
   })
 
   return sorted

@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, RotateCw, Home, Camera, Bug } from 'lucide-react'
-import { useState, useEffect, type KeyboardEvent } from 'react'
+import { useState, useEffect, type KeyboardEvent, type RefObject } from 'react'
 
 interface BrowserToolbarProps {
   url: string
@@ -11,6 +11,7 @@ interface BrowserToolbarProps {
   onCaptureIssue?: () => void
   canGoBack: boolean
   canGoForward: boolean
+  urlInputRef?: RefObject<HTMLInputElement | null>
 }
 
 export default function BrowserToolbar({
@@ -23,6 +24,7 @@ export default function BrowserToolbar({
   onCaptureIssue,
   canGoBack,
   canGoForward,
+  urlInputRef,
 }: BrowserToolbarProps) {
   const [inputUrl, setInputUrl] = useState(url)
 
@@ -60,6 +62,7 @@ export default function BrowserToolbar({
       </button>
 
       <input
+        ref={urlInputRef}
         type="text"
         value={inputUrl}
         onChange={(e) => setInputUrl(e.target.value)}

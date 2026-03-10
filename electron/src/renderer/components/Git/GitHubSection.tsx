@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { GitPullRequest, Activity, CircleDot, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { GitPullRequest, Activity, CircleDot, CheckCircle, XCircle, Clock, ShieldCheck, ShieldAlert, MessageCircle } from 'lucide-react'
 import { api } from '@renderer/lib/api'
 import CollapsibleSection from '@renderer/components/Services/CollapsibleSection'
 
@@ -12,6 +12,9 @@ interface PR {
   title: string
   draft: boolean
   state: string
+  reviewDecision: string | null
+  isDraft: boolean
+  headRefName: string
 }
 
 interface Workflow {
@@ -34,16 +37,19 @@ export default function GitHubSection({ projectPath }: GitHubSectionProps) {
   const [issues, setIssues] = useState<Issue[]>([])
   const [loaded, setLoaded] = useState(false)
 
+  const repoInfoRef = useRef<{ owner: string; repo: string } | null>(null)
+
   useEffect(() => {
     let cancelled = false
 
     async function load() {
       try {
-        const info = await api.github.getRepoInfo(projectPath)
+        const info = repoInfoRef.current ?? await api.github.getRepoInfo(projectPath)
         if (cancelled || !info) {
           setLoaded(true)
           return
         }
+        repoInfoRef.current = info
         setRepoInfo(info)
 
         const [prList, workflowList, issueList] = await Promise.all([
@@ -64,8 +70,13 @@ export default function GitHubSection({ projectPath }: GitHubSectionProps) {
     }
 
     load()
+
+    // Auto-refresh every 60 seconds
+    const interval = setInterval(load, 60_000)
+
     return () => {
       cancelled = true
+      clearInterval(interval)
     }
   }, [projectPath])
 
@@ -93,7 +104,21 @@ export default function GitHubSection({ projectPath }: GitHubSectionProps) {
                   #{pr.number}
                 </span>
                 <span className="text-sm text-neutral-300 truncate flex-1">{pr.title}</span>
-                {pr.draft && (
+                {pr.headRefName && (
+                  <span className="text-[10px] font-mono text-neutral-600 shrink-0 truncate max-w-[100px]">
+                    {pr.headRefName}
+                  </span>
+                )}
+                {pr.reviewDecision === 'APPROVED' && (
+                  <span title="Approved"><ShieldCheck size={12} className="text-green-400 shrink-0" /></span>
+                )}
+                {pr.reviewDecision === 'CHANGES_REQUESTED' && (
+                  <span title="Changes requested"><ShieldAlert size={12} className="text-orange-400 shrink-0" /></span>
+                )}
+                {pr.reviewDecision === 'REVIEW_REQUIRED' && (
+                  <span title="Review required"><MessageCircle size={12} className="text-neutral-500 shrink-0" /></span>
+                )}
+                {(pr.draft || pr.isDraft) && (
                   <span className="text-[10px] bg-neutral-800 text-neutral-500 rounded px-1.5 py-0.5 leading-none">
                     draft
                   </span>

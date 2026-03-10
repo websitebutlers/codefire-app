@@ -677,7 +677,17 @@ export const migrations: Migration[] = [
   },
   {
     version: 27,
-    name: 'v26_createProjectDocs',
+    name: 'v26_addBrowserCommandAuth',
+    up: (db) => {
+      const cols = db.pragma('table_info(browserCommands)') as { name: string }[]
+      if (!cols.some(c => c.name === 'authToken')) {
+        db.exec(`ALTER TABLE browserCommands ADD COLUMN authToken TEXT;`)
+      }
+    },
+  },
+  {
+    version: 28,
+    name: 'v27_createProjectDocs',
     up: (db) => {
       db.exec(`
         CREATE TABLE IF NOT EXISTS projectDocs (

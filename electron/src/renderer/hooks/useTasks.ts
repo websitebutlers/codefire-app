@@ -26,7 +26,14 @@ export function useTasks(projectId: string) {
   useEffect(() => {
     fetchTasks()
     const interval = setInterval(fetchTasks, 5000)
-    return () => clearInterval(interval)
+    // Also listen for cross-window task updates (from other windows or MCP)
+    const unsub = window.api.on('tasks:updated', () => {
+      fetchTasks()
+    })
+    return () => {
+      clearInterval(interval)
+      unsub()
+    }
   }, [fetchTasks])
 
   const createTask = useCallback(
@@ -67,9 +74,29 @@ export function useTasks(projectId: string) {
   )
 
   // Group tasks by status
-  const todoTasks = tasks.filter((t) => t.status === 'todo')
-  const inProgressTasks = tasks.filter((t) => t.status === 'in_progress')
-  const doneTasks = tasks.filter((t) => t.status === 'done')
+  // Todo: sorted by createdAt DESC (newest first, dragging back resets updatedAt → goes to top)
+  // In Progress / Done: sorted by updatedAt DESC (most recently moved first)
+  const todoTasks = tasks
+    .filter((t) => t.status === 'todo')
+    .sort((a, b) => {
+      const aTime = a.updatedAt || a.createdAt
+      const bTime = b.updatedAt || b.createdAt
+      return bTime.localeCompare(aTime)
+    })
+  const inProgressTasks = tasks
+    .filter((t) => t.status === 'in_progress')
+    .sort((a, b) => {
+      const aTime = a.updatedAt || a.createdAt
+      const bTime = b.updatedAt || b.createdAt
+      return bTime.localeCompare(aTime)
+    })
+  const doneTasks = tasks
+    .filter((t) => t.status === 'done')
+    .sort((a, b) => {
+      const aTime = a.updatedAt || a.createdAt
+      const bTime = b.updatedAt || b.createdAt
+      return bTime.localeCompare(aTime)
+    })
 
   return {
     tasks,

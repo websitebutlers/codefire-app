@@ -75,7 +75,7 @@ export class TaskDAO {
         data.title,
         data.description ?? null,
         Math.min(4, Math.max(0, data.priority ?? 0)),
-        data.source ?? 'claude',
+        data.source ?? 'manual',
         data.labels ? JSON.stringify(data.labels) : null,
         data.isGlobal ? 1 : 0,
         now
@@ -104,10 +104,14 @@ export class TaskDAO {
           ? null
           : existing.completedAt
 
+    const updatedAt = data.status && data.status !== existing.status
+      ? new Date().toISOString()
+      : existing.updatedAt
+
     this.db
       .prepare(
         `UPDATE taskItems
-         SET title = ?, description = ?, status = ?, priority = ?, labels = ?, attachments = ?, completedAt = ?
+         SET title = ?, description = ?, status = ?, priority = ?, labels = ?, attachments = ?, completedAt = ?, updatedAt = ?
          WHERE id = ?`
       )
       .run(
@@ -118,6 +122,7 @@ export class TaskDAO {
         data.labels ? JSON.stringify(data.labels) : existing.labels,
         data.attachments ? JSON.stringify(data.attachments) : existing.attachments,
         completedAt,
+        updatedAt,
         id
       )
     return this.getById(id)

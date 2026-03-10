@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import Database from 'better-sqlite3'
 
-export function registerChatHandlers(db: Database.Database) {
+export function registerChatHandlers(db: Database.Database, browserSessionToken?: string) {
   console.log('[chat-handlers] Registering chat IPC handlers')
 
   ipcMain.handle('chat:listConversations', (_e, projectId: string) => {
@@ -89,8 +89,8 @@ export function registerChatHandlers(db: Database.Database) {
     }
     const now = new Date().toISOString()
     const result = db
-      .prepare('INSERT INTO browserCommands (tool, args, status, createdAt) VALUES (?, ?, ?, ?)')
-      .run(tool, argsJSON, 'pending', now)
+      .prepare('INSERT INTO browserCommands (tool, args, status, createdAt, authToken) VALUES (?, ?, ?, ?, ?)')
+      .run(tool, argsJSON, 'pending', now, browserSessionToken ?? null)
     return { id: result.lastInsertRowid }
   })
 }

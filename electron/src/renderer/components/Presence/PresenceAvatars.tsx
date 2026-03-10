@@ -37,7 +37,8 @@ export default function PresenceAvatars({ projectId }: PresenceAvatarsProps) {
   if (loading || members.length === 0) return null
 
   return (
-    <div className="flex items-center -space-x-1.5">
+    <div className="flex items-center gap-1.5">
+      <span className="text-[10px] text-neutral-500 font-medium">Online</span>
       {members.map((member) => {
         const statusColor =
           member.status === 'active'
@@ -63,12 +64,20 @@ export default function PresenceAvatars({ projectId }: PresenceAvatarsProps) {
             className="relative group"
             title={tooltip}
           >
-            {/* Avatar circle */}
-            <div
-              className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium text-white ring-2 ring-neutral-950 ${colorForUser(member.userId)}`}
-            >
-              {getInitials(member.displayName)}
-            </div>
+            {/* Avatar circle — image or initials */}
+            {member.avatarUrl ? (
+              <img
+                src={member.avatarUrl}
+                alt={member.displayName}
+                className="w-6 h-6 rounded-full ring-2 ring-neutral-950 object-cover"
+              />
+            ) : (
+              <div
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium text-white ring-2 ring-neutral-950 ${colorForUser(member.userId)}`}
+              >
+                {getInitials(member.displayName)}
+              </div>
+            )}
             {/* Status dot */}
             <div
               className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-1 ring-neutral-950 ${statusColor}`}

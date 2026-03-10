@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FolderKanban, Circle, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import { FolderKanban, Folder, Circle, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle } from 'lucide-react'
 import type { Project, TaskItem, Client } from '@shared/models'
 import { api } from '@renderer/lib/api'
 
@@ -11,6 +11,18 @@ interface ProjectTaskCount {
   client: Client | null
   todoCount: number
   inProgressCount: number
+}
+
+function parseTags(tags: string | null): string[] {
+  if (!tags) return []
+  const trimmed = tags.trim()
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean)
+    } catch { /* fall through */ }
+  }
+  return trimmed.split(',').map((t) => t.trim()).filter(Boolean)
 }
 
 export default function ProjectTaskSummary() {
@@ -91,9 +103,9 @@ export default function ProjectTaskSummary() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-800">
-        <FolderKanban size={14} className="text-neutral-400" />
-        <span className="text-xs font-medium text-neutral-300">
+      <div className="flex items-center gap-2 px-3 h-9 border-b border-neutral-800 bg-neutral-950">
+        <FolderKanban size={12} className="text-codefire-orange" />
+        <span className="text-xs font-semibold text-neutral-200">
           Active Tasks by Project
         </span>
         <div className="flex-1" />
@@ -117,11 +129,9 @@ export default function ProjectTaskSummary() {
             )
           })}
         </div>
-        {totalActive > 0 && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">
-            {totalActive}
-          </span>
-        )}
+        <span className="text-[11px] font-bold text-neutral-500 px-1.5 py-0.5 rounded-full bg-neutral-800/80">
+          {totalActive}
+        </span>
       </div>
 
       {/* Content */}
@@ -132,61 +142,73 @@ export default function ProjectTaskSummary() {
           </div>
         ) : sortedSummaries.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-neutral-600">
-            <FolderKanban size={24} className="mb-2 opacity-40" />
-            <p className="text-xs">All clear</p>
-            <p className="text-[10px] mt-0.5 opacity-60">
-              No active tasks across projects
-            </p>
+            <CheckCircle size={24} className="mb-2 text-green-500/60" />
+            <p className="text-xs font-medium text-neutral-500">All clear</p>
           </div>
         ) : (
-          <div className="p-2 space-y-0.5">
-            {sortedSummaries.map((summary) => (
-              <button
-                key={summary.project.id}
-                onClick={() =>
-                  api.windows.openProject(summary.project.id)
-                }
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-neutral-800/60 transition-colors text-left group"
-              >
-                {/* Project name */}
-                <span className="text-xs text-neutral-300 truncate flex-1">
-                  {summary.project.name}
-                </span>
+          <div className="py-1">
+            {sortedSummaries.map((summary) => {
+              const tags = parseTags(summary.project.tags)
+              return (
+                <button
+                  key={summary.project.id}
+                  onClick={() =>
+                    api.windows.openProject(summary.project.id)
+                  }
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-neutral-800/60 transition-colors text-left group"
+                >
+                  {/* Folder icon */}
+                  <Folder size={12} className="text-neutral-500 shrink-0" />
 
-                {/* Client badge */}
-                {summary.client && (
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-                    style={{
-                      backgroundColor: summary.client.color + '20',
-                      color: summary.client.color,
-                    }}
-                  >
-                    {summary.client.name}
+                  {/* Project name */}
+                  <span className="text-xs font-medium text-neutral-300 truncate">
+                    {summary.project.name}
                   </span>
-                )}
 
-                {/* In Progress count */}
-                {summary.inProgressCount > 0 && (
-                  <span className="flex items-center gap-0.5 text-[10px] text-blue-400">
+                  {/* Client badge */}
+                  {summary.client && (
+                    <span
+                      className="text-[9px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
+                      style={{
+                        backgroundColor: summary.client.color || '#6b7280',
+                        color: 'rgba(255,255,255,0.9)',
+                      }}
+                    >
+                      {summary.client.name}
+                    </span>
+                  )}
+
+                  {/* Tag pill */}
+                  {tags.length > 0 && (
+                    <span className="text-[9px] font-medium text-neutral-500 px-1.5 py-0.5 rounded-full bg-neutral-700/50 shrink-0">
+                      {tags[0]}
+                    </span>
+                  )}
+
+                  <span className="flex-1" />
+
+                  {/* In Progress count */}
+                  {summary.inProgressCount > 0 && (
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-blue-400 shrink-0">
+                      <Circle
+                        size={6}
+                        className="fill-blue-400 text-blue-400"
+                      />
+                      {summary.inProgressCount}
+                    </span>
+                  )}
+
+                  {/* Todo count */}
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-codefire-orange shrink-0">
                     <Circle
                       size={6}
-                      className="fill-blue-400 text-blue-400"
+                      className="fill-codefire-orange text-codefire-orange"
                     />
-                    {summary.inProgressCount}
+                    {summary.todoCount}
                   </span>
-                )}
-
-                {/* Todo count */}
-                <span className="flex items-center gap-0.5 text-[10px] text-codefire-orange">
-                  <Circle
-                    size={6}
-                    className="fill-codefire-orange text-codefire-orange"
-                  />
-                  {summary.todoCount}
-                </span>
-              </button>
-            ))}
+                </button>
+              )
+            })}
           </div>
         )}
       </div>

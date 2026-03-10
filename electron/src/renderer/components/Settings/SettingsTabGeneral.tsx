@@ -152,6 +152,17 @@ export default function SettingsTabGeneral({ config, onChange }: Props) {
             { value: 'codex', label: 'Codex CLI' },
           ]}
         />
+        <div className="space-y-1">
+          <label className="text-xs text-neutral-400">Extra arguments</label>
+          <input
+            type="text"
+            value={config.cliExtraArgs || ''}
+            onChange={(e) => onChange({ cliExtraArgs: e.target.value })}
+            placeholder="e.g. --model claude-sonnet-4 --verbose"
+            className="w-full bg-neutral-800 border border-neutral-700 rounded-md px-2.5 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-codefire-orange/50"
+          />
+          <p className="text-[10px] text-neutral-600">Flags appended when launching CLI sessions from tasks</p>
+        </div>
       </Section>
 
       <Section title="About">

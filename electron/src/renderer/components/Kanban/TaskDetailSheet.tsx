@@ -27,10 +27,10 @@ interface TaskDetailSheetProps {
 
 const PRIORITY_OPTIONS = [
   { value: 0, label: 'None', color: 'text-neutral-500', bg: 'bg-neutral-700', icon: Circle },
-  { value: 1, label: 'Low', color: 'text-blue-400', bg: 'bg-blue-500/20', icon: ArrowUp },
+  { value: 1, label: 'Low', color: 'text-neutral-400', bg: 'bg-neutral-500/20', icon: ArrowUp },
   { value: 2, label: 'Medium', color: 'text-yellow-400', bg: 'bg-yellow-500/20', icon: ArrowUpRight },
   { value: 3, label: 'High', color: 'text-orange-400', bg: 'bg-orange-500/20', icon: Flame },
-  { value: 4, label: 'Urgent', color: 'text-red-400', bg: 'bg-red-500/20', icon: AlertTriangle },
+  { value: 4, label: 'Critical', color: 'text-red-400', bg: 'bg-red-500/20', icon: AlertTriangle },
 ]
 
 const SOURCE_BADGES: Record<string, { label: string; color: string; bg: string }> = {
@@ -248,29 +248,53 @@ export default function TaskDetailSheet({
     try {
       const config = (await window.api.invoke('settings:get')) as { preferredCLI?: string } | undefined
       const cli = config?.preferredCLI ?? 'claude'
-      const escapedTitle = task.title.replace(/"/g, '\\"')
-      const command = `${cli} -p "${escapedTitle}"`
-      window.api.send('terminal:writeToActive', command + '\n')
-    } catch { /* ignore */ }
-    finally { setLaunching(false) }
+      // Build prompt from title + description (matching Swift implementation)
+      let prompt = task.title
+      if (task.description) {
+        prompt += '\n\n' + task.description
+      }
+      const escaped = prompt
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\$/g, '\\$')
+        .replace(/`/g, '\\`')
+        .replace(/\n/g, '\\n')
+      const command = `${cli} "${escaped}"`
+
+      // Create a dedicated terminal for this session
+      const project = await api.projects.get(task.projectId) as Project | undefined
+      const projectPath = project?.path ?? '.'
+      const termId = `task-${task.id}-${Date.now()}`
+      await window.api.invoke('terminal:create', termId, projectPath)
+      // Notify renderer to add the terminal tab
+      // (TerminalPanel listens for 'terminal:created')
+      // Brief delay for shell initialization, then write the command
+      setTimeout(() => {
+        window.api.send('terminal:write', termId, command + '\n')
+      }, 300)
+    } catch (err) {
+      console.error('Failed to launch session:', err)
+    } finally { setLaunching(false) }
   }
 
   return (
-    <div className="w-96 border-l border-neutral-800 bg-neutral-900 flex flex-col h-full shrink-0">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800 shrink-0">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <h3 className="text-sm text-neutral-200 font-medium truncate">Task Details</h3>
+    <div className="w-96 bg-neutral-950 rounded-cf border border-neutral-800 flex flex-col h-full shrink-0">
+      {/* Header — matches Kanban column headers */}
+      <div className="shrink-0">
+        <div className="flex items-center gap-2 px-3 h-9">
+          <h3 className="text-sm text-neutral-300 font-medium truncate">Task Details</h3>
           <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${sourceBadge.bg} ${sourceBadge.color} shrink-0`}>
             {sourceBadge.label}
           </span>
+          <div className="flex-1" />
+          <button
+            className="text-neutral-500 hover:text-neutral-300 transition-colors"
+            onClick={onClose}
+          >
+            <X size={16} />
+          </button>
         </div>
-        <button
-          className="text-neutral-500 hover:text-neutral-300 transition-colors ml-2"
-          onClick={onClose}
-        >
-          <X size={16} />
-        </button>
+        <div className="h-0.5 mx-3 rounded-full bg-codefire-orange/40" />
       </div>
 
       {/* Content */}
@@ -393,10 +417,25 @@ export default function TaskDetailSheet({
             Labels
           </label>
           <div className="flex flex-wrap gap-1 mb-2">
-            {labels.map((label) => (
+            {labels.map((label) => {
+              const lc = label.toLowerCase()
+              const labelColorMap: Record<string, string> = {
+                bug: 'bg-red-500/12 text-red-400 border-red-500/30',
+                feature: 'bg-blue-500/12 text-blue-400 border-blue-500/30',
+                refactor: 'bg-purple-500/12 text-purple-400 border-purple-500/30',
+                test: 'bg-green-500/12 text-green-400 border-green-500/30',
+                docs: 'bg-emerald-500/12 text-emerald-400 border-emerald-500/30',
+                performance: 'bg-orange-500/12 text-orange-400 border-orange-500/30',
+                security: 'bg-pink-500/12 text-pink-400 border-pink-500/30',
+                design: 'bg-cyan-500/12 text-cyan-400 border-cyan-500/30',
+                email: 'bg-green-500/12 text-green-400 border-green-500/30',
+                calendar: 'bg-indigo-500/12 text-indigo-400 border-indigo-500/30',
+              }
+              const colorClasses = labelColorMap[lc] || 'bg-neutral-700/80 text-neutral-300 border-neutral-600/50'
+              return (
               <span
                 key={label}
-                className="text-xs px-2 py-0.5 rounded-full bg-neutral-700/80 text-neutral-300 border border-neutral-600/50 flex items-center gap-1"
+                className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${colorClasses}`}
               >
                 {label}
                 <button
@@ -406,7 +445,8 @@ export default function TaskDetailSheet({
                   &times;
                 </button>
               </span>
-            ))}
+              )
+            })}
           </div>
           <div className="flex gap-1">
             <input

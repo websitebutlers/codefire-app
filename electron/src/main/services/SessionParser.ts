@@ -15,6 +15,9 @@ export interface ParsedSession {
   messageCount: number
   toolUseCount: number
   filesChanged: string[]
+  toolNames: string[]
+  userMessages: string[]
+  summary: string | null
   inputTokens: number
   outputTokens: number
   cacheCreationTokens: number
@@ -69,6 +72,9 @@ export function parseSessionFile(content: string, sessionId: string): ParsedSess
     messageCount: 0,
     toolUseCount: 0,
     filesChanged: [],
+    toolNames: [],
+    userMessages: [],
+    summary: null,
     inputTokens: 0,
     outputTokens: 0,
     cacheCreationTokens: 0,
@@ -76,6 +82,8 @@ export function parseSessionFile(content: string, sessionId: string): ParsedSess
   }
 
   const filePathsSet = new Set<string>()
+  const toolNamesList: string[] = []
+  const userMessagesList: string[] = []
   const lines = content.split('\n').filter((line) => line.trim().length > 0)
 
   for (const line of lines) {
@@ -115,6 +123,20 @@ export function parseSessionFile(content: string, sessionId: string): ParsedSess
     // Count user and assistant messages
     result.messageCount++
 
+    // Extract user message text
+    if (type === 'user' && parsed.message) {
+      const content = parsed.message.content
+      if (typeof content === 'string') {
+        userMessagesList.push(content)
+      } else if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block.type === 'text' && typeof (block as Record<string, unknown>).text === 'string') {
+            userMessagesList.push((block as Record<string, unknown>).text as string)
+          }
+        }
+      }
+    }
+
     if (type === 'assistant' && parsed.message) {
       const msg = parsed.message
 
@@ -136,6 +158,8 @@ export function parseSessionFile(content: string, sessionId: string): ParsedSess
         for (const block of msg.content) {
           if (block.type === 'tool_use') {
             result.toolUseCount++
+            const toolName = (block as Record<string, unknown>).name as string
+            if (toolName) toolNamesList.push(toolName)
 
             // Extract file_path from tool inputs
             if (block.input?.file_path && typeof block.input.file_path === 'string') {
@@ -147,8 +171,57 @@ export function parseSessionFile(content: string, sessionId: string): ParsedSess
     }
   }
 
-  result.filesChanged = Array.from(filePathsSet)
+  result.filesChanged = Array.from(filePathsSet).sort()
+  result.toolNames = toolNamesList
+  result.userMessages = userMessagesList
+
+  // Generate summary from first meaningful user message + files changed (matches Swift)
+  if (userMessagesList.length > 0) {
+    // Find the first user message that contains actual user text (not just system tags)
+    let rawTopic = ''
+    for (const msg of userMessagesList) {
+      const cleaned = extractUserText(msg)
+      if (cleaned.length > 0) {
+        rawTopic = cleaned
+        break
+      }
+    }
+    if (rawTopic.length > 0) {
+      let topic = rawTopic.slice(0, 200).trim()
+      if (rawTopic.length > 200) topic += '…'
+      if (result.filesChanged.length > 0) {
+        const maxFiles = 5
+        const fileList = result.filesChanged.slice(0, maxFiles).join(', ')
+        const extra = result.filesChanged.length > maxFiles ? ` (+${result.filesChanged.length - maxFiles} more)` : ''
+        result.summary = `${topic} | Files: ${fileList}${extra}`
+      } else {
+        result.summary = topic
+      }
+    }
+  }
+
   return result
+}
+
+/**
+ * Strip system/XML tags from user messages to extract the actual user intent.
+ * Claude Code session JSONL user messages often contain system tags like
+ * <local-command-caveat>, <system-reminder>, <command-name>, etc.
+ */
+function extractUserText(raw: string): string {
+  // Remove XML-style tags and their content for known system tags
+  let text = raw
+    .replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g, '')
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
+    .replace(/<command-name>[\s\S]*?<\/command-name>/g, '')
+    .replace(/<command-message>[\s\S]*?<\/command-message>/g, '')
+    .replace(/<command-args>[\s\S]*?<\/command-args>/g, '')
+    .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g, '')
+    .replace(/<available-deferred-tools>[\s\S]*?<\/available-deferred-tools>/g, '')
+    .replace(/<[\w-]+>[\s\S]*?<\/antml:[\w-]+>/g, '')
+  // Clean up whitespace
+  text = text.replace(/\s+/g, ' ').trim()
+  return text
 }
 
 // ─── Live Session State ───────────────────────────────────────────────────────
@@ -341,7 +414,7 @@ function calculateCost(
     if (m.includes('opus')) {
       inputRate = 15.0; outputRate = 75.0; cacheCreateRate = 18.75; cacheReadRate = 1.50
     } else if (m.includes('haiku')) {
-      inputRate = 0.25; outputRate = 1.25; cacheCreateRate = 0.30; cacheReadRate = 0.03
+      inputRate = 0.80; outputRate = 4.0; cacheCreateRate = 1.0; cacheReadRate = 0.08
     }
     // sonnet defaults are already set
   }

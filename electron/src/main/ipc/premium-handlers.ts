@@ -4,6 +4,7 @@ import type { TeamService } from '../services/premium/TeamService'
 import type { SyncEngine } from '../services/premium/SyncEngine'
 import type { PresenceService } from '../services/premium/PresenceService'
 import { getSupabaseClient } from '../services/premium/SupabaseClient'
+import { getConfigValue } from '../services/ConfigStore'
 
 /** Ensure thrown values are proper Error instances so Electron IPC serializes the message */
 function ensureError(err: unknown): Error {
@@ -175,10 +176,13 @@ export function registerPremiumHandlers(
     if (!client) return
     const { data: { user } } = await client.auth.getUser()
     if (!user) return
-    const { data: profile } = await client.from('users').select('display_name').eq('id', user.id).single()
+    const { data: profile } = await client.from('users').select('display_name, avatar_url').eq('id', user.id).single()
+    const localName = getConfigValue('profileName')
+    const localAvatar = getConfigValue('profileAvatarUrl')
     await presenceService.joinProject(projectId, {
       userId: user.id,
-      displayName: profile?.display_name || user.email || 'Unknown',
+      displayName: localName || profile?.display_name || user.email || 'Unknown',
+      avatarUrl: localAvatar || profile?.avatar_url || null,
       activeFile: null,
       gitBranch: null,
       onlineAt: new Date().toISOString(),

@@ -5,9 +5,10 @@ interface TabButtonProps {
   icon: ReactNode
   isActive: boolean
   onClick: () => void
+  iconOnly?: boolean
 }
 
-export default function TabButton({ label, icon, isActive, onClick }: TabButtonProps) {
+export default function TabButton({ label, icon, isActive, onClick, iconOnly }: TabButtonProps) {
   return (
     <button
       className={`
@@ -20,9 +21,10 @@ export default function TabButton({ label, icon, isActive, onClick }: TabButtonP
         }
       `}
       onClick={onClick}
+      title={iconOnly ? label : undefined}
     >
       <span className="[&>svg]:w-4 [&>svg]:h-4">{icon}</span>
-      <span className="text-sm leading-none">{label}</span>
+      {!iconOnly && <span className="text-sm leading-none">{label}</span>}
     </button>
   )
 }

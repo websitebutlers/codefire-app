@@ -56,3 +56,7 @@ body {
 /* Drag region for frameless window */
 .drag-region { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }
+
+/* Standardize transition durations to 150ms (matching Swift's easeInOut) */
+/* Override Tailwind's default 100ms for smoother hover states */
+.transition-colors, .transition-all { transition-duration: 150ms !important; }

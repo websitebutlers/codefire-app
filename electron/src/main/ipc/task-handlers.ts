@@ -1,9 +1,18 @@
-import { ipcMain, app, dialog } from 'electron'
+import { ipcMain, app, dialog, BrowserWindow } from 'electron'
 import Database from 'better-sqlite3'
 import * as fs from 'fs'
 import * as path from 'path'
 import { TaskDAO } from '../database/dao/TaskDAO'
 import { TaskNoteDAO } from '../database/dao/TaskNoteDAO'
+
+/** Broadcast task changes to all windows so they can refetch */
+function broadcastTaskUpdate() {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('tasks:updated')
+    }
+  }
+}
 
 export function registerTaskHandlers(db: Database.Database) {
   const taskDAO = new TaskDAO(db)
@@ -38,7 +47,11 @@ export function registerTaskHandlers(db: Database.Database) {
         labels?: string[]
         isGlobal?: boolean
       }
-    ) => taskDAO.create(data)
+    ) => {
+      const task = taskDAO.create(data)
+      broadcastTaskUpdate()
+      return task
+    }
   )
 
   ipcMain.handle(
@@ -53,10 +66,18 @@ export function registerTaskHandlers(db: Database.Database) {
         priority?: number
         labels?: string[]
       }
-    ) => taskDAO.update(id, data)
+    ) => {
+      const task = taskDAO.update(id, data)
+      broadcastTaskUpdate()
+      return task
+    }
   )
 
-  ipcMain.handle('tasks:delete', (_e, id: number) => taskDAO.delete(id))
+  ipcMain.handle('tasks:delete', (_e, id: number) => {
+    const result = taskDAO.delete(id)
+    broadcastTaskUpdate()
+    return result
+  })
 
   // Attachments
   ipcMain.handle(

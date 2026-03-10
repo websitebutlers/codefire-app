@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3'
 import type { CodeChunk } from '@shared/models'
+import { sanitizeFtsQuery } from '../fts-utils'
 
 export class ChunkDAO {
   constructor(private db: Database.Database) {}
@@ -132,20 +133,4 @@ export class ChunkDAO {
       .get(projectId) as { count: number }
     return row.count
   }
-}
-
-/**
- * Sanitize a query string for FTS5 MATCH syntax.
- * Wraps each token in quotes to treat them as literal terms.
- */
-function sanitizeFtsQuery(query: string): string {
-  const tokens = query
-    .replace(/['"]/g, '') // Remove quotes
-    .split(/\s+/)
-    .filter((t) => t.length > 0)
-
-  if (tokens.length === 0) return ''
-
-  // Wrap each token in double quotes to escape FTS5 special characters
-  return tokens.map((t) => `"${t}"`).join(' ')
 }

@@ -971,7 +971,7 @@ export default function CodeFireChat({ projectId, projectName = 'All Projects' }
   return (
     <div className="flex flex-col h-full bg-neutral-900">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-800 bg-neutral-950 shrink-0">
+      <div className="flex items-center gap-2 px-3 h-9 border-b border-neutral-800 bg-neutral-950 shrink-0">
         <Flame size={14} className="text-codefire-orange shrink-0" />
         <span className="text-[11px] font-semibold text-neutral-300 shrink-0">CodeFire</span>
 

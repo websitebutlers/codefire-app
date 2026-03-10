@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3'
 import type { Note } from '@shared/models'
+import { sanitizeFtsQuery } from '../fts-utils'
 
 export class NoteDAO {
   constructor(private db: Database.Database) {}
@@ -97,6 +98,9 @@ export class NoteDAO {
   }
 
   searchFTS(projectId: string, query: string, isGlobal?: boolean): Note[] {
+    const sanitized = sanitizeFtsQuery(query)
+    if (!sanitized) return []
+
     if (isGlobal) {
       return this.db
         .prepare(
@@ -105,7 +109,7 @@ export class NoteDAO {
            WHERE notesFts MATCH ? AND notes.isGlobal = 1
            ORDER BY rank`
         )
-        .all(query) as Note[]
+        .all(sanitized) as Note[]
     }
     return this.db
       .prepare(
@@ -114,6 +118,6 @@ export class NoteDAO {
          WHERE notesFts MATCH ? AND notes.projectId = ?
          ORDER BY rank`
       )
-      .all(query, projectId) as Note[]
+      .all(sanitized, projectId) as Note[]
   }
 }

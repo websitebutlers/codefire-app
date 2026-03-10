@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as fs from 'fs'
+import path from 'path'
 import { resolvePath } from '../../main/services/ProjectDiscovery'
 
 // ─── Mock fs for controlled testing ─────────────────────────────────────────
 
-// We partially mock fs — only statSync is mocked for path resolution tests
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs')
   return {
@@ -16,6 +16,39 @@ vi.mock('fs', async () => {
 
 const mockedStatSync = vi.mocked(fs.statSync)
 
+const isWindows = process.platform === 'win32'
+
+/**
+ * Build platform-appropriate test data.
+ * On Unix: path=/Users/nick, encoded=-Users-nick
+ * On Windows: path=C:\Users\nick, encoded=C--Users-nick
+ */
+function p(...segments: string[]): string {
+  if (isWindows) {
+    return 'C:\\' + segments.join('\\')
+  }
+  return '/' + segments.join('/')
+}
+
+function encode(...segments: string[]): string {
+  // Claude project encoding: replace path separators with dashes
+  if (isWindows) {
+    return 'C--' + segments.join('-')
+  }
+  return '-' + segments.join('-')
+}
+
+/** Build the mock for statSync that accepts a list of existing directories */
+function mockExistingDirs(dirs: string[]) {
+  mockedStatSync.mockImplementation((pathArg: fs.PathLike) => {
+    const pathStr = path.normalize(pathArg.toString())
+    if (dirs.some((d) => path.normalize(d) === pathStr)) {
+      return { isDirectory: () => true } as fs.Stats
+    }
+    throw new Error('ENOENT')
+  })
+}
+
 describe('ProjectDiscovery', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -23,78 +56,50 @@ describe('ProjectDiscovery', () => {
 
   describe('resolvePath', () => {
     it('resolves a simple path with no ambiguity', () => {
-      // Path: /Users/nick/project
-      // Encoded: -Users-nick-project
+      mockExistingDirs([p('Users'), p('Users', 'nick'), p('Users', 'nick', 'project')])
 
-      mockedStatSync.mockImplementation((p: fs.PathLike) => {
-        const pathStr = p.toString()
-        const existingDirs = ['/Users', '/Users/nick', '/Users/nick/project']
-        if (existingDirs.includes(pathStr)) {
-          return { isDirectory: () => true } as fs.Stats
-        }
-        throw new Error('ENOENT')
-      })
-
-      const result = resolvePath('-Users-nick-project')
-      expect(result).toBe('/Users/nick/project')
+      const result = resolvePath(encode('Users', 'nick', 'project'))
+      expect(result).toBe(p('Users', 'nick', 'project'))
     })
 
     it('resolves a path with dashes in directory names', () => {
-      // Path: /Users/nick/my-project
-      // Encoded: -Users-nick-my-project
+      mockExistingDirs([
+        p('Users'),
+        p('Users', 'nick'),
+        p('Users', 'nick', 'my-project'),
+      ])
 
-      mockedStatSync.mockImplementation((p: fs.PathLike) => {
-        const pathStr = p.toString()
-        const existingDirs = ['/Users', '/Users/nick', '/Users/nick/my-project']
-        if (existingDirs.includes(pathStr)) {
-          return { isDirectory: () => true } as fs.Stats
-        }
-        throw new Error('ENOENT')
-      })
-
-      const result = resolvePath('-Users-nick-my-project')
-      expect(result).toBe('/Users/nick/my-project')
+      const result = resolvePath(encode('Users', 'nick', 'my-project'))
+      expect(result).toBe(p('Users', 'nick', 'my-project'))
     })
 
     it('resolves a path with dots in directory names', () => {
-      // Path: /Users/nick/.config
-      // Encoded: -Users-nick--config
+      // Encoded: double dash represents a dot
+      mockExistingDirs([p('Users'), p('Users', 'nick'), p('Users', 'nick', '.config')])
 
-      mockedStatSync.mockImplementation((p: fs.PathLike) => {
-        const pathStr = p.toString()
-        const existingDirs = ['/Users', '/Users/nick', '/Users/nick/.config']
-        if (existingDirs.includes(pathStr)) {
-          return { isDirectory: () => true } as fs.Stats
-        }
-        throw new Error('ENOENT')
-      })
-
-      const result = resolvePath('-Users-nick--config')
-      expect(result).toBe('/Users/nick/.config')
+      // On Unix: -Users-nick--config (-- = .)
+      // On Windows: C--Users-nick--config (-- = .)
+      const encoded = isWindows ? 'C--Users-nick--config' : '-Users-nick--config'
+      const result = resolvePath(encoded)
+      expect(result).toBe(p('Users', 'nick', '.config'))
     })
 
     it('resolves a path with spaces in directory names', () => {
-      // Path: /Users/nick/my project
-      // Encoded: -Users-nick-my-project
+      // Ambiguous with dashes — filesystem determines which wins
+      mockExistingDirs([p('Users'), p('Users', 'nick'), p('Users', 'nick', 'my project')])
 
-      // This is ambiguous with dashes — the filesystem determines which wins.
-      // We set up the filesystem so only the space version exists.
-      mockedStatSync.mockImplementation((p: fs.PathLike) => {
-        const pathStr = p.toString()
-        const existingDirs = ['/Users', '/Users/nick', '/Users/nick/my project']
-        if (existingDirs.includes(pathStr)) {
-          return { isDirectory: () => true } as fs.Stats
-        }
-        throw new Error('ENOENT')
-      })
-
-      const result = resolvePath('-Users-nick-my-project')
-      expect(result).toBe('/Users/nick/my project')
+      const result = resolvePath(encode('Users', 'nick', 'my-project'))
+      expect(result).toBe(p('Users', 'nick', 'my project'))
     })
 
-    it('returns null for the bare `-` directory', () => {
-      const result = resolvePath('-')
-      expect(result).toBeNull()
+    it('returns null for invalid encoded paths', () => {
+      if (isWindows) {
+        // On Windows, bare `-` is invalid (no drive letter)
+        expect(resolvePath('-')).toBeNull()
+      } else {
+        // On Unix, bare `-` has no path segments after the root
+        expect(resolvePath('-')).toBeNull()
+      }
     })
 
     it('returns null when no valid path can be resolved', () => {
@@ -102,80 +107,59 @@ describe('ProjectDiscovery', () => {
         throw new Error('ENOENT')
       })
 
-      const result = resolvePath('-nonexistent-path-here')
+      const encoded = isWindows ? 'C--nonexistent-path-here' : '-nonexistent-path-here'
+      const result = resolvePath(encoded)
       expect(result).toBeNull()
     })
 
-    it('returns null for strings that do not start with `-`', () => {
+    it('returns null for strings that do not match encoding format', () => {
       const result = resolvePath('Users-nick-project')
       expect(result).toBeNull()
     })
 
     it('handles deep nested paths', () => {
-      // Path: /Users/nick/Documents/projects/my-app
-      // Encoded: -Users-nick-Documents-projects-my-app
+      mockExistingDirs([
+        p('Users'),
+        p('Users', 'nick'),
+        p('Users', 'nick', 'Documents'),
+        p('Users', 'nick', 'Documents', 'projects'),
+        p('Users', 'nick', 'Documents', 'projects', 'my-app'),
+      ])
 
-      mockedStatSync.mockImplementation((p: fs.PathLike) => {
-        const pathStr = p.toString()
-        const existingDirs = [
-          '/Users',
-          '/Users/nick',
-          '/Users/nick/Documents',
-          '/Users/nick/Documents/projects',
-          '/Users/nick/Documents/projects/my-app',
-        ]
-        if (existingDirs.includes(pathStr)) {
-          return { isDirectory: () => true } as fs.Stats
-        }
-        throw new Error('ENOENT')
-      })
-
-      const result = resolvePath('-Users-nick-Documents-projects-my-app')
-      expect(result).toBe('/Users/nick/Documents/projects/my-app')
+      const result = resolvePath(encode('Users', 'nick', 'Documents', 'projects', 'my-app'))
+      expect(result).toBe(p('Users', 'nick', 'Documents', 'projects', 'my-app'))
     })
 
     it('respects timeout on complex encodings', () => {
-      // Provide a very short timeout and a path that cannot resolve
       mockedStatSync.mockImplementation(() => {
         throw new Error('ENOENT')
       })
 
       const start = Date.now()
-      const result = resolvePath(
-        '-a-b-c-d-e-f-g-h-i-j-k-l-m-n-o-p-q-r-s-t-u-v-w-x-y-z',
-        50
-      )
+      const encoded = isWindows
+        ? 'C--a-b-c-d-e-f-g-h-i-j-k-l-m-n-o-p-q-r-s-t-u-v-w-x-y-z'
+        : '-a-b-c-d-e-f-g-h-i-j-k-l-m-n-o-p-q-r-s-t-u-v-w-x-y-z'
+      const result = resolvePath(encoded, 50)
       const elapsed = Date.now() - start
 
       expect(result).toBeNull()
-      // Should complete within a reasonable margin of the timeout
       expect(elapsed).toBeLessThan(200)
     })
 
     it('resolves real-world Claude project encoding pattern', () => {
-      // Path: /Users/nicknorris/Documents/claude-code-projects/claude-context-tool
-      // Encoded: -Users-nicknorris-Documents-claude-code-projects-claude-context-tool
-
-      mockedStatSync.mockImplementation((p: fs.PathLike) => {
-        const pathStr = p.toString()
-        const existingDirs = [
-          '/Users',
-          '/Users/nicknorris',
-          '/Users/nicknorris/Documents',
-          '/Users/nicknorris/Documents/claude-code-projects',
-          '/Users/nicknorris/Documents/claude-code-projects/claude-context-tool',
-        ]
-        if (existingDirs.includes(pathStr)) {
-          return { isDirectory: () => true } as fs.Stats
-        }
-        throw new Error('ENOENT')
-      })
+      mockExistingDirs([
+        p('Users'),
+        p('Users', 'nicknorris'),
+        p('Users', 'nicknorris', 'Documents'),
+        p('Users', 'nicknorris', 'Documents', 'claude-code-projects'),
+        p('Users', 'nicknorris', 'Documents', 'claude-code-projects', 'claude-context-tool'),
+      ])
 
       const result = resolvePath(
-        '-Users-nicknorris-Documents-claude-code-projects-claude-context-tool'
+        encode('Users', 'nicknorris', 'Documents', 'claude-code-projects', 'claude-context-tool')
       )
       expect(result).toBe(
-        '/Users/nicknorris/Documents/claude-code-projects/claude-context-tool'
+        p('Users', 'nicknorris', 'Documents', 'claude-code-projects', 'claude-context-tool')
       )
     })
   })

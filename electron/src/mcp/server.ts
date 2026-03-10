@@ -546,6 +546,22 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/** Read the browser session token written by the main Electron process */
+function getBrowserSessionToken(): string | null {
+  try {
+    const appData =
+      process.platform === 'win32'
+        ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'CodeFire')
+        : process.platform === 'darwin'
+          ? path.join(os.homedir(), 'Library', 'Application Support', 'CodeFire')
+          : path.join(os.homedir(), '.config', 'CodeFire')
+    const tokenPath = path.join(appData, '.browser-session-token')
+    return fs.readFileSync(tokenPath, 'utf-8').trim()
+  } catch {
+    return null
+  }
+}
+
 async function executeBrowserCommand(
   tool: string,
   args: Record<string, unknown> = {},
@@ -553,12 +569,13 @@ async function executeBrowserCommand(
 ): Promise<string> {
   const argsJSON = Object.keys(args).length > 0 ? JSON.stringify(args) : null
   const now = new Date().toISOString()
+  const authToken = getBrowserSessionToken()
 
   const result = db
     .prepare(
-      'INSERT INTO browserCommands (tool, args, status, createdAt) VALUES (?, ?, ?, ?)'
+      'INSERT INTO browserCommands (tool, args, status, createdAt, authToken) VALUES (?, ?, ?, ?, ?)'
     )
-    .run(tool, argsJSON, 'pending', now)
+    .run(tool, argsJSON, 'pending', now, authToken)
 
   const commandId = result.lastInsertRowid
 
@@ -1871,92 +1888,433 @@ server.registerTool(
 
 // ── Semantic / Hybrid Search ─────────────────────────────────────────────────
 
+// ── Query Preprocessing (matches Swift's QueryPreprocessor) ─────────────────
+
+type QueryType = 'symbol' | 'concept' | 'pattern'
+
+const SYNONYM_MAP: Record<string, string[]> = {
+  auth: ['authentication', 'login', 'signup', 'password', 'token', 'session', 'oauth', 'jwt', 'credential'],
+  database: ['db', 'sql', 'query', 'migration', 'schema', 'table', 'model', 'orm', 'repository', 'dao'],
+  api: ['endpoint', 'route', 'handler', 'controller', 'request', 'response', 'rest', 'graphql', 'fetch'],
+  ui: ['component', 'view', 'render', 'layout', 'widget', 'screen', 'page', 'template', 'style'],
+  error: ['exception', 'catch', 'throw', 'failure', 'crash', 'bug', 'issue', 'debug'],
+  test: ['spec', 'assert', 'mock', 'fixture', 'expect', 'describe', 'it', 'vitest', 'jest'],
+  network: ['http', 'https', 'socket', 'websocket', 'tcp', 'fetch', 'axios', 'request'],
+  storage: ['cache', 'store', 'persist', 'save', 'load', 'write', 'read', 'file', 'disk'],
+  config: ['settings', 'options', 'preferences', 'environment', 'env', 'dotenv', 'configuration'],
+  nav: ['navigation', 'router', 'route', 'redirect', 'link', 'page', 'url', 'path'],
+  state: ['store', 'redux', 'context', 'provider', 'reducer', 'action', 'dispatch', 'atom', 'signal'],
+  style: ['css', 'tailwind', 'theme', 'color', 'font', 'layout', 'responsive', 'dark'],
+  async: ['promise', 'await', 'callback', 'observable', 'stream', 'event', 'listener', 'subscribe'],
+  parse: ['parser', 'tokenize', 'lexer', 'ast', 'transform', 'serialize', 'deserialize', 'decode', 'encode'],
+  validate: ['validator', 'schema', 'zod', 'yup', 'sanitize', 'check', 'verify', 'constraint'],
+  security: ['encrypt', 'decrypt', 'hash', 'salt', 'csrf', 'xss', 'cors', 'sanitize', 'auth'],
+  deploy: ['build', 'ci', 'cd', 'pipeline', 'docker', 'container', 'release', 'publish', 'bundle'],
+  git: ['commit', 'branch', 'merge', 'rebase', 'pull', 'push', 'diff', 'status', 'remote'],
+}
+
+const FILLER_WORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+  'should', 'may', 'might', 'can', 'shall', 'to', 'of', 'in', 'for',
+  'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during',
+  'that', 'this', 'these', 'those', 'it', 'its', 'and', 'or', 'but',
+  'not', 'no', 'nor', 'so', 'yet', 'both', 'each', 'every', 'all',
+  'how', 'what', 'where', 'when', 'which', 'who', 'whom', 'why',
+  'i', 'me', 'my', 'we', 'our', 'you', 'your', 'he', 'she', 'they',
+  'them', 'their', 'about', 'up', 'out', 'if', 'then', 'than',
+])
+
+function classifyQuery(query: string): QueryType {
+  // Symbol queries: camelCase, snake_case, PascalCase, dot notation, contains ::, #, ->
+  if (/[A-Z][a-z]+[A-Z]/.test(query) || /_[a-z]/.test(query) || /[.#:]{2}|->/.test(query)) {
+    return 'symbol'
+  }
+  // Concept queries: natural language (4+ words)
+  const words = query.split(/\s+/).filter(Boolean)
+  if (words.length >= 4) return 'concept'
+  // Pattern: balanced
+  return 'pattern'
+}
+
+function preprocessQuery(query: string): { ftsQuery: string; queryType: QueryType; keywordWeight: number; semanticWeight: number } {
+  const queryType = classifyQuery(query)
+
+  // Tokenize: strip filler words for 4+ word queries
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  const tokens = words.length >= 4 ? words.filter((w) => !FILLER_WORDS.has(w)) : words
+
+  // Expand with synonyms
+  const expanded = new Set(tokens)
+  for (const token of tokens) {
+    for (const [, synonyms] of Object.entries(SYNONYM_MAP)) {
+      if (synonyms.includes(token)) {
+        for (const syn of synonyms) expanded.add(syn)
+        break
+      }
+    }
+  }
+
+  // Build FTS query: OR the original + expanded terms
+  const ftsTerms = Array.from(expanded).map((t) => `"${t}"`).join(' OR ')
+
+  // Select weights based on query type
+  const weights: Record<QueryType, { kw: number; sem: number }> = {
+    symbol: { kw: 0.6, sem: 0.4 },
+    concept: { kw: 0.15, sem: 0.85 },
+    pattern: { kw: 0.3, sem: 0.7 },
+  }
+
+  return {
+    ftsQuery: ftsTerms || query,
+    queryType,
+    keywordWeight: weights[queryType].kw,
+    semanticWeight: weights[queryType].sem,
+  }
+}
+
+// ── Embedding helpers ───────────────────────────────────────────────────────
+
+const embeddingCache = new Map<string, number[]>()
+const EMBEDDING_CACHE_MAX = 50
+
+function readConfigFromDisk(): Record<string, unknown> {
+  try {
+    let configDir: string
+    switch (process.platform) {
+      case 'darwin':
+        configDir = path.join(os.homedir(), 'Library', 'Application Support', 'CodeFire')
+        break
+      case 'win32':
+        configDir = path.join(
+          process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
+          'CodeFire'
+        )
+        break
+      default:
+        configDir = path.join(os.homedir(), '.config', 'CodeFire')
+    }
+    const configPath = path.join(configDir, 'codefire-settings.json')
+    if (fs.existsSync(configPath)) {
+      return JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+    }
+  } catch {}
+  return {}
+}
+
+function getOpenRouterKey(): string | null {
+  const config = readConfigFromDisk()
+  const key = (config.openRouterKey as string) || ''
+  if (!key) return null
+  // Handle encrypted values — MCP server can't decrypt safeStorage (different process).
+  // If encrypted (starts with 'enc:'), we can't use it from the MCP process.
+  if (key.startsWith('enc:')) return null
+  return key
+}
+
+function getEmbeddingModel(): string {
+  const config = readConfigFromDisk()
+  return (config.embeddingModel as string) || 'openai/text-embedding-3-small'
+}
+
+async function embedQuery(text: string, apiKey: string, model: string): Promise<number[] | null> {
+  const cacheKey = text.toLowerCase().trim().replace(/\s+/g, ' ')
+  if (embeddingCache.has(cacheKey)) return embeddingCache.get(cacheKey)!
+
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'X-Title': 'CodeFire',
+      },
+      body: JSON.stringify({ model, input: text }),
+    })
+
+    if (!response.ok) return null
+    const json = await response.json() as { data?: { embedding?: number[] }[] }
+    const embedding = json.data?.[0]?.embedding
+    if (!embedding) return null
+
+    // LRU cache
+    if (embeddingCache.size >= EMBEDDING_CACHE_MAX) {
+      const keys = Array.from(embeddingCache.keys())
+      if (keys.length > 0) embeddingCache.delete(keys[0])
+    }
+    embeddingCache.set(cacheKey, embedding)
+    return embedding
+  } catch {
+    return null
+  }
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0
+  let dot = 0, normA = 0, normB = 0
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i]
+    normA += a[i] * a[i]
+    normB += b[i] * b[i]
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB)
+  return denom === 0 ? 0 : dot / denom
+}
+
+// ── Context Search Tool ─────────────────────────────────────────────────────
+
 server.registerTool(
   'context_search',
   {
     title: 'Context Search',
-    description: 'Hybrid search across notes, tasks, sessions, and code. Combines FTS5 full-text search across multiple tables for comprehensive results.',
+    description:
+      'Semantic code search across the current project. Finds functions, classes, documentation, and git history matching natural language queries. Uses hybrid vector similarity + keyword search when embeddings are available.',
     inputSchema: z.object({
-      query: z.string().describe('Search query'),
+      query: z.string().describe('Search query (natural language or code symbol)'),
       projectId: z.string().optional().describe('Limit to a specific project'),
       scope: z.enum(['all', 'notes', 'tasks', 'sessions', 'code']).optional().describe("Search scope (default 'all')"),
-      limit: z.number().optional().describe('Max results per category (default 5)'),
+      limit: z.number().optional().describe('Max results per category (default 10)'),
+      types: z.array(z.enum(['function', 'class', 'block', 'doc', 'commit'])).optional().describe('Filter code results by chunk type'),
     }),
   },
-  async ({ query, projectId, scope, limit }) => {
-    const maxResults = limit ?? 5
+  async ({ query, projectId, scope, limit, types }) => {
+    const maxResults = limit ?? 10
     const searchScope = scope ?? 'all'
+    const { ftsQuery, queryType, keywordWeight, semanticWeight } = preprocessQuery(query)
     const results: Record<string, unknown[]> = {}
+    const meta: Record<string, unknown> = { queryType }
 
     // Notes (FTS5)
     if (searchScope === 'all' || searchScope === 'notes') {
       try {
         const noteRows = projectId
           ? db.prepare(
-              `SELECT notes.*, rank FROM notes JOIN notesFts ON notes.id = notesFts.rowid
-               WHERE notesFts MATCH ? AND notes.projectId = ? ORDER BY rank LIMIT ?`
-            ).all(query, projectId, maxResults)
+              `SELECT notes.*, bm25(notesFts) AS score FROM notes JOIN notesFts ON notes.id = notesFts.rowid
+               WHERE notesFts MATCH ? AND notes.projectId = ? ORDER BY score LIMIT ?`
+            ).all(ftsQuery, projectId, maxResults)
           : db.prepare(
-              `SELECT notes.*, rank FROM notes JOIN notesFts ON notes.id = notesFts.rowid
-               WHERE notesFts MATCH ? ORDER BY rank LIMIT ?`
-            ).all(query, maxResults)
+              `SELECT notes.*, bm25(notesFts) AS score FROM notes JOIN notesFts ON notes.id = notesFts.rowid
+               WHERE notesFts MATCH ? ORDER BY score LIMIT ?`
+            ).all(ftsQuery, maxResults)
         results.notes = noteRows
       } catch { results.notes = [] }
     }
 
-    // Tasks (FTS on title/description)
+    // Tasks (FTS5 via taskItemsFts)
     if (searchScope === 'all' || searchScope === 'tasks') {
       try {
         const taskRows = projectId
           ? db.prepare(
-              `SELECT * FROM taskItems WHERE projectId = ? AND (title LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%') ORDER BY updatedAt DESC LIMIT ?`
-            ).all(projectId, query, query, maxResults)
+              `SELECT taskItems.*, bm25(taskItemsFts) AS score FROM taskItems JOIN taskItemsFts ON taskItems.id = taskItemsFts.rowid
+               WHERE taskItemsFts MATCH ? AND taskItems.projectId = ? ORDER BY score LIMIT ?`
+            ).all(ftsQuery, projectId, maxResults)
           : db.prepare(
-              `SELECT * FROM taskItems WHERE title LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%' ORDER BY updatedAt DESC LIMIT ?`
-            ).all(query, query, maxResults)
+              `SELECT taskItems.*, bm25(taskItemsFts) AS score FROM taskItems JOIN taskItemsFts ON taskItems.id = taskItemsFts.rowid
+               WHERE taskItemsFts MATCH ? ORDER BY score LIMIT ?`
+            ).all(ftsQuery, maxResults)
         results.tasks = taskRows
-      } catch { results.tasks = [] }
+      } catch {
+        // Fallback to LIKE if FTS table doesn't exist
+        try {
+          const taskRows = projectId
+            ? db.prepare(
+                `SELECT * FROM taskItems WHERE projectId = ? AND (title LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%') ORDER BY updatedAt DESC LIMIT ?`
+              ).all(projectId, query, query, maxResults)
+            : db.prepare(
+                `SELECT * FROM taskItems WHERE title LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%' ORDER BY updatedAt DESC LIMIT ?`
+              ).all(query, query, maxResults)
+          results.tasks = taskRows
+        } catch { results.tasks = [] }
+      }
     }
 
-    // Sessions (LIKE search on rawContent/summary)
+    // Sessions (FTS5 via sessionsFts)
     if (searchScope === 'all' || searchScope === 'sessions') {
       try {
         const sessionRows = projectId
           ? db.prepare(
-              `SELECT id, projectId, agent, model, startedAt, endedAt, inputTokens, outputTokens, totalCost
-               FROM sessions WHERE projectId = ? AND (rawContent LIKE '%' || ? || '%' OR summary LIKE '%' || ? || '%')
-               ORDER BY startedAt DESC LIMIT ?`
-            ).all(projectId, query, query, maxResults)
+              `SELECT sessions.id, sessions.projectId, sessions.agent, sessions.model, sessions.startedAt,
+                      sessions.endedAt, sessions.inputTokens, sessions.outputTokens, sessions.totalCost,
+                      sessions.summary, bm25(sessionsFts) AS score
+               FROM sessions JOIN sessionsFts ON sessions.id = sessionsFts.rowid
+               WHERE sessionsFts MATCH ? AND sessions.projectId = ?
+               ORDER BY score LIMIT ?`
+            ).all(ftsQuery, projectId, maxResults)
           : db.prepare(
-              `SELECT id, projectId, agent, model, startedAt, endedAt, inputTokens, outputTokens, totalCost
-               FROM sessions WHERE rawContent LIKE '%' || ? || '%' OR summary LIKE '%' || ? || '%'
-               ORDER BY startedAt DESC LIMIT ?`
-            ).all(query, query, maxResults)
+              `SELECT sessions.id, sessions.projectId, sessions.agent, sessions.model, sessions.startedAt,
+                      sessions.endedAt, sessions.inputTokens, sessions.outputTokens, sessions.totalCost,
+                      sessions.summary, bm25(sessionsFts) AS score
+               FROM sessions JOIN sessionsFts ON sessions.id = sessionsFts.rowid
+               WHERE sessionsFts MATCH ? ORDER BY score LIMIT ?`
+            ).all(ftsQuery, maxResults)
         results.sessions = sessionRows
-      } catch { results.sessions = [] }
+      } catch {
+        // Fallback to LIKE
+        try {
+          const sessionRows = projectId
+            ? db.prepare(
+                `SELECT id, projectId, agent, model, startedAt, endedAt, inputTokens, outputTokens, totalCost
+                 FROM sessions WHERE projectId = ? AND (rawContent LIKE '%' || ? || '%' OR summary LIKE '%' || ? || '%')
+                 ORDER BY startedAt DESC LIMIT ?`
+              ).all(projectId, query, query, maxResults)
+            : db.prepare(
+                `SELECT id, projectId, agent, model, startedAt, endedAt, inputTokens, outputTokens, totalCost
+                 FROM sessions WHERE rawContent LIKE '%' || ? || '%' OR summary LIKE '%' || ? || '%'
+                 ORDER BY startedAt DESC LIMIT ?`
+              ).all(query, query, maxResults)
+          results.sessions = sessionRows
+        } catch { results.sessions = [] }
+      }
     }
 
-    // Code (FTS5 on codeChunks)
+    // Code — Hybrid FTS5 + semantic search
     if (searchScope === 'all' || searchScope === 'code') {
+      // FTS5 keyword search
+      let ftsResults: { id: number; score: number; [key: string]: unknown }[] = []
       try {
-        const codeRows = projectId
-          ? db.prepare(
-              `SELECT codeChunks.*, bm25(codeChunksFts) AS score FROM codeChunks
-               JOIN codeChunksFts ON codeChunks.id = codeChunksFts.rowid
-               WHERE codeChunksFts MATCH ? AND codeChunks.projectId = ?
-               ORDER BY score LIMIT ?`
-            ).all(query, projectId, maxResults)
-          : db.prepare(
-              `SELECT codeChunks.*, bm25(codeChunksFts) AS score FROM codeChunks
-               JOIN codeChunksFts ON codeChunks.id = codeChunksFts.rowid
-               WHERE codeChunksFts MATCH ? ORDER BY score LIMIT ?`
-            ).all(query, maxResults)
-        results.code = codeRows
-      } catch { results.code = [] }
+        const typeFilter = types?.length
+          ? ` AND codeChunks.chunkType IN (${types.map((t) => `'${t}'`).join(',')})`
+          : ''
+        const projectFilter = projectId ? ' AND codeChunks.projectId = ?' : ''
+        const params: unknown[] = [ftsQuery]
+        if (projectId) params.push(projectId)
+        params.push(50) // fetch more for merging with semantic
+
+        ftsResults = db.prepare(
+          `SELECT codeChunks.*, bm25(codeChunksFts) AS score FROM codeChunks
+           JOIN codeChunksFts ON codeChunks.id = codeChunksFts.rowid
+           WHERE codeChunksFts MATCH ?${projectFilter}${typeFilter}
+           ORDER BY score LIMIT ?`
+        ).all(...params) as { id: number; score: number; [key: string]: unknown }[]
+      } catch { /* FTS may not be populated */ }
+
+      // Normalize FTS scores (BM25 returns negative values, lower = better)
+      const maxFts = ftsResults.length > 0 ? Math.min(...ftsResults.map((r) => r.score)) : 0
+      const ftsScoreMap = new Map<number, number>()
+      for (const row of ftsResults) {
+        const normalized = maxFts !== 0 ? row.score / maxFts : 0
+        ftsScoreMap.set(row.id, normalized)
+      }
+
+      // Semantic search (if API key available and embeddings exist)
+      let semanticScoreMap = new Map<number, number>()
+      const apiKey = getOpenRouterKey()
+      let embeddingStatus: string = 'none'
+
+      if (apiKey) {
+        // Check if any chunks have embeddings
+        try {
+          const hasEmbeddings = db.prepare(
+            projectId
+              ? 'SELECT COUNT(*) as cnt FROM codeChunks WHERE embedding IS NOT NULL AND projectId = ?'
+              : 'SELECT COUNT(*) as cnt FROM codeChunks WHERE embedding IS NOT NULL'
+          ).get(...(projectId ? [projectId] : [])) as { cnt: number }
+
+          if (hasEmbeddings.cnt > 0) {
+            embeddingStatus = 'available'
+            const queryEmbedding = await embedQuery(query, apiKey, getEmbeddingModel())
+
+            if (queryEmbedding) {
+              // Fetch chunks with embeddings
+              const typeFilter = types?.length
+                ? ` AND chunkType IN (${types.map((t) => `'${t}'`).join(',')})`
+                : ''
+              const projectFilter = projectId ? ' AND projectId = ?' : ''
+              const params: unknown[] = projectId ? [projectId] : []
+
+              const chunks = db.prepare(
+                `SELECT id, embedding FROM codeChunks WHERE embedding IS NOT NULL${projectFilter}${typeFilter}`
+              ).all(...params) as { id: number; embedding: Buffer }[]
+
+              for (const chunk of chunks) {
+                try {
+                  const embeddingArray = Array.from(new Float32Array(chunk.embedding.buffer, chunk.embedding.byteOffset, chunk.embedding.byteLength / 4))
+                  const similarity = cosineSimilarity(queryEmbedding, embeddingArray)
+                  if (similarity > 0.15) {
+                    semanticScoreMap.set(chunk.id, similarity)
+                  }
+                } catch { /* skip malformed embeddings */ }
+              }
+            }
+          } else {
+            embeddingStatus = 'no_embeddings'
+            // Request indexing
+            try {
+              const project = projectId
+                ? (db.prepare('SELECT id, path FROM projects WHERE id = ?').get(projectId) as { id: string; path: string } | undefined)
+                : detectProject(db)
+              if (project) {
+                db.prepare(
+                  "INSERT OR IGNORE INTO indexRequests (projectId, projectPath, status, createdAt) VALUES (?, ?, 'pending', ?)"
+                ).run(project.id, project.path, new Date().toISOString())
+              }
+            } catch { /* ignore */ }
+          }
+        } catch { embeddingStatus = 'error' }
+      }
+
+      meta.embeddingStatus = embeddingStatus
+
+      // Merge FTS + semantic scores
+      const allChunkIds = new Set(Array.from(ftsScoreMap.keys()).concat(Array.from(semanticScoreMap.keys())))
+      const mergedScores: { id: number; combinedScore: number; keywordScore: number; semanticScore: number }[] = []
+
+      for (const id of Array.from(allChunkIds)) {
+        const kw = ftsScoreMap.get(id) ?? 0
+        const sem = semanticScoreMap.get(id) ?? 0
+        const combined = kw * keywordWeight + sem * semanticWeight
+        mergedScores.push({ id, combinedScore: combined, keywordScore: kw, semanticScore: sem })
+      }
+
+      mergedScores.sort((a, b) => b.combinedScore - a.combinedScore)
+      const topIds = mergedScores.slice(0, maxResults)
+
+      if (topIds.length > 0) {
+        const placeholders = topIds.map(() => '?').join(',')
+        const chunks = db.prepare(
+          `SELECT id, projectId, fileId, chunkType, name, startLine, endLine, content FROM codeChunks WHERE id IN (${placeholders})`
+        ).all(...topIds.map((t) => t.id)) as { id: number; [key: string]: unknown }[]
+
+        const chunkMap = new Map(chunks.map((c) => [c.id, c]))
+        results.code = topIds.map((scored) => {
+          const chunk = chunkMap.get(scored.id)
+          if (!chunk) return null
+          // Resolve file path
+          let filePath: string | null = null
+          if (chunk.fileId) {
+            const file = db.prepare('SELECT relativePath FROM indexedFiles WHERE id = ?').get(chunk.fileId) as { relativePath: string } | undefined
+            if (file) filePath = file.relativePath
+          }
+          return {
+            ...chunk,
+            file: filePath,
+            score: Math.round(scored.combinedScore * 1000) / 1000,
+            score_breakdown: {
+              keyword: Math.round(scored.keywordScore * 1000) / 1000,
+              semantic: Math.round(scored.semanticScore * 1000) / 1000,
+            },
+          }
+        }).filter(Boolean)
+      } else {
+        results.code = []
+      }
+
+      // Check index status
+      if (projectId) {
+        try {
+          const indexState = db.prepare('SELECT status FROM indexState WHERE projectId = ?').get(projectId) as { status: string } | undefined
+          meta.indexStatus = indexState?.status ?? 'unknown'
+        } catch {}
+      }
     }
 
     const totalHits = Object.values(results).reduce((sum, arr) => sum + arr.length, 0)
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ totalHits, results }, null, 2) }] }
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({ totalHits, ...meta, results }, null, 2),
+      }],
+    }
   }
 )
 
@@ -2076,6 +2434,383 @@ server.registerTool(
     return { content: [{ type: 'text' as const, text: JSON.stringify(env, null, 2) }] }
   }
 )
+
+// ── Cloud Service Detection ──────────────────────────────────────────────────
+
+server.registerTool(
+  'detect_services',
+  {
+    title: 'Detect Cloud Services',
+    description:
+      'Detect cloud services and deployment platforms configured in the project (Firebase, Supabase, Vercel, Netlify, Docker, Railway, AWS Amplify).',
+    inputSchema: z.object({
+      project_id: z.string().optional().describe('Project ID. Auto-detected if omitted.'),
+    }),
+  },
+  async ({ project_id }) => {
+    let dir: string
+    if (project_id) {
+      const row = db.prepare('SELECT path FROM projects WHERE id = ?').get(project_id) as { path: string } | undefined
+      if (!row) return { content: [{ type: 'text' as const, text: `Project ${project_id} not found.` }] }
+      dir = row.path
+    } else {
+      dir = resolveProjectPath()
+    }
+
+    const serviceChecks: { service: string; files: string[]; dashboardUrl: string }[] = [
+      { service: 'Firebase', files: ['firebase.json', '.firebaserc'], dashboardUrl: 'https://console.firebase.google.com' },
+      { service: 'Supabase', files: ['supabase/config.toml'], dashboardUrl: 'https://supabase.com/dashboard' },
+      { service: 'Vercel', files: ['vercel.json', '.vercel/project.json'], dashboardUrl: 'https://vercel.com/dashboard' },
+      { service: 'Netlify', files: ['netlify.toml'], dashboardUrl: 'https://app.netlify.com' },
+      { service: 'Docker', files: ['docker-compose.yml', 'docker-compose.yaml', 'Dockerfile'], dashboardUrl: 'https://hub.docker.com' },
+      { service: 'Railway', files: ['railway.toml', 'railway.json'], dashboardUrl: 'https://railway.app/dashboard' },
+      { service: 'AWS Amplify', files: ['amplify/'], dashboardUrl: 'https://console.aws.amazon.com/amplify' },
+    ]
+
+    const services: { service: string; config_file: string; dashboard_url: string }[] = []
+
+    for (const check of serviceChecks) {
+      for (const file of check.files) {
+        const fullPath = path.join(dir, file)
+        if (fs.existsSync(fullPath)) {
+          services.push({ service: check.service, config_file: file, dashboard_url: check.dashboardUrl })
+          break
+        }
+      }
+    }
+
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify({ services, count: services.length }, null, 2) }],
+    }
+  }
+)
+
+server.registerTool(
+  'list_env_files',
+  {
+    title: 'List Environment Files',
+    description:
+      'List environment files (.env, .env.local, .env.development, etc.) in the project with variable counts.',
+    inputSchema: z.object({
+      project_id: z.string().optional().describe('Project ID. Auto-detected if omitted.'),
+    }),
+  },
+  async ({ project_id }) => {
+    let dir: string
+    if (project_id) {
+      const row = db.prepare('SELECT path FROM projects WHERE id = ?').get(project_id) as { path: string } | undefined
+      if (!row) return { content: [{ type: 'text' as const, text: `Project ${project_id} not found.` }] }
+      dir = row.path
+    } else {
+      dir = resolveProjectPath()
+    }
+
+    const envFileNames = [
+      '.env', '.env.local', '.env.development', '.env.staging',
+      '.env.production', '.env.example', '.env.template', '.env.sample',
+      '.env.test', '.env.development.local', '.env.production.local',
+    ]
+
+    const files: { name: string; variable_count: number }[] = []
+
+    for (const name of envFileNames) {
+      const fullPath = path.join(dir, name)
+      if (fs.existsSync(fullPath)) {
+        try {
+          const content = fs.readFileSync(fullPath, 'utf-8')
+          const variableCount = content
+            .split('\n')
+            .filter((line) => {
+              const trimmed = line.trim()
+              return trimmed && !trimmed.startsWith('#') && trimmed.includes('=')
+            }).length
+          files.push({ name, variable_count: variableCount })
+        } catch {
+          files.push({ name, variable_count: 0 })
+        }
+      }
+    }
+
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify({ files, count: files.length }, null, 2) }],
+    }
+  }
+)
+
+server.registerTool(
+  'get_env_variables',
+  {
+    title: 'Get Environment Variables',
+    description:
+      'Parse and return variables from a specific environment file. Values are always masked for security.',
+    inputSchema: z.object({
+      file_name: z.string().describe("Environment file name (e.g. '.env', '.env.local')"),
+      project_id: z.string().optional().describe('Project ID. Auto-detected if omitted.'),
+    }),
+  },
+  async ({ file_name, project_id }) => {
+    let dir: string
+    if (project_id) {
+      const row = db.prepare('SELECT path FROM projects WHERE id = ?').get(project_id) as { path: string } | undefined
+      if (!row) return { content: [{ type: 'text' as const, text: `Project ${project_id} not found.` }] }
+      dir = row.path
+    } else {
+      dir = resolveProjectPath()
+    }
+
+    // Security: ensure file is within project directory
+    const fullPath = path.resolve(dir, file_name)
+    const realDir = fs.realpathSync(dir)
+    if (!fullPath.startsWith(realDir)) {
+      return { content: [{ type: 'text' as const, text: 'Error: File path must be within project directory.' }] }
+    }
+
+    if (!fs.existsSync(fullPath)) {
+      return { content: [{ type: 'text' as const, text: `File ${file_name} not found.` }] }
+    }
+
+    const content = fs.readFileSync(fullPath, 'utf-8')
+    const variables: { key: string; value: string }[] = []
+
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const eqIdx = trimmed.indexOf('=')
+      if (eqIdx === -1) continue
+
+      const key = trimmed.substring(0, eqIdx).trim()
+      let value = trimmed.substring(eqIdx + 1).trim()
+      // Strip surrounding quotes
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1)
+      }
+      // Mask value
+      const masked = value.length <= 4 ? '*'.repeat(value.length) : value.substring(0, 2) + '*'.repeat(20)
+      variables.push({ key, value: masked })
+    }
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify({ file: file_name, variables, count: variables.length, values_masked: true }, null, 2),
+        },
+      ],
+    }
+  }
+)
+
+// ─── Patterns ─────────────────────────────────────────────────────────────────
+
+server.registerTool(
+  'get_patterns',
+  {
+    title: 'Get Code Patterns',
+    description:
+      'List recorded code patterns, conventions, and architecture decisions for a project. ' +
+      'Filter by category (e.g., architecture, naming, schema, workflow).',
+    inputSchema: z.object({
+      project_id: z.string().optional().describe('Project ID. Auto-detected if omitted.'),
+      category: z.string().optional().describe('Filter by category name'),
+    }),
+  },
+  async ({ project_id, category }) => {
+    const pid = project_id ?? detectProject(db)?.id
+    if (!pid) {
+      return {
+        content: [{ type: 'text' as const, text: 'No project found. Provide project_id.' }],
+      }
+    }
+
+    let query = 'SELECT * FROM patterns WHERE projectId = ?'
+    const params: unknown[] = [pid]
+    if (category) {
+      query += ' AND category = ?'
+      params.push(category)
+    }
+    query += ' ORDER BY category, createdAt DESC'
+
+    const patterns = db.prepare(query).all(...params) as Array<{
+      id: number
+      projectId: string
+      category: string
+      title: string
+      description: string
+      sourceSession: string | null
+      autoDetected: number
+      createdAt: string
+    }>
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(
+            {
+              patterns: patterns.map((p) => ({
+                id: p.id,
+                category: p.category,
+                title: p.title,
+                description: p.description,
+                autoDetected: !!p.autoDetected,
+                createdAt: p.createdAt,
+              })),
+              count: patterns.length,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+    }
+  }
+)
+
+// ─── Project Profile ─────────────────────────────────────────────────────────
+
+server.registerTool(
+  'get_project_profile',
+  {
+    title: 'Get Project Profile',
+    description:
+      'Get a comprehensive project profile including file structure, architecture, ' +
+      'database schema, and recent git activity. Generates fresh if no cache exists. ' +
+      'Use this to understand a project before making changes.',
+    inputSchema: z.object({
+      project_id: z.string().optional().describe('Project ID. Auto-detected if omitted.'),
+      refresh: z.boolean().optional().describe('Force regeneration even if cached. Default false.'),
+    }),
+  },
+  async ({ project_id, refresh }) => {
+    const project = project_id
+      ? (db.prepare('SELECT * FROM projects WHERE id = ?').get(project_id) as { id: string; name: string; path: string } | undefined)
+      : detectProject(db)
+
+    if (!project) {
+      return {
+        content: [{ type: 'text' as const, text: 'No project found. Provide project_id or run from a project directory.' }],
+      }
+    }
+
+    // Check cache first
+    if (!refresh) {
+      const cached = db
+        .prepare('SELECT profileText FROM codebaseSnapshots WHERE projectId = ? ORDER BY capturedAt DESC LIMIT 1')
+        .get(project.id) as { profileText: string | null } | undefined
+      if (cached?.profileText) {
+        return {
+          content: [{ type: 'text' as const, text: cached.profileText }],
+        }
+      }
+    }
+
+    // Generate fresh profile inline (lightweight — no external dependencies)
+    try {
+      const profileText = await generateProfile(project.id, project.path, project.name)
+      return {
+        content: [{ type: 'text' as const, text: profileText }],
+      }
+    } catch (err) {
+      return {
+        content: [{ type: 'text' as const, text: `Failed to generate profile: ${err instanceof Error ? err.message : String(err)}` }],
+      }
+    }
+  }
+)
+
+/** Inline profile generator for MCP server (avoids importing heavy modules) */
+async function generateProfile(projectId: string, projectPath: string, projectName: string): Promise<string> {
+  const SKIP = new Set(['node_modules', '.build', 'build', '.dart_tool', '__pycache__', '.next', 'dist', '.git', '.gradle', 'Pods', 'dist-electron', '.svelte-kit', '.nuxt', '.output', 'coverage', '.cache'])
+  const SRC_EXT = new Set(['ts', 'tsx', 'js', 'jsx', 'swift', 'dart', 'py', 'rs', 'go', 'java', 'kt', 'rb', 'php', 'c', 'cpp', 'h', 'cs', 'vue', 'svelte'])
+
+  // Detect project type
+  const exists = (n: string) => { try { return fs.existsSync(path.join(projectPath, n)) } catch { return false } }
+  let projectType = 'Unknown'
+  if (exists('pubspec.yaml')) projectType = 'Flutter / Dart'
+  else if (exists('Package.swift')) projectType = 'Swift Package'
+  else if (exists('next.config.js') || exists('next.config.ts')) projectType = 'Next.js'
+  else if (exists('Cargo.toml')) projectType = 'Rust'
+  else if (exists('go.mod')) projectType = 'Go'
+  else if (exists('pyproject.toml') || exists('requirements.txt')) projectType = 'Python'
+  else if (exists('tsconfig.json')) projectType = 'TypeScript'
+  else if (exists('package.json')) projectType = 'Node.js'
+
+  // Scan file tree
+  interface FNode { dir: string; ext: string; lines: number }
+  const files: FNode[] = []
+  function walk(dir: string) {
+    if (files.length >= 2000) return
+    let entries: fs.Dirent[]
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return }
+    for (const e of entries) {
+      if (files.length >= 2000) break
+      if (e.isDirectory()) {
+        if (!SKIP.has(e.name) && !e.name.startsWith('.')) walk(path.join(dir, e.name))
+      } else if (e.isFile()) {
+        const ext = path.extname(e.name).slice(1).toLowerCase()
+        if (!SRC_EXT.has(ext)) continue
+        const abs = path.join(dir, e.name)
+        const rel = path.relative(projectPath, abs).replace(/\\/g, '/')
+        let lines = 0
+        try { lines = fs.readFileSync(abs, 'utf-8').split('\n').length } catch {}
+        files.push({ dir: path.dirname(rel), ext, lines })
+      }
+    }
+  }
+  walk(projectPath)
+
+  // Git history
+  let gitLines: string[] = []
+  try {
+    const { stdout } = await execFileAsync('git', ['log', '--oneline', '--format=%H|%s|%an|%ai', '-n', '10'], { cwd: projectPath, timeout: 5000 })
+    gitLines = String(stdout).trim().split('\n').filter(Boolean)
+  } catch {}
+
+  // Build profile
+  const sections: string[] = []
+  sections.push(`PROJECT PROFILE: ${projectName}`)
+  sections.push(`Type: ${projectType}`)
+  sections.push(`Path: ${projectPath}`)
+  sections.push('')
+
+  // File tree
+  if (files.length > 0) {
+    const dirMap = new Map<string, { f: number; l: number; exts: Set<string> }>()
+    for (const f of files) {
+      const d = f.dir || '.'
+      const e = dirMap.get(d) ?? { f: 0, l: 0, exts: new Set() }
+      e.f++; e.l += f.lines; e.exts.add(f.ext)
+      dirMap.set(d, e)
+    }
+    const totalLines = files.reduce((s, f) => s + f.lines, 0)
+    sections.push(`FILE STRUCTURE (${files.length} files, ${totalLines.toLocaleString()} lines):`)
+    const sorted = Array.from(dirMap.entries()).sort((a, b) => b[1].f - a[1].f).slice(0, 20)
+    for (const [dir, info] of sorted) {
+      sections.push(`  ${dir}/ (${info.f} files, ${info.l.toLocaleString()} lines) [${Array.from(info.exts).join(', ')}]`)
+    }
+    sections.push('')
+  }
+
+  // Git
+  if (gitLines.length > 0) {
+    sections.push('RECENT GIT ACTIVITY:')
+    for (const line of gitLines) {
+      const [, message, author, date] = line.split('|')
+      sections.push(`  - ${date?.slice(0, 10)}: ${message} (${author})`)
+    }
+    sections.push('')
+  }
+
+  const profileText = sections.join('\n')
+
+  // Cache in DB
+  db.prepare('DELETE FROM codebaseSnapshots WHERE projectId = ?').run(projectId)
+  db.prepare(
+    `INSERT INTO codebaseSnapshots (projectId, capturedAt, profileText) VALUES (?, datetime('now'), ?)`
+  ).run(projectId, profileText)
+
+  return profileText
+}
 
 // ─── Start ───────────────────────────────────────────────────────────────────
 

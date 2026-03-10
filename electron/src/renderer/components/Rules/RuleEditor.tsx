@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { ScrollText, RotateCcw, Save } from 'lucide-react'
+import { ScrollText, RotateCcw, Save, Sparkles, Loader2 } from 'lucide-react'
+import { api } from '@renderer/lib/api'
 import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
 import { markdown } from '@codemirror/lang-markdown'
@@ -13,6 +14,7 @@ interface RuleEditorProps {
   filePath: string
   exists: boolean
   content: string
+  projectPath: string
   onSave: (filePath: string, content: string) => Promise<void>
   onCreate: (filePath: string) => Promise<void>
 }
@@ -29,6 +31,21 @@ const buttonColors = {
   orange: 'bg-codefire-orange hover:bg-codefire-orange-hover',
 } as const
 
+const scopeDescriptions: Record<string, string> = {
+  global: '~/.claude/CLAUDE.md — Applied to all projects',
+  project: 'CLAUDE.md — Committed to repo, shared with team',
+  local: '.claude/CLAUDE.md — Local only, gitignored',
+}
+
+const scopeExplanations: Record<string, string> = {
+  global:
+    'Global rules apply to every project. Use this for personal preferences like coding style, communication style, or tools you always want Claude to use.',
+  project:
+    'Project rules are committed to your repository and shared with your team. Use this for project-specific conventions, architecture decisions, and coding standards.',
+  local:
+    'Local rules are gitignored and only apply to you. Use this for personal overrides, local environment details, or experimental instructions you don\'t want to share.',
+}
+
 export default function RuleEditor({
   scope,
   label,
@@ -36,12 +53,14 @@ export default function RuleEditor({
   filePath,
   exists,
   content,
+  projectPath,
   onSave,
   onCreate,
 }: RuleEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [unsaved, setUnsaved] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const savedContentRef = useRef(content)
 
   // Track the original content for revert
@@ -122,6 +141,27 @@ export default function RuleEditor({
     setUnsaved(false)
   }, [])
 
+  const handleGenerate = useCallback(async () => {
+    if (!scope || !projectPath) return
+    setGenerating(true)
+    try {
+      const generated = await api.rules.generate(projectPath, scope)
+      if (viewRef.current) {
+        viewRef.current.dispatch({
+          changes: {
+            from: 0,
+            to: viewRef.current.state.doc.length,
+            insert: generated,
+          },
+        })
+      }
+    } catch (err) {
+      console.error('Failed to generate rules:', err)
+    } finally {
+      setGenerating(false)
+    }
+  }, [scope, projectPath])
+
   // ── Nothing selected ──────────────────────────────────────────────────────
   if (!scope) {
     return (
@@ -136,17 +176,52 @@ export default function RuleEditor({
   if (!exists) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-neutral-500">
-        <ScrollText size={32} className="mb-3" />
-        <p className="text-sm font-medium text-neutral-300 mb-1">{label}</p>
-        <p className="text-xs text-neutral-600 mb-4 max-w-xs text-center truncate" title={filePath}>
-          {filePath}
+        <ScrollText size={32} className={`mb-3 ${badgeColors[color].split(' ')[1]}`} />
+        <p className="text-sm font-medium text-neutral-300 mb-1">
+          {scope ? scope.charAt(0).toUpperCase() + scope.slice(1) : ''} CLAUDE.md
         </p>
-        <button
-          className={`px-4 py-2 rounded-cf text-sm text-white font-medium transition-colors ${buttonColors[color]}`}
-          onClick={() => onCreate(filePath)}
-        >
-          Create with Template
-        </button>
+        <p className="text-xs text-neutral-500 mb-2">
+          {scope ? scopeDescriptions[scope] : ''}
+        </p>
+        <p className="text-xs text-neutral-600 mb-5 max-w-sm text-center leading-relaxed">
+          {scope ? scopeExplanations[scope] : ''}
+        </p>
+        <div className="flex gap-2">
+          <button
+            className={`px-4 py-2 rounded-cf text-sm text-white font-medium transition-colors ${buttonColors[color]}`}
+            onClick={() => onCreate(filePath)}
+          >
+            Create with Template
+          </button>
+          <button
+            className="px-4 py-2 rounded-cf text-sm text-white font-medium transition-colors bg-purple-500 hover:bg-purple-600 disabled:opacity-30"
+            onClick={async () => {
+              setGenerating(true)
+              try {
+                const generated = await api.rules.generate(projectPath, scope || 'project')
+                await onCreate(filePath)
+                // Small delay to let editor mount, then set content
+                setTimeout(() => {
+                  if (viewRef.current) {
+                    viewRef.current.dispatch({
+                      changes: { from: 0, to: viewRef.current.state.doc.length, insert: generated },
+                    })
+                  }
+                }, 100)
+              } catch (err) {
+                console.error('Failed to generate rules:', err)
+              } finally {
+                setGenerating(false)
+              }
+            }}
+            disabled={generating}
+          >
+            <span className="flex items-center gap-1">
+              {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {generating ? 'Generating...' : 'Generate with AI'}
+            </span>
+          </button>
+        </div>
       </div>
     )
   }
@@ -165,10 +240,26 @@ export default function RuleEditor({
 
         {/* Unsaved indicator */}
         {unsaved && (
-          <span className="w-1.5 h-1.5 rounded-full bg-codefire-orange shrink-0" title="Unsaved changes" />
+          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-codefire-orange/15 text-codefire-orange">
+            Unsaved
+          </span>
         )}
 
         <div className="flex-1" />
+
+        {/* Generate with AI button */}
+        <button
+          className="px-3 py-1 rounded-cf text-xs font-medium bg-purple-500/20 text-purple-400
+                     hover:bg-purple-500/30 transition-colors disabled:opacity-30"
+          onClick={handleGenerate}
+          disabled={generating}
+          title="Generate rules with AI"
+        >
+          <span className="flex items-center gap-1">
+            {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+            {generating ? 'Generating...' : 'Generate with AI'}
+          </span>
+        </button>
 
         {/* Revert button */}
         <button

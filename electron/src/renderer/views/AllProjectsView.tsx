@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { useGlobalTasks } from '@renderer/hooks/useGlobalTasks'
 import KanbanBoard from '@renderer/components/Kanban/KanbanBoard'
@@ -6,10 +6,16 @@ import { SortControls, sortTasks, type SortOption } from '@renderer/components/K
 import ProjectTaskSummary from '@renderer/components/Home/ProjectTaskSummary'
 import RecentEmails from '@renderer/components/Home/RecentEmails'
 import { ListTodo } from 'lucide-react'
+import { api } from '@renderer/lib/api'
+import type { TaskItem } from '@shared/models'
+import type { Project, Client } from '@shared/models'
 
 export default function AllProjectsView() {
   const [sort, setSort] = useState<SortOption>({ field: 'recent', dir: 'desc' })
+  const [filterProject, setFilterProject] = useState<string>('all')
+  const [filterGroup, setFilterGroup] = useState<string>('all')
   const {
+    tasks,
     todoTasks,
     inProgressTasks,
     doneTasks,
@@ -19,6 +25,56 @@ export default function AllProjectsView() {
     updateTask,
     deleteTask,
   } = useGlobalTasks()
+
+  // Fetch projects and clients/groups for filter options
+  const [projectNames, setProjectNames] = useState<Record<string, string>>({})
+  const [projects, setProjects] = useState<Project[]>([])
+  const [clients, setClients] = useState<Client[]>([])
+
+  useEffect(() => {
+    Promise.all([api.projects.list(), api.clients.list()]).then(([projectList, clientList]) => {
+      const map: Record<string, string> = {}
+      for (const p of projectList) {
+        if (p.id !== '__global__') map[p.id] = p.name
+      }
+      setProjectNames(map)
+      setProjects(projectList)
+      setClients(clientList)
+    }).catch(() => {})
+  }, [])
+
+  // Collect unique project IDs that have tasks
+  const projectOptions = useMemo(() => {
+    const projectSet = new Set<string>()
+    for (const t of tasks) {
+      if (t.projectId) projectSet.add(t.projectId)
+    }
+    return Array.from(projectSet).sort()
+  }, [tasks])
+
+  // Map clientId → set of projectIds for group filtering
+  const groupProjectIds = useMemo(() => {
+    const map: Record<string, Set<string>> = {}
+    for (const p of projects) {
+      if (p.clientId) {
+        if (!map[p.clientId]) map[p.clientId] = new Set()
+        map[p.clientId].add(p.id)
+      }
+    }
+    return map
+  }, [projects])
+
+  // Apply filters
+  const applyFilter = useCallback((list: TaskItem[]) => {
+    return list.filter((t) => {
+      if (filterProject !== 'all' && t.projectId !== filterProject) return false
+      if (filterGroup !== 'all') {
+        const groupProjects = groupProjectIds[filterGroup]
+        if (!groupProjects || !groupProjects.has(t.projectId)) return false
+      }
+      return true
+    })
+  }, [filterProject, filterGroup, groupProjectIds])
 
   if (loading) {
     return (
@@ -36,22 +92,49 @@ export default function AllProjectsView() {
     )
   }
 
-  const openCount = todoTasks.length + inProgressTasks.length
+  const filteredTodo = applyFilter(todoTasks)
+  const filteredInProgress = applyFilter(inProgressTasks)
+  const filteredDone = applyFilter(doneTasks)
 
   return (
     <div className="flex flex-col h-full bg-neutral-900">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-neutral-800 shrink-0">
+      <div className="flex items-center gap-2 px-3 h-9 border-b border-neutral-800 bg-neutral-950 shrink-0">
         <ListTodo size={16} className="text-codefire-orange" />
         <h1 className="text-sm font-semibold text-neutral-200">Planner</h1>
-        <span className="text-xs text-neutral-500">Global tasks & emails</span>
+
+        {/* Project filter */}
+        <select
+          value={filterProject}
+          onChange={(e) => setFilterProject(e.target.value)}
+          className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 rounded px-1.5 py-0.5 focus:outline-none focus:border-neutral-600"
+        >
+          <option value="all">All Projects</option>
+          <option value="__global__">Global</option>
+          {projectOptions.filter(id => id !== '__global__').map((id) => (
+            <option key={id} value={id}>{projectNames[id] || id.slice(0, 8)}</option>
+          ))}
+        </select>
+
+        {/* Group/Client filter */}
+        <select
+          value={filterGroup}
+          onChange={(e) => setFilterGroup(e.target.value)}
+          className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 rounded px-1.5 py-0.5 focus:outline-none focus:border-neutral-600"
+        >
+          <option value="all">All Groups</option>
+          {clients.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+
         <div className="flex-1" />
         <SortControls sort={sort} onChange={setSort} />
         <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">
-          {openCount} open
+          {filteredTodo.length + filteredInProgress.length} open
         </span>
         <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-500">
-          {doneTasks.length} done
+          {filteredDone.length} done
         </span>
       </div>
 
@@ -62,12 +145,14 @@ export default function AllProjectsView() {
           <Panel id="kanban" defaultSize="60%" minSize="25%">
             <div className="h-full overflow-hidden">
               <KanbanBoard
-                todoTasks={sortTasks(todoTasks, sort)}
-                inProgressTasks={sortTasks(inProgressTasks, sort)}
-                doneTasks={sortTasks(doneTasks, sort)}
+                todoTasks={sortTasks(filteredTodo, sort)}
+                inProgressTasks={sortTasks(filteredInProgress, sort)}
+                doneTasks={sortTasks(filteredDone, sort)}
                 onUpdateTask={updateTask}
                 onDeleteTask={deleteTask}
                 onAddTask={createTask}
+                projectNames={projectNames}
+                projectId="__global__"
               />
             </div>
           </Panel>

@@ -226,7 +226,7 @@ export default function Sidebar({ selectedProjectId, onProjectSelect, onHomeClic
             </button>
           </div>
           <div className="flex items-center gap-1.5">
-            {['#F97316', '#3B82F6', '#10B981', '#A855F7', '#EF4444', '#F59E0B'].map((color) => (
+            {['#F97316', '#3B82F6', '#10B981', '#A855F7', '#EF4444', '#F59E0B', '#EC4899', '#06B6D4'].map((color) => (
               <button
                 key={color}
                 onClick={() => setNewGroupColor(color)}

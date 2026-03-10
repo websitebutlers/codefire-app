@@ -74,12 +74,13 @@ export default function ImageViewer({ image, onVariation }: ImageViewerProps) {
     setGenerating(true)
     setEditError(null)
     try {
-      const result = await api.images.generate({
-        projectId: image.projectId,
+      // Use edit API — sends original image + edit prompt to Gemini
+      const result = await api.images.edit({
+        imageId: image.id,
         prompt,
         apiKey,
         aspectRatio: image.aspectRatio ?? '1:1',
-        imageSize: '1K',
+        imageSize: image.imageSize ?? '1K',
       })
       if (result.error) {
         setEditError(result.error)
@@ -89,7 +90,7 @@ export default function ImageViewer({ image, onVariation }: ImageViewerProps) {
         setEditPrompt('')
       }
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : 'Generation failed')
+      setEditError(err instanceof Error ? err.message : 'Edit failed')
     } finally {
       setGenerating(false)
     }
@@ -124,9 +125,9 @@ export default function ImageViewer({ image, onVariation }: ImageViewerProps) {
                 ? 'bg-purple-500/15 text-purple-400'
                 : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
             }`}
-            title="Create variation"
+            title="Edit image with AI"
           >
-            <RefreshCw size={10} /> Variation
+            <RefreshCw size={10} /> Edit
           </button>
           <button
             type="button"
@@ -176,7 +177,7 @@ export default function ImageViewer({ image, onVariation }: ImageViewerProps) {
             <textarea
               value={editPrompt}
               onChange={(e) => setEditPrompt(e.target.value)}
-              placeholder="Edit prompt for variation..."
+              placeholder="Describe how to modify this image..."
               rows={3}
               className="w-full bg-neutral-800 border border-neutral-700 rounded px-3 py-2 text-xs text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-purple-500/50 resize-none"
             />
@@ -191,7 +192,7 @@ export default function ImageViewer({ image, onVariation }: ImageViewerProps) {
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 rounded text-xs transition-colors disabled:opacity-50"
               >
                 {generating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                {generating ? 'Generating...' : 'Generate Variation'}
+                {generating ? 'Editing...' : 'Apply Edit'}
               </button>
               <button
                 type="button"

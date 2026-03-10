@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import {
   Zap,
-  ChevronUp,
   ChevronDown,
   Eye,
   ShieldCheck,
@@ -160,7 +159,7 @@ export default function TaskLauncherCard({ projectId }: TaskLauncherCardProps) {
           onClick={() => setIsExpanded(!isExpanded)}
           className="text-neutral-500 hover:text-neutral-300 transition-colors p-0.5"
         >
-          {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          <ChevronDown size={12} className={`transition-transform duration-150 ${isExpanded ? 'rotate-180' : 'rotate-0'}`} />
         </button>
       </div>
 

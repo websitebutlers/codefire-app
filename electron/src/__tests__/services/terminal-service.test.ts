@@ -1,32 +1,40 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { createRequire } from 'module'
 
 // ─── Mock node-pty ────────────────────────────────────────────────────────────
+// TerminalService uses require('node-pty') at module scope.
+// We patch the require cache before importing the service module.
 
-const mockPty = vi.hoisted(() => {
-  const createMockIPty = () => ({
-    write: vi.fn(),
-    resize: vi.fn(),
-    kill: vi.fn(),
-    onData: vi.fn(),
-    onExit: vi.fn(),
-    pid: 12345,
-    cols: 80,
-    rows: 24,
-    process: '/bin/zsh',
-  })
-
-  return {
-    spawn: vi.fn(() => createMockIPty()),
-    createMockIPty,
-  }
+const createMockIPty = () => ({
+  write: vi.fn(),
+  resize: vi.fn(),
+  kill: vi.fn(),
+  onData: vi.fn(),
+  onExit: vi.fn(),
+  pid: 12345,
+  cols: 80,
+  rows: 24,
+  process: '/bin/zsh',
 })
 
-vi.mock('node-pty', () => ({
-  default: mockPty,
-  spawn: mockPty.spawn,
-}))
+const mockPty = {
+  spawn: vi.fn(() => createMockIPty()),
+}
 
-import { TerminalService } from '../../main/services/TerminalService'
+// Patch the require cache so require('node-pty') returns our mock
+const require_ = createRequire(import.meta.url)
+const nodePtyPath = require_.resolve('node-pty')
+require_.cache[nodePtyPath] = {
+  id: nodePtyPath,
+  filename: nodePtyPath,
+  loaded: true,
+  exports: mockPty,
+  children: [],
+  paths: [],
+  path: '',
+} as unknown as NodeModule
+
+const { TerminalService } = await import('../../main/services/TerminalService')
 
 describe('TerminalService', () => {
   let service: TerminalService
@@ -94,7 +102,6 @@ describe('TerminalService', () => {
     })
 
     it('does nothing for nonexistent session', () => {
-      // Should not throw
       expect(() => service.write('nonexistent', 'data')).not.toThrow()
     })
   })

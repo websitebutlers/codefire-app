@@ -1,15 +1,21 @@
-import { useState } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { api } from '@renderer/lib/api'
 import {
   DndContext,
+  DragOverlay,
+  type DragStartEvent,
   type DragEndEvent,
+  type DragOverEvent,
   PointerSensor,
   useSensor,
   useSensors,
-  closestCorners,
+  closestCenter,
 } from '@dnd-kit/core'
 import type { TaskItem } from '@shared/models'
 import KanbanColumn from './KanbanColumn'
 import TaskDetailSheet from './TaskDetailSheet'
+import TaskCreateModal from './TaskCreateModal'
+import TaskCard from './TaskCard'
 
 interface KanbanBoardProps {
   todoTasks: TaskItem[]
@@ -27,13 +33,21 @@ interface KanbanBoardProps {
   ) => Promise<void>
   onDeleteTask: (id: number) => Promise<void>
   onAddTask: (title: string, status?: string) => Promise<unknown>
+  /** Map of projectId → projectName, for showing project badge on task cards in global view */
+  projectNames?: Record<string, string>
+  /** Project path for launching CLI sessions */
+  projectPath?: string
+  /** Project ID for task creation */
+  projectId?: string
 }
 
 const COLUMNS = [
-  { id: 'todo', title: 'Todo', color: 'bg-neutral-400' },
-  { id: 'in_progress', title: 'In Progress', color: 'bg-codefire-orange' },
-  { id: 'done', title: 'Done', color: 'bg-success' },
+  { id: 'todo', title: 'Todo', color: 'text-orange-400', icon: 'circle' as const },
+  { id: 'in_progress', title: 'In Progress', color: 'text-blue-400', icon: 'circle-dot' as const },
+  { id: 'done', title: 'Done', color: 'text-green-400', icon: 'check-circle' as const },
 ] as const
+
+const COLUMN_IDS = new Set<string>(COLUMNS.map((c) => c.id))
 
 export default function KanbanBoard({
   todoTasks,
@@ -42,8 +56,26 @@ export default function KanbanBoard({
   onUpdateTask,
   onDeleteTask,
   onAddTask,
+  projectNames,
+  projectPath,
+  projectId,
 }: KanbanBoardProps) {
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null)
+  const [activeTask, setActiveTask] = useState<TaskItem | null>(null)
+  const [overColumnId, setOverColumnId] = useState<string | null>(null)
+  const [createModalStatus, setCreateModalStatus] = useState<string | null>(null)
+
+  // Local optimistic state: null means "use props", otherwise use this override
+  const [optimisticTasks, setOptimisticTasks] = useState<Record<string, TaskItem[]> | null>(null)
+  const pendingUpdate = useRef(false)
+
+  // Clear optimistic state when props change (server confirmed the update)
+  useEffect(() => {
+    if (pendingUpdate.current) {
+      setOptimisticTasks(null)
+      pendingUpdate.current = false
+    }
+  }, [todoTasks, inProgressTasks, doneTasks])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -51,7 +83,14 @@ export default function KanbanBoard({
     })
   )
 
+  const allTasks = useCallback(() => {
+    return [...todoTasks, ...inProgressTasks, ...doneTasks]
+  }, [todoTasks, inProgressTasks, doneTasks])
+
   const getTasksForColumn = (columnId: string): TaskItem[] => {
+    if (optimisticTasks) {
+      return optimisticTasks[columnId] || []
+    }
     switch (columnId) {
       case 'todo':
         return todoTasks
@@ -66,37 +105,121 @@ export default function KanbanBoard({
 
   const findTaskColumn = (taskId: string): string | null => {
     const id = Number(taskId)
+    if (optimisticTasks) {
+      for (const [col, tasks] of Object.entries(optimisticTasks)) {
+        if (tasks.some((t) => t.id === id)) return col
+      }
+      return null
+    }
     if (todoTasks.some((t) => t.id === id)) return 'todo'
     if (inProgressTasks.some((t) => t.id === id)) return 'in_progress'
     if (doneTasks.some((t) => t.id === id)) return 'done'
     return null
   }
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+  const resolveColumnId = (id: string | number): string | null => {
+    const idStr = String(id)
+    if (COLUMN_IDS.has(idStr)) return idStr
+    return findTaskColumn(idStr)
+  }
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const task = allTasks().find((t) => String(t.id) === String(event.active.id))
+    setActiveTask(task || null)
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { over } = event
+    if (!over) {
+      setOverColumnId(null)
+      return
+    }
+    setOverColumnId(resolveColumnId(over.id))
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
+
+    // Always clear drag state
+    setActiveTask(null)
+    setOverColumnId(null)
+
     if (!over) return
 
     const taskId = Number(active.id)
     const sourceColumn = findTaskColumn(String(active.id))
+    const targetColumn = resolveColumnId(over.id)
 
-    // Determine target column — over could be a column or a task within a column
-    let targetColumn: string | null = null
-    if (COLUMNS.some((c) => c.id === over.id)) {
-      targetColumn = over.id as string
-    } else {
-      targetColumn = findTaskColumn(String(over.id))
+    if (!targetColumn || !sourceColumn || targetColumn === sourceColumn) return
+
+    // Optimistic update: move the task in local state immediately
+    const task = allTasks().find((t) => t.id === taskId)
+    if (!task) return
+
+    const updatedTask = { ...task, status: targetColumn }
+    const newState: Record<string, TaskItem[]> = {
+      todo: todoTasks.filter((t) => t.id !== taskId),
+      in_progress: inProgressTasks.filter((t) => t.id !== taskId),
+      done: doneTasks.filter((t) => t.id !== taskId),
     }
+    newState[targetColumn] = [...newState[targetColumn], updatedTask]
+    setOptimisticTasks(newState)
+    pendingUpdate.current = true
 
-    if (!targetColumn || targetColumn === sourceColumn) return
-
-    await onUpdateTask(taskId, { status: targetColumn })
+    // Fire-and-forget the backend update; if it fails, the next refetch corrects state
+    onUpdateTask(taskId, { status: targetColumn }).catch(() => {
+      // Revert optimistic update on failure
+      setOptimisticTasks(null)
+      pendingUpdate.current = false
+    })
   }
+
+  const handleDragCancel = () => {
+    setActiveTask(null)
+    setOverColumnId(null)
+  }
+
+  const handleMoveTask = useCallback((taskId: number, newStatus: string) => {
+    onUpdateTask(taskId, { status: newStatus })
+  }, [onUpdateTask])
+
+  const handleLaunchSession = useCallback(async (task: TaskItem) => {
+    try {
+      const config = await window.api.invoke('settings:get') as { preferredCLI?: string; cliExtraArgs?: string }
+      const cli = config?.preferredCLI ?? 'claude'
+      const extraArgs = config?.cliExtraArgs ?? ''
+      let prompt = task.title
+      if (task.description) prompt += '\n\n' + task.description
+      const escaped = prompt
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\$/g, '\\$')
+        .replace(/`/g, '\\`')
+        .replace(/\n/g, '\\n')
+      const command = extraArgs ? `${cli} ${extraArgs} "${escaped}"` : `${cli} "${escaped}"`
+      const termId = `task-${task.id}-${Date.now()}`
+      const path = projectPath || ''
+      await window.api.invoke('terminal:create', termId, path)
+      setTimeout(() => {
+        window.api.send('terminal:write', termId, command + '\n')
+      }, 300)
+    } catch (err) {
+      console.error('Failed to launch CLI session:', err)
+    }
+  }, [projectPath])
+
+  const handleDeleteTask = useCallback((taskId: number) => {
+    onDeleteTask(taskId)
+  }, [onDeleteTask])
 
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <div className="flex h-full p-3 gap-3">
         <div className="flex-1 grid grid-cols-3 gap-3 min-h-0 min-w-0">
@@ -106,12 +229,52 @@ export default function KanbanBoard({
               id={col.id}
               title={col.title}
               color={col.color}
+              icon={col.icon}
               tasks={getTasksForColumn(col.id)}
+              isDropTarget={overColumnId === col.id}
               onTaskClick={(task) => setSelectedTask(task)}
               onAddTask={(title) => onAddTask(title, col.id)}
+              onOpenCreateModal={() => setCreateModalStatus(col.id)}
+              onMoveTask={handleMoveTask}
+              onLaunchSession={handleLaunchSession}
+              onDeleteTask={handleDeleteTask}
+              projectNames={projectNames}
             />
           ))}
         </div>
+
+        <TaskCreateModal
+          open={createModalStatus !== null}
+          onClose={() => setCreateModalStatus(null)}
+          defaultStatus={createModalStatus ?? 'todo'}
+          onCreate={async (data) => {
+            if (!projectId) {
+              // Fallback: use old two-step approach
+              const task = await onAddTask(data.title, data.status) as TaskItem | undefined
+              if (task && (data.priority || data.labels.length || data.description)) {
+                await onUpdateTask(task.id, {
+                  ...(data.description ? { description: data.description } : {}),
+                  ...(data.priority ? { priority: data.priority } : {}),
+                  ...(data.labels.length ? { labels: data.labels } : {}),
+                })
+              }
+              return
+            }
+            // Create with all fields at once to avoid two-step create+update race
+            const task = await api.tasks.create({
+              projectId,
+              title: data.title,
+              description: data.description,
+              priority: data.priority,
+              labels: data.labels.length > 0 ? data.labels : undefined,
+              source: 'manual',
+              isGlobal: projectId === '__global__',
+            })
+            // Set non-default status if needed, and trigger refetch
+            const statusUpdate = data.status && data.status !== 'todo' ? { status: data.status } : {}
+            await onUpdateTask(task.id, { title: data.title, ...statusUpdate })
+          }}
+        />
 
         {selectedTask && (
           <TaskDetailSheet
@@ -134,6 +297,19 @@ export default function KanbanBoard({
           />
         )}
       </div>
+
+      <DragOverlay dropAnimation={null}>
+        {activeTask ? (
+          <div className="w-[280px] opacity-90 rotate-2">
+            <TaskCard
+              task={activeTask}
+              onClick={() => {}}
+              projectName={projectNames?.[activeTask.projectId]}
+              isDragOverlay
+            />
+          </div>
+        ) : null}
+      </DragOverlay>
     </DndContext>
   )
 }

@@ -145,13 +145,14 @@ export class GmailDAO {
     body?: string
     receivedAt?: string
     taskId?: number
+    triageType?: string
   }): ProcessedEmail {
     const now = new Date().toISOString()
     const result = this.db
       .prepare(
         `INSERT INTO processedEmails
-           (gmailMessageId, gmailThreadId, gmailAccountId, fromAddress, fromName, subject, snippet, body, receivedAt, taskId, importedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (gmailMessageId, gmailThreadId, gmailAccountId, fromAddress, fromName, subject, snippet, body, receivedAt, taskId, triageType, importedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         data.messageId,
@@ -164,6 +165,7 @@ export class GmailDAO {
         data.body ?? null,
         data.receivedAt ?? now,
         data.taskId ?? null,
+        data.triageType ?? null,
         now
       )
     return this.db
