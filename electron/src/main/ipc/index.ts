@@ -87,7 +87,7 @@ export function registerAllHandlers(
   registerImageHandlers(db)
   registerRecordingHandlers(db)
   registerSettingsHandlers(db)
-  registerChatHandlers(db, browserSessionToken)
+  registerChatHandlers(db, searchEngine, browserSessionToken)
   registerBriefingHandlers(db)
   registerUpdateHandlers()
   registerProjectDocHandlers(db)

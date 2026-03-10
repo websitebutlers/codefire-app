@@ -108,6 +108,14 @@ export default function ChatDrawer({ projectId, onClose }: ChatDrawerProps) {
         content: m.content,
       }))
 
+      // Assemble project context with RAG search
+      let systemPrompt: string
+      try {
+        systemPrompt = await window.api.invoke('chat:getContext', projectId, content) as string
+      } catch {
+        systemPrompt = 'You are a helpful coding assistant integrated into CodeFire. Be concise and helpful.'
+      }
+
       setStreaming(true)
       setStreamedContent('')
 
@@ -120,10 +128,7 @@ export default function ChatDrawer({ projectId, onClose }: ChatDrawerProps) {
         body: JSON.stringify({
           model,
           messages: [
-            {
-              role: 'system',
-              content: 'You are a helpful coding assistant integrated into CodeFire, a project management tool for developers. Be concise and helpful.',
-            },
+            { role: 'system', content: systemPrompt },
             ...history.slice(-20),
           ],
           stream: true,

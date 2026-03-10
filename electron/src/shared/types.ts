@@ -124,6 +124,7 @@ export type ChatChannel =
   | 'chat:listMessages'
   | 'chat:sendMessage'
   | 'chat:deleteConversation'
+  | 'chat:getContext'
   | 'chat:browserCommand'
 
 export type UpdateChannel = 'update:check' | 'update:download'
