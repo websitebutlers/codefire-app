@@ -372,8 +372,19 @@ export class SyncEngine {
           }
           // else: local wins, will be pushed next cycle
         } else {
-          // No conflict, apply remote
-          this.applyRemoteTask(remote, Number(existing.localId))
+          // No conflict, but still check timestamps — remote may be stale
+          const localTask = this.db.prepare(
+            `SELECT updatedAt, createdAt FROM taskItems WHERE id = ?`
+          ).get(Number(existing.localId)) as { updatedAt: string | null; createdAt: string } | undefined
+
+          const localUpdated = localTask?.updatedAt || localTask?.createdAt || '1970-01-01'
+          const remoteUpdated = remote.updated_at || '1970-01-01'
+
+          if (remoteUpdated >= localUpdated) {
+            this.applyRemoteTask(remote, Number(existing.localId))
+          }
+          // else: local is newer, skip remote — will be pushed next cycle
+
           // Must reset dirty = 0 because applyRemoteTask triggers sync_task_dirty_update
           // which sets dirty = 1 via INSERT OR REPLACE
           this.db.prepare(
