@@ -371,8 +371,10 @@ export class SyncEngine {
         } else {
           // No conflict, apply remote
           this.applyRemoteTask(remote, Number(existing.localId))
+          // Must reset dirty = 0 because applyRemoteTask triggers sync_task_dirty_update
+          // which sets dirty = 1 via INSERT OR REPLACE
           this.db.prepare(
-            `UPDATE syncState SET lastSyncedAt = datetime('now') WHERE entityType = 'task' AND localId = ?`
+            `UPDATE syncState SET dirty = 0, lastSyncedAt = datetime('now') WHERE entityType = 'task' AND localId = ?`
           ).run(existing.localId)
         }
       } else {
@@ -428,8 +430,10 @@ export class SyncEngine {
           }
         } else {
           this.applyRemoteNote(remote, Number(existing.localId))
+          // Must reset dirty = 0 because applyRemoteNote triggers sync_note_dirty_update
+          // which sets dirty = 1 via INSERT OR REPLACE
           this.db.prepare(
-            `UPDATE syncState SET lastSyncedAt = datetime('now') WHERE entityType = 'note' AND localId = ?`
+            `UPDATE syncState SET dirty = 0, lastSyncedAt = datetime('now') WHERE entityType = 'note' AND localId = ?`
           ).run(existing.localId)
         }
       } else {
