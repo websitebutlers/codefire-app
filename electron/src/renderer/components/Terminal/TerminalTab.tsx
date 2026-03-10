@@ -68,6 +68,8 @@ export default function TerminalTab({ terminalId, isActive, projectPath, initial
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  // Track whether the PTY has exited so keystrokes restart instead of write
+  const ptyExitedRef = useRef(false)
 
   useEffect(() => {
     const container = containerRef.current
@@ -114,12 +116,28 @@ export default function TerminalTab({ terminalId, isActive, projectPath, initial
 
     terminalRef.current = terminal
     fitAddonRef.current = fitAddon
+    ptyExitedRef.current = false
 
     // Initial fit
     try {
       fitAddon.fit()
     } catch {
       // Container may not be visible yet
+    }
+
+    // ─── Restart PTY helper ───────────────────────────────────────────────
+    function restartPTY() {
+      ptyExitedRef.current = false
+      terminal.write('\r\n')
+      window.api.invoke('terminal:create', terminalId, projectPath)
+        .then(() => {
+          terminal.clear()
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          terminal.write(`\r\n\x1b[31mFailed to restart terminal: ${msg}\x1b[0m\r\n`)
+          ptyExitedRef.current = true
+        })
     }
 
     // ─── Clipboard: Ctrl+Shift+C to copy, Ctrl+Shift+V to paste ──────────
@@ -155,6 +173,11 @@ export default function TerminalTab({ terminalId, isActive, projectPath, initial
 
     // ─── Keystrokes → main process ────────────────────────────────────────
     const onDataDisposable = terminal.onData((data) => {
+      // If PTY has exited, any keypress restarts the shell
+      if (ptyExitedRef.current) {
+        restartPTY()
+        return
+      }
       window.api.send('terminal:write', terminalId, data)
     })
 
@@ -187,7 +210,8 @@ export default function TerminalTab({ terminalId, isActive, projectPath, initial
       'terminal:exit',
       (id: unknown, exitCode: unknown) => {
         if (id === terminalId) {
-          terminal.write(`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m\r\n`)
+          ptyExitedRef.current = true
+          terminal.write(`\r\n\x1b[90m[Process exited with code ${exitCode}. Press any key to restart.]\x1b[0m\r\n`)
         }
       }
     )

@@ -293,32 +293,16 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
           onDrop={() => setDragOverSide(null)}
         >
           {showTerminal ? (
-            <Group orientation="horizontal" id="project-layout" key={terminalOnLeft ? 'tl' : 'tr'}>
-              {terminalOnLeft ? (
-                <>
-                  <Panel id="terminal-chat" defaultSize="40%" minSize="20%">
-                    {renderTerminalChat()}
-                  </Panel>
-                  <Separator className="w-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" />
-                  <Panel id="content" defaultSize="60%" minSize="30%">
-                    <div className="h-full overflow-hidden flex flex-col">
-                      {renderActiveView(activeTab, projectId, setActiveTab)}
-                    </div>
-                  </Panel>
-                </>
-              ) : (
-                <>
-                  <Panel id="content" defaultSize="60%" minSize="30%">
-                    <div className="h-full overflow-hidden flex flex-col">
-                      {renderActiveView(activeTab, projectId, setActiveTab)}
-                    </div>
-                  </Panel>
-                  <Separator className="w-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" />
-                  <Panel id="terminal-chat" defaultSize="40%" minSize="20%">
-                    {renderTerminalChat()}
-                  </Panel>
-                </>
-              )}
+            <Group orientation="horizontal" id="project-layout">
+              <Panel id="content" defaultSize="60%" minSize="30%" style={{ order: terminalOnLeft ? 2 : 1 }}>
+                <div className="h-full overflow-hidden flex flex-col">
+                  {renderActiveView(activeTab, projectId, setActiveTab)}
+                </div>
+              </Panel>
+              <Separator className="w-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" style={{ order: terminalOnLeft ? 2 : 2 }} />
+              <Panel id="terminal-chat" defaultSize="40%" minSize="20%" style={{ order: terminalOnLeft ? 1 : 3 }}>
+                {renderTerminalChat()}
+              </Panel>
             </Group>
           ) : (
             <div className="h-full overflow-hidden flex flex-col">

@@ -42,15 +42,22 @@ export class TerminalService {
       throw new Error('Terminal is not available — node-pty failed to load. Install system build tools and reinstall.')
     }
 
-    // Don't create duplicate sessions
+    // If a session already exists for this ID (e.g. restart after exit),
+    // kill the old PTY before creating a fresh one
     if (this.sessions.has(id)) {
-      return
+      this.kill(id)
     }
 
-    const shell =
-      process.platform === 'win32'
-        ? 'powershell.exe'
-        : process.env.SHELL || '/bin/zsh'
+    const isWindows = process.platform === 'win32'
+    const shell = isWindows
+      ? 'powershell.exe'
+      : process.env.SHELL || '/bin/zsh'
+
+    // Spawn as login shell on macOS/Linux (matches Terminal.app / iTerm2 / Swift build).
+    // Login shells source .zprofile/.zlogin, which sets up PATH, history, etc.
+    // Without this, packaged .app bundles get a minimal env where zsh history
+    // and other features break (e.g. up-arrow blanks the terminal).
+    const shellArgs = isWindows ? [] : ['-l']
 
     // Clean environment: remove vars that make Claude Code think it's nested
     const cleanEnv = { ...process.env } as Record<string, string>
@@ -59,8 +66,24 @@ export class TerminalService {
     delete cleanEnv.CLAUDE_SPAWNED
     delete cleanEnv.CLAUDECODE
     cleanEnv.TERM = 'xterm-256color'
+    cleanEnv.COLORTERM = 'truecolor'
 
-    const term = pty!.spawn(shell, [], {
+    // Ensure critical env vars are set — packaged .app launched from Finder
+    // may have a minimal environment missing these
+    if (!cleanEnv.HOME) {
+      cleanEnv.HOME = require('os').homedir()
+    }
+    if (!cleanEnv.USER) {
+      cleanEnv.USER = require('os').userInfo().username
+    }
+    if (!cleanEnv.LOGNAME) {
+      cleanEnv.LOGNAME = cleanEnv.USER
+    }
+    if (!cleanEnv.SHELL) {
+      cleanEnv.SHELL = shell
+    }
+
+    const term = pty!.spawn(shell, shellArgs, {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
@@ -82,7 +105,12 @@ export class TerminalService {
    * Resize the PTY to match the terminal panel dimensions.
    */
   resize(id: string, cols: number, rows: number): void {
-    this.sessions.get(id)?.pty.resize(cols, rows)
+    // Guard against invalid dimensions — xterm.js FitAddon can briefly
+    // report 0 cols/rows during layout transitions (e.g. panel swap).
+    // node-pty throws on non-positive values.
+    const safeCols = Math.max(1, Math.min(Math.floor(cols) || 80, 65535))
+    const safeRows = Math.max(1, Math.min(Math.floor(rows) || 24, 65535))
+    this.sessions.get(id)?.pty.resize(safeCols, safeRows)
   }
 
   /**
