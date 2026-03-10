@@ -11,6 +11,7 @@ interface TerminalSession {
   id: string
   pty: ptyType.IPty
   projectPath: string
+  listenersRegistered: boolean
 }
 
 /**
@@ -67,7 +68,7 @@ export class TerminalService {
       env: cleanEnv,
     })
 
-    this.sessions.set(id, { id, pty: term, projectPath })
+    this.sessions.set(id, { id, pty: term, projectPath, listenersRegistered: false })
   }
 
   /**
@@ -126,6 +127,17 @@ export class TerminalService {
    */
   has(id: string): boolean {
     return this.sessions.has(id)
+  }
+
+  /**
+   * Mark listeners as registered for a session. Returns true if this is the
+   * first time (i.e. listeners should be wired up), false if already done.
+   */
+  markListenersRegistered(id: string): boolean {
+    const session = this.sessions.get(id)
+    if (!session || session.listenersRegistered) return false
+    session.listenersRegistered = true
+    return true
   }
 
   /**

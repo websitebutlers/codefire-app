@@ -20,7 +20,7 @@
     "dist:linux": "npm run build:mcp && electron-builder --linux",
     "dist:mac": "npm run build:mcp && electron-builder --mac",
     "dist:all": "npm run build:mcp && electron-builder --win --linux --mac",
-    "postinstall": "electron-rebuild --only=better-sqlite3 && node scripts/patch-vite-plugin-electron.js"
+    "postinstall": "electron-rebuild --only=better-sqlite3 && node scripts/patch-vite-plugin-electron.js && node -e \"const fs=require('fs'),p=require('path');['darwin-arm64','darwin-x64'].forEach(d=>{const f=p.join('node_modules/node-pty/prebuilds',d,'spawn-helper');if(fs.existsSync(f)){fs.chmodSync(f,0o755);console.log('Fixed +x:',f)}})\""
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.2",
@@ -77,6 +77,7 @@
     "productName": "CodeFire",
     "publish": null,
     "npmRebuild": false,
+    "afterPack": "./scripts/fix-node-pty-permissions.js",
     "directories": {
       "output": "release"
     },

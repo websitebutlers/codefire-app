@@ -35,26 +35,25 @@ export function registerTerminalHandlers(terminalService: TerminalService) {
 
       terminalService.create(id, projectPath)
 
-      // Wire up PTY output → renderer.
-      // The renderer creates the PTY AFTER registering its data listener,
-      // so there is no race condition — data flows directly.
-      const senderWindow = BrowserWindow.fromWebContents(_event.sender)
+      // Wire up PTY output → renderer, but only once per session.
+      // React Strict Mode may call terminal:create twice for the same ID.
+      if (terminalService.markListenersRegistered(id)) {
+        const senderWindow = BrowserWindow.fromWebContents(_event.sender)
 
-      terminalService.onData(id, (data) => {
-        if (senderWindow && !senderWindow.isDestroyed()) {
-          senderWindow.webContents.send('terminal:data', id, data)
-        }
-      })
+        terminalService.onData(id, (data) => {
+          if (senderWindow && !senderWindow.isDestroyed()) {
+            senderWindow.webContents.send('terminal:data', id, data)
+          }
+        })
 
-      terminalService.onExit(id, (exitCode, signal) => {
-        if (senderWindow && !senderWindow.isDestroyed()) {
-          senderWindow.webContents.send('terminal:exit', id, exitCode, signal)
-        }
-        // Send native OS notification for CLI session completion
-        NotificationService.getInstance().notifyClaudeDone(id)
-        // Clean up the session after exit
-        terminalService.kill(id)
-      })
+        terminalService.onExit(id, (exitCode, signal) => {
+          if (senderWindow && !senderWindow.isDestroyed()) {
+            senderWindow.webContents.send('terminal:exit', id, exitCode, signal)
+          }
+          NotificationService.getInstance().notifyClaudeDone(id)
+          terminalService.kill(id)
+        })
+      }
 
       return { id }
     }
