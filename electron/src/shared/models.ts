@@ -291,6 +291,16 @@ export interface AgentMonitorState {
   agents: AgentInfo[]
 }
 
+// ─── MCP Connection ──────────────────────────────────────────────────────────
+
+export interface MCPConnection {
+  pid: number
+  cwd: string
+  projectId: string | null
+  projectName: string | null
+  connectedAt: string
+}
+
 // ─── App Config ──────────────────────────────────────────────────────────────
 
 export interface AppConfig {

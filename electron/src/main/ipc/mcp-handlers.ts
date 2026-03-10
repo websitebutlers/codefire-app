@@ -11,6 +11,8 @@ export function registerMCPHandlers(mcpManager: MCPServerManager) {
     return MCPServerManager.getMcpServerPath()
   })
 
+  ipcMain.handle('mcp:listConnections', () => mcpManager.listConnections())
+
   ipcMain.handle('mcp:start', () => {
     mcpManager.start()
     return { success: true }

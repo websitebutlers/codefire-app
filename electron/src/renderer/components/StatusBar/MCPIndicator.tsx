@@ -1,12 +1,23 @@
 import { useState, useRef, useEffect } from 'react'
 import { Radio, Copy, Check, ExternalLink } from 'lucide-react'
 import { api } from '@renderer/lib/api'
+import type { MCPConnection } from '@shared/models'
 
 interface MCPIndicatorProps {
   status: 'connected' | 'disconnected' | 'error'
   sessionCount?: number
   onConnect?: () => void
   onDisconnect?: () => void
+}
+
+function formatElapsed(since: Date): string {
+  const seconds = Math.floor((Date.now() - since.getTime()) / 1000)
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ${minutes % 60}m ago`
+  return `${Math.floor(hours / 24)}d ago`
 }
 
 function buildSnippet(serverPath: string): string {
@@ -60,11 +71,18 @@ export default function MCPIndicator({
   const [menuOpen, setMenuOpen] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [serverPath, setServerPath] = useState('')
+  const [connections, setConnections] = useState<MCPConnection[]>([])
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     api.mcp.getServerPath().then(setServerPath).catch(() => {})
   }, [])
+
+  // Fetch connection details when menu opens
+  useEffect(() => {
+    if (!menuOpen || status !== 'connected') return
+    api.mcp.listConnections().then(setConnections).catch(() => setConnections([]))
+  }, [menuOpen, status])
 
   const providers = getCLIProviders(serverPath)
 
@@ -178,6 +196,49 @@ export default function MCPIndicator({
               </p>
             )}
           </div>
+
+          {/* Active connections */}
+          {isConnected && connections.length > 0 && (
+            <div className="py-1 border-b border-neutral-800">
+              <div className="px-3 py-1.5">
+                <span className="text-[10px] font-semibold text-neutral-600 uppercase tracking-wider">
+                  Active Connections ({connections.length})
+                </span>
+              </div>
+              {connections.map((conn) => {
+                const projectLabel = conn.projectName || conn.cwd.split(/[/\\]/).pop() || 'Unknown'
+                const elapsed = conn.connectedAt
+                  ? formatElapsed(new Date(conn.connectedAt))
+                  : ''
+                return (
+                  <div
+                    key={conn.pid}
+                    className="px-3 py-1.5 hover:bg-neutral-800/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
+                      <span className="text-xs text-neutral-300 truncate flex-1">
+                        {projectLabel}
+                      </span>
+                      <span className="text-[10px] text-neutral-600 font-mono shrink-0">
+                        PID {conn.pid}
+                      </span>
+                    </div>
+                    <div className="ml-[14px] flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-neutral-600 truncate">
+                        {conn.cwd}
+                      </span>
+                      {elapsed && (
+                        <span className="text-[10px] text-neutral-600 shrink-0">
+                          {elapsed}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
           {/* Provider list */}
           <div className="py-1">
