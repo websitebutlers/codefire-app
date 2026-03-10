@@ -1681,18 +1681,19 @@ server.registerTool(
   'generate_image',
   {
     title: 'Generate Image',
-    description: 'Generate an image using AI (requires OpenRouter API key in CodeFire settings). Returns the saved image record.',
+    description: 'Generate an image using AI. Auto-reads OpenRouter API key from CodeFire settings, or pass one explicitly.',
     inputSchema: z.object({
       projectId: z.string().describe('Project ID to associate the image with'),
       prompt: z.string().describe('Image generation prompt'),
-      apiKey: z.string().describe('OpenRouter API key'),
+      apiKey: z.string().optional().describe('OpenRouter API key (optional — auto-reads from CodeFire settings if omitted)'),
       aspectRatio: z.string().optional().describe("Aspect ratio (default '1:1'). Options: '1:1', '16:9', '9:16', '4:3', '3:4'"),
       imageSize: z.string().optional().describe("Image size (default '1K'). Options: '1K', '2K'"),
     }),
   },
   async ({ projectId, prompt, apiKey, aspectRatio, imageSize }) => {
-    if (!apiKey) {
-      return { content: [{ type: 'text' as const, text: 'Error: OpenRouter API key is required.' }] }
+    const resolvedKey = apiKey || getOpenRouterKey()
+    if (!resolvedKey) {
+      return { content: [{ type: 'text' as const, text: 'Error: OpenRouter API key not found. Set it in CodeFire Settings > Engine, or pass apiKey explicitly.' }] }
     }
 
     const model = 'google/gemini-3.1-flash-image-preview'
@@ -1711,7 +1712,7 @@ server.registerTool(
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${resolvedKey}`,
         'Content-Type': 'application/json',
         'X-Title': 'CodeFire',
       },
@@ -1798,16 +1799,21 @@ server.registerTool(
   'edit_image',
   {
     title: 'Edit Image',
-    description: 'Edit an existing image with an AI prompt (sends original + edit instruction). Requires OpenRouter API key.',
+    description: 'Edit an existing image with an AI prompt (sends original + edit instruction). Auto-reads OpenRouter API key from settings.',
     inputSchema: z.object({
       imageId: z.number().describe('ID of the image to edit'),
       prompt: z.string().describe('Edit instruction (e.g. "make the background blue")'),
-      apiKey: z.string().describe('OpenRouter API key'),
+      apiKey: z.string().optional().describe('OpenRouter API key (optional — auto-reads from CodeFire settings if omitted)'),
       aspectRatio: z.string().optional().describe("Aspect ratio (default: same as original)"),
       imageSize: z.string().optional().describe("Image size (default: same as original)"),
     }),
   },
   async ({ imageId, prompt, apiKey, aspectRatio, imageSize }) => {
+    const resolvedKey = apiKey || getOpenRouterKey()
+    if (!resolvedKey) {
+      return { content: [{ type: 'text' as const, text: 'Error: OpenRouter API key not found. Set it in CodeFire Settings > Engine, or pass apiKey explicitly.' }] }
+    }
+
     const original = db.prepare('SELECT * FROM generatedImages WHERE id = ?').get(imageId) as Record<string, unknown> | undefined
     if (!original) {
       return { content: [{ type: 'text' as const, text: `Image ${imageId} not found.` }] }
@@ -1841,7 +1847,7 @@ server.registerTool(
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${resolvedKey}`,
         'Content-Type': 'application/json',
         'X-Title': 'CodeFire',
       },
@@ -2010,23 +2016,23 @@ function preprocessQuery(query: string): { ftsQuery: string; queryType: QueryTyp
 const embeddingCache = new Map<string, number[]>()
 const EMBEDDING_CACHE_MAX = 50
 
+function getAppConfigDir(): string {
+  switch (process.platform) {
+    case 'darwin':
+      return path.join(os.homedir(), 'Library', 'Application Support', 'CodeFire')
+    case 'win32':
+      return path.join(
+        process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
+        'CodeFire'
+      )
+    default:
+      return path.join(os.homedir(), '.config', 'CodeFire')
+  }
+}
+
 function readConfigFromDisk(): Record<string, unknown> {
   try {
-    let configDir: string
-    switch (process.platform) {
-      case 'darwin':
-        configDir = path.join(os.homedir(), 'Library', 'Application Support', 'CodeFire')
-        break
-      case 'win32':
-        configDir = path.join(
-          process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
-          'CodeFire'
-        )
-        break
-      default:
-        configDir = path.join(os.homedir(), '.config', 'CodeFire')
-    }
-    const configPath = path.join(configDir, 'codefire-settings.json')
+    const configPath = path.join(getAppConfigDir(), 'codefire-settings.json')
     if (fs.existsSync(configPath)) {
       return JSON.parse(fs.readFileSync(configPath, 'utf-8'))
     }
@@ -2035,11 +2041,19 @@ function readConfigFromDisk(): Record<string, unknown> {
 }
 
 function getOpenRouterKey(): string | null {
+  // Primary: read from mcp-secrets.json (written by Electron main process with decrypted keys)
+  try {
+    const secretsPath = path.join(getAppConfigDir(), 'mcp-secrets.json')
+    if (fs.existsSync(secretsPath)) {
+      const secrets = JSON.parse(fs.readFileSync(secretsPath, 'utf-8'))
+      if (secrets.openRouterKey) return secrets.openRouterKey
+    }
+  } catch { /* fall through */ }
+
+  // Fallback: read from settings directly (works for plaintext keys only)
   const config = readConfigFromDisk()
   const key = (config.openRouterKey as string) || ''
   if (!key) return null
-  // Handle encrypted values — MCP server can't decrypt safeStorage (different process).
-  // If encrypted (starts with 'enc:'), we can't use it from the MCP process.
   if (key.startsWith('enc:')) return null
   return key
 }

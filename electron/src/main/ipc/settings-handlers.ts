@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { readConfig, writeConfig } from '../services/ConfigStore'
+import { readConfig, writeConfig, writeMCPSecrets } from '../services/ConfigStore'
 import { GoogleOAuth } from '../services/GoogleOAuth'
 import { GmailService } from '../services/GmailService'
 import { ContextInjector } from '../services/ContextInjector'
@@ -80,6 +80,11 @@ export function registerSettingsHandlers(
     }
 
     writeConfig(filtered)
+
+    // Update MCP secrets file if API keys changed
+    if ('openRouterKey' in filtered) {
+      writeMCPSecrets()
+    }
 
     // If Google credentials were provided, reinitialize Gmail service
     const config = readConfig()

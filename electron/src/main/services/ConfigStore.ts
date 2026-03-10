@@ -169,3 +169,19 @@ export function writeConfig(config: Partial<AppConfig>): void {
 export function getConfigValue<K extends keyof AppConfig>(key: K): AppConfig[K] {
   return readConfig()[key]
 }
+
+/**
+ * Write decrypted API keys to a file the MCP server can read.
+ * The MCP server runs as a separate Node process without access to Electron's
+ * safeStorage, so it can't decrypt keys from codefire-settings.json.
+ * See CodeFire note: "OpenRouter API Key Security — Intentionally Not Hardened"
+ */
+export function writeMCPSecrets(): void {
+  try {
+    const config = readConfig()
+    const secrets: Record<string, string> = {}
+    if (config.openRouterKey) secrets.openRouterKey = config.openRouterKey
+    const secretsPath = path.join(app.getPath('userData'), 'mcp-secrets.json')
+    fs.writeFileSync(secretsPath, JSON.stringify(secrets, null, 2), { mode: 0o600 })
+  } catch { /* non-critical */ }
+}

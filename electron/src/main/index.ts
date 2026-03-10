@@ -13,7 +13,7 @@ import { TerminalService } from './services/TerminalService'
 import { GitService } from './services/GitService'
 import { GoogleOAuth } from './services/GoogleOAuth'
 import { GmailService } from './services/GmailService'
-import { readConfig } from './services/ConfigStore'
+import { readConfig, writeMCPSecrets } from './services/ConfigStore'
 import { MCPServerManager } from './services/MCPServerManager'
 import { DeepLinkService } from './services/DeepLinkService'
 import { SearchEngine } from './services/SearchEngine'
@@ -81,6 +81,9 @@ const browserSessionToken = randomBytes(32).toString('hex')
 // Write token to app data so MCP server can read it
 const tokenPath = path.join(app.getPath('userData'), '.browser-session-token')
 try { fs.writeFileSync(tokenPath, browserSessionToken, { mode: 0o600 }) } catch { /* ignore */ }
+
+// Write decrypted API keys for MCP server (separate process can't use safeStorage)
+writeMCPSecrets()
 let liveWatcher: LiveSessionWatcher
 let sessionWatcher: SessionWatcher
 
