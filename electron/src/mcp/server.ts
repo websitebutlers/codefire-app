@@ -996,7 +996,7 @@ server.registerTool(
   {
     title: 'Browser Eval',
     description:
-      "Execute JavaScript on the page and return the result. The expression runs inside an async function body, so use 'return' to return values and 'await' for promises. Use for reading page state, calling APIs, or handling edge cases other tools can't cover. Requires CodeFire to be running with the browser tab visible.",
+      "Execute JavaScript on the page and return the result. The expression runs inside an async function body, so use 'return' to return values and 'await' for promises. Use for reading page state, calling APIs, or handling edge cases other tools can't cover. Requires CodeFire to be running with the browser tab visible. WARNING: This tool executes arbitrary JS in the browser context — use with caution.",
     inputSchema: z.object({
       expression: z
         .string()
@@ -1005,6 +1005,11 @@ server.registerTool(
         ),
       tab_id: z.string().optional().describe('Tab ID (defaults to active tab)'),
     }),
+    annotations: {
+      destructiveHint: true,
+      readOnlyHint: false,
+      openWorldHint: true,
+    },
   },
   async ({ expression, tab_id }) => {
     const args: Record<string, unknown> = { expression }
@@ -1156,6 +1161,10 @@ server.registerTool(
         .describe('Data types to clear. Defaults to all.'),
       tab_id: z.string().optional().describe('Tab ID (defaults to active tab)'),
     }),
+    annotations: {
+      destructiveHint: true,
+      readOnlyHint: false,
+    },
   },
   async ({ types, tab_id }) => {
     const args: Record<string, unknown> = {}
@@ -1243,6 +1252,10 @@ server.registerTool(
         .describe('SameSite attribute'),
       tab_id: z.string().optional().describe('Tab ID (defaults to active tab)'),
     }),
+    annotations: {
+      destructiveHint: true,
+      readOnlyHint: false,
+    },
   },
   async ({ name, value, domain, path: cookiePath, max_age, secure, same_site, tab_id }) => {
     const args: Record<string, unknown> = { name, value }
