@@ -20,6 +20,7 @@ export default function TasksView({ projectId, projectPath }: TasksViewProps) {
     createTask,
     updateTask,
     deleteTask,
+    pollingPaused,
   } = useTasks(projectId)
 
   if (loading) {
@@ -60,6 +61,7 @@ export default function TasksView({ projectId, projectPath }: TasksViewProps) {
           onAddTask={createTask}
           projectPath={projectPath}
           projectId={projectId}
+          pollingPaused={pollingPaused}
         />
       </div>
     </div>

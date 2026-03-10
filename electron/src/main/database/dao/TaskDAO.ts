@@ -104,7 +104,15 @@ export class TaskDAO {
           ? null
           : existing.completedAt
 
-    const updatedAt = data.status && data.status !== existing.status
+    const hasChanges =
+      (data.title !== undefined && data.title !== existing.title) ||
+      (data.description !== undefined && data.description !== existing.description) ||
+      (data.status !== undefined && data.status !== existing.status) ||
+      (data.priority !== undefined && data.priority !== existing.priority) ||
+      data.labels !== undefined ||
+      data.attachments !== undefined
+
+    const updatedAt = hasChanges
       ? new Date().toISOString()
       : existing.updatedAt
 

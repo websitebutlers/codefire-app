@@ -24,6 +24,7 @@ export default function AllProjectsView() {
     createTask,
     updateTask,
     deleteTask,
+    pollingPaused,
   } = useGlobalTasks()
 
   // Fetch projects and clients/groups for filter options
@@ -153,6 +154,7 @@ export default function AllProjectsView() {
                 onAddTask={createTask}
                 projectNames={projectNames}
                 projectId="__global__"
+                pollingPaused={pollingPaused}
               />
             </div>
           </Panel>

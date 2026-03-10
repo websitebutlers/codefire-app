@@ -27,6 +27,7 @@ import { getSessionDisplayName } from './sessionUtils'
 
 interface SessionDetailProps {
   session: Session | null
+  prTitleMap?: Map<string, string>
 }
 
 async function getApiKey(): Promise<string | null> {
@@ -66,7 +67,7 @@ async function callAI(prompt: string, systemPrompt: string): Promise<string> {
   return data.choices?.[0]?.message?.content ?? ''
 }
 
-export default function SessionDetail({ session }: SessionDetailProps) {
+export default function SessionDetail({ session, prTitleMap }: SessionDetailProps) {
   const [resuming, setResuming] = useState(false)
   const [summarizing, setSummarizing] = useState(false)
   const [extracting, setExtracting] = useState(false)
@@ -238,7 +239,11 @@ export default function SessionDetail({ session }: SessionDetailProps) {
       <div className="mb-4">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-title text-neutral-100 font-medium">
-            {getSessionDisplayName(session, 80)}
+            {getSessionDisplayName(
+              session,
+              80,
+              session.gitBranch ? prTitleMap?.get(session.gitBranch) : undefined
+            )}
           </h2>
           <CostBadge cost={cost} />
         </div>

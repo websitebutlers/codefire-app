@@ -38,12 +38,18 @@ export default function TaskCreateModal({ open, onClose, onCreate, defaultStatus
   const handleSubmit = () => {
     const trimmed = title.trim()
     if (!trimmed) return
+    // Auto-add any pending label input that wasn't explicitly added via Enter
+    const finalLabels = [...labels]
+    const pendingLabel = labelInput.trim()
+    if (pendingLabel && !finalLabels.includes(pendingLabel)) {
+      finalLabels.push(pendingLabel)
+    }
     onCreate({
       title: trimmed,
       description: description.trim() || undefined,
       status,
       priority,
-      labels,
+      labels: finalLabels,
     })
     // Reset form
     setTitle('')

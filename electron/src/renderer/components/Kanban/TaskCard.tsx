@@ -159,15 +159,15 @@ export default function TaskCard({ task, onClick, noteCount = 0, projectName, is
               </span>
             )}
             {task.remoteOwnerName && (
-              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 flex items-center gap-1">
-                <Users size={9} />
+              <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 flex items-center gap-1">
+                <Users size={10} />
                 TEAM
               </span>
             )}
             {(() => {
               const badge = SOURCE_BADGES[task.source ?? 'manual']
               return badge && task.source !== 'manual' ? (
-                <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${badge.bg} ${badge.color}`}>
+                <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${badge.bg} ${badge.color}`}>
                   {badge.label}
                 </span>
               ) : null

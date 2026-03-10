@@ -211,6 +211,15 @@ server.registerTool(
     }),
   },
   async ({ projectId, title, description, priority, isGlobal }) => {
+    // Deduplicate: if an active (non-done) task with the same title exists, return it
+    // instead of creating a duplicate. Done tasks are allowed to be recreated.
+    const existing = db.prepare(
+      `SELECT * FROM taskItems WHERE projectId = ? AND title = ? COLLATE NOCASE AND status != 'done'`
+    ).get(projectId, title) as Record<string, unknown> | undefined
+    if (existing) {
+      return { content: [{ type: 'text' as const, text: JSON.stringify(existing, null, 2) }] }
+    }
+
     const now = new Date().toISOString()
     const result = db
       .prepare(

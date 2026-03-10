@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Loader2, Search } from 'lucide-react'
 import { useSessions } from '@renderer/hooks/useSessions'
+import { usePRTitles } from '@renderer/hooks/usePRTitles'
 import { api } from '@renderer/lib/api'
 import type { Session } from '@shared/models'
 import SessionList from '@renderer/components/Sessions/SessionList'
@@ -12,6 +13,7 @@ interface SessionsViewProps {
 
 export default function SessionsView({ projectId }: SessionsViewProps) {
   const { sessions, loading, error } = useSessions(projectId)
+  const prTitleMap = usePRTitles(projectId)
   const [selectedSession, setSelectedSession] = useState<Session | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Session[] | null>(null)
@@ -95,12 +97,13 @@ export default function SessionsView({ projectId }: SessionsViewProps) {
             sessions={displaySessions}
             selectedId={selectedSession?.id ?? null}
             onSelect={setSelectedSession}
+            prTitleMap={prTitleMap}
           />
         </div>
 
         {/* Session detail panel */}
         <div className="flex-1">
-          <SessionDetail session={selectedSession} />
+          <SessionDetail session={selectedSession} prTitleMap={prTitleMap} />
         </div>
       </div>
     </div>

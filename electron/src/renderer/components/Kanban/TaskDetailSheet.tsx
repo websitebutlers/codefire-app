@@ -283,12 +283,12 @@ export default function TaskDetailSheet({
       <div className="shrink-0">
         <div className="flex items-center gap-2 px-3 h-9">
           <h3 className="text-sm text-neutral-300 font-medium truncate">Task Details</h3>
-          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${sourceBadge.bg} ${sourceBadge.color} shrink-0`}>
+          <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${sourceBadge.bg} ${sourceBadge.color} shrink-0`}>
             {sourceBadge.label}
           </span>
           {task.remoteOwnerName && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 flex items-center gap-1 shrink-0">
-              <Users size={9} />
+            <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 flex items-center gap-1 shrink-0">
+              <Users size={10} />
               {task.remoteOwnerName}
             </span>
           )}
@@ -469,6 +469,7 @@ export default function TaskDetailSheet({
                   handleAddLabel()
                 }
               }}
+              onBlur={handleAddLabel}
             />
           </div>
         </div>

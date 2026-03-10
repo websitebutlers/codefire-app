@@ -35,19 +35,22 @@ export default function BriefingDrawer({ projectId, onClose }: BriefingDrawerPro
   const [generating, setGenerating] = useState(false)
   const [showPast, setShowPast] = useState(false)
 
-  const load = useCallback(async () => {
+  const loadDigests = useCallback(async () => {
     const list = await api.briefing.listDigests()
     setDigests(list)
-    if (list.length > 0 && !activeDigest) {
-      setActiveDigest(list[0])
-      const briefingItems = await api.briefing.getItems(list[0].id)
-      setItems(briefingItems)
-    }
-  }, [activeDigest])
+    return list
+  }, [])
 
+  // Load digests on mount and auto-select the latest one
   useEffect(() => {
-    load()
-  }, [load])
+    loadDigests().then(async (list) => {
+      if (list.length > 0) {
+        setActiveDigest(list[0])
+        const briefingItems = await api.briefing.getItems(list[0].id)
+        setItems(briefingItems)
+      }
+    })
+  }, [loadDigests])
 
   async function handleGenerate() {
     setGenerating(true)
@@ -56,7 +59,8 @@ export default function BriefingDrawer({ projectId, onClose }: BriefingDrawerPro
       setActiveDigest(digest)
       const briefingItems = await api.briefing.getItems(digest.id)
       setItems(briefingItems)
-      await load()
+      // Refresh the digests list
+      await loadDigests()
     } catch (err) {
       console.error('Failed to generate briefing:', err)
     } finally {

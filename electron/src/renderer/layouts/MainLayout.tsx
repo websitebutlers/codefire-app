@@ -1,6 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { Terminal, FolderOpen } from 'lucide-react'
+import { Terminal } from 'lucide-react'
 import logoIcon from '../../../resources/icon.png'
 import { api } from '@renderer/lib/api'
 import TerminalPanel from '@renderer/components/Terminal/TerminalPanel'
@@ -26,7 +26,10 @@ const RecordingsView = lazy(() => import('@renderer/views/RecordingsView'))
 const ReviewsView = lazy(() => import('@renderer/views/ReviewsView'))
 
 /** Tabs that require a project path and can't run in global context */
-const PROJECT_ONLY_TABS = new Set(['Files', 'Memory', 'Rules', 'Git', 'Services', 'Visualize'])
+const PROJECT_ONLY_TABS = new Set([
+  'Activity', 'Sessions', 'Notes', 'Memory', 'Rules',
+  'Files', 'Git', 'Docs', 'Reviews',
+])
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 
@@ -85,17 +88,6 @@ export default function MainLayout() {
   )
 
   function renderActiveView() {
-    // Project-only tabs show a placeholder in the global context
-    if (PROJECT_ONLY_TABS.has(activeTab)) {
-      return (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-neutral-500">
-          <FolderOpen size={28} className="text-neutral-600" />
-          <p className="text-sm font-medium text-neutral-400">Open a project to use {activeTab}</p>
-          <p className="text-xs text-neutral-600">This feature requires a project context</p>
-        </div>
-      )
-    }
-
     // Eager-loaded views
     switch (activeTab) {
       case 'Tasks':
@@ -153,7 +145,7 @@ export default function MainLayout() {
         <UpdateBanner />
 
         {/* Tab bar — same component as ProjectLayout */}
-        <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+        <TabBar activeTab={activeTab} onTabChange={setActiveTab} hiddenTabs={PROJECT_ONLY_TABS} />
 
         {/* Main content area: dashboard + terminal/chat columns (swappable via drag) */}
         <div

@@ -39,6 +39,8 @@ interface KanbanBoardProps {
   projectPath?: string
   /** Project ID for task creation */
   projectId?: string
+  /** Ref to pause/resume polling in parent hook during drag operations */
+  pollingPaused?: React.MutableRefObject<boolean>
 }
 
 const COLUMNS = [
@@ -59,6 +61,7 @@ export default function KanbanBoard({
   projectNames,
   projectPath,
   projectId,
+  pollingPaused,
 }: KanbanBoardProps) {
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null)
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null)
@@ -67,14 +70,21 @@ export default function KanbanBoard({
 
   // Local optimistic state: null means "use props", otherwise use this override
   const [optimisticTasks, setOptimisticTasks] = useState<Record<string, TaskItem[]> | null>(null)
-  const pendingUpdate = useRef(false)
+  // Track what move we expect so we only clear optimistic state when props confirm it
+  const pendingMove = useRef<{ taskId: number; targetColumn: string } | null>(null)
 
-  // Clear optimistic state when props change (server confirmed the update)
+  // Clear optimistic state only when incoming props confirm the task is in the target column
   useEffect(() => {
-    if (pendingUpdate.current) {
+    if (!pendingMove.current) return
+    const { taskId, targetColumn } = pendingMove.current
+    const allIncoming = [...todoTasks, ...inProgressTasks, ...doneTasks]
+    const task = allIncoming.find((t) => t.id === taskId)
+    if (task && task.status === targetColumn) {
+      // Server confirmed the move — safe to clear optimistic state
       setOptimisticTasks(null)
-      pendingUpdate.current = false
+      pendingMove.current = null
     }
+    // If not confirmed yet, keep showing optimistic state (stale fetch in flight)
   }, [todoTasks, inProgressTasks, doneTasks])
 
   const sensors = useSensors(
@@ -126,6 +136,8 @@ export default function KanbanBoard({
   const handleDragStart = (event: DragStartEvent) => {
     const task = allTasks().find((t) => String(t.id) === String(event.active.id))
     setActiveTask(task || null)
+    // Pause polling while dragging to prevent stale fetches from disrupting the UI
+    if (pollingPaused) pollingPaused.current = true
   }
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -144,17 +156,28 @@ export default function KanbanBoard({
     setActiveTask(null)
     setOverColumnId(null)
 
-    if (!over) return
+    if (!over) {
+      // No drop target — resume polling
+      if (pollingPaused) pollingPaused.current = false
+      return
+    }
 
     const taskId = Number(active.id)
     const sourceColumn = findTaskColumn(String(active.id))
     const targetColumn = resolveColumnId(over.id)
 
-    if (!targetColumn || !sourceColumn || targetColumn === sourceColumn) return
+    if (!targetColumn || !sourceColumn || targetColumn === sourceColumn) {
+      // No actual move — resume polling
+      if (pollingPaused) pollingPaused.current = false
+      return
+    }
 
     // Optimistic update: move the task in local state immediately
     const task = allTasks().find((t) => t.id === taskId)
-    if (!task) return
+    if (!task) {
+      if (pollingPaused) pollingPaused.current = false
+      return
+    }
 
     const updatedTask = { ...task, status: targetColumn }
     const newState: Record<string, TaskItem[]> = {
@@ -164,19 +187,26 @@ export default function KanbanBoard({
     }
     newState[targetColumn] = [...newState[targetColumn], updatedTask]
     setOptimisticTasks(newState)
-    pendingUpdate.current = true
+    pendingMove.current = { taskId, targetColumn }
 
-    // Fire-and-forget the backend update; if it fails, the next refetch corrects state
-    onUpdateTask(taskId, { status: targetColumn }).catch(() => {
-      // Revert optimistic update on failure
-      setOptimisticTasks(null)
-      pendingUpdate.current = false
-    })
+    // Fire-and-forget the backend update; resume polling after it completes
+    onUpdateTask(taskId, { status: targetColumn })
+      .then(() => {
+        // Resume polling — the next fetch will confirm the move
+        if (pollingPaused) pollingPaused.current = false
+      })
+      .catch(() => {
+        // Revert optimistic update on failure
+        setOptimisticTasks(null)
+        pendingMove.current = null
+        if (pollingPaused) pollingPaused.current = false
+      })
   }
 
   const handleDragCancel = () => {
     setActiveTask(null)
     setOverColumnId(null)
+    if (pollingPaused) pollingPaused.current = false
   }
 
   const handleMoveTask = useCallback((taskId: number, newStatus: string) => {

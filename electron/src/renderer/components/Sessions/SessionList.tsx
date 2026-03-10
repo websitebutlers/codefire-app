@@ -1,17 +1,24 @@
 import { useMemo } from 'react'
-import { Clock } from 'lucide-react'
+import { Clock, GitBranch } from 'lucide-react'
 import type { Session } from '@shared/models'
 import {
   calculateSessionCost,
   formatDuration,
 } from '@renderer/hooks/useSessions'
 import CostBadge from './CostBadge'
-import { getSessionDisplayName } from './sessionUtils'
+import {
+  getSessionDisplayName,
+  getSessionTopic,
+  formatStartTime,
+  getBranchLabel,
+  abbreviateModel,
+} from './sessionUtils'
 
 interface SessionListProps {
   sessions: Session[]
   selectedId: string | null
   onSelect: (session: Session) => void
+  prTitleMap?: Map<string, string>
 }
 
 interface DateGroup {
@@ -44,7 +51,7 @@ function groupByDate(sessions: Session[]): DateGroup[] {
   return Array.from(groups.entries()).map(([label, sessions]) => ({ label, sessions }))
 }
 
-export default function SessionList({ sessions, selectedId, onSelect }: SessionListProps) {
+export default function SessionList({ sessions, selectedId, onSelect, prTitleMap }: SessionListProps) {
   const dateGroups = useMemo(() => groupByDate(sessions), [sessions])
 
   if (sessions.length === 0) {
@@ -66,6 +73,19 @@ export default function SessionList({ sessions, selectedId, onSelect }: SessionL
           {group.sessions.map((session) => {
             const isSelected = session.id === selectedId
             const cost = calculateSessionCost(session)
+            const prTitle = session.gitBranch ? prTitleMap?.get(session.gitBranch) : undefined
+            const displayName = getSessionDisplayName(session, 60, prTitle)
+            const topic = getSessionTopic(session)
+            const branchLabel = getBranchLabel(session, prTitle)
+            const startTime = formatStartTime(session.startedAt)
+            const modelName = abbreviateModel(session.model)
+            const duration = formatDuration(session.startedAt, session.endedAt)
+
+            // The title is based on the user message (topic) — if the display
+            // name fell back to branch/slug, we still want to show it but the
+            // user can't easily tell what the session was about.
+            const hasMeaningfulTitle = !!topic || !!prTitle
+
             return (
               <button
                 key={session.id}
@@ -77,23 +97,45 @@ export default function SessionList({ sessions, selectedId, onSelect }: SessionL
                   }`}
                 onClick={() => onSelect(session)}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm text-neutral-200 truncate">
-                    {getSessionDisplayName(session)}
+                {/* Row 1: Title + Cost */}
+                <div className="flex items-start justify-between gap-2">
+                  <span
+                    className={`text-sm truncate leading-snug ${
+                      hasMeaningfulTitle ? 'text-neutral-200' : 'text-neutral-400 italic'
+                    }`}
+                  >
+                    {displayName}
                   </span>
                   <CostBadge cost={cost} />
                 </div>
-                {session.summary && (
-                  <p className="text-xs text-neutral-500 truncate mt-0.5">
-                    {session.slug || session.id.slice(0, 8)}
-                  </p>
+
+                {/* Row 2: Branch label (when title is NOT the branch) */}
+                {hasMeaningfulTitle && branchLabel && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <GitBranch size={10} className="text-neutral-600 shrink-0" />
+                    <span className="text-xs text-neutral-500 truncate">
+                      {branchLabel}
+                    </span>
+                  </div>
                 )}
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-neutral-500">{session.model || 'unknown'}</span>
-                  <span className="text-xs text-neutral-600">|</span>
-                  <span className="text-xs text-neutral-500">
-                    {formatDuration(session.startedAt, session.endedAt)}
-                  </span>
+
+                {/* Row 3: Metadata — time, model, duration */}
+                <div className="flex items-center gap-1.5 mt-1 text-xs text-neutral-500">
+                  {startTime && (
+                    <>
+                      <span>{startTime}</span>
+                      <span className="text-neutral-700">·</span>
+                    </>
+                  )}
+                  <span>{modelName}</span>
+                  <span className="text-neutral-700">·</span>
+                  <span>{duration}</span>
+                  {session.messageCount > 0 && (
+                    <>
+                      <span className="text-neutral-700">·</span>
+                      <span>{session.messageCount} msgs</span>
+                    </>
+                  )}
                 </div>
               </button>
             )
