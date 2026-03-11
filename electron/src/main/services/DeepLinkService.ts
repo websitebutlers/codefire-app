@@ -54,40 +54,43 @@ export class DeepLinkService {
     return this.installMCP(client)
   }
 
-  private installMCP(cli: CLIProvider): DeepLinkResult {
+  /**
+   * Install MCP config for a CLI using a specific server path.
+   * Used by both deep links and MCPAutoSetup.
+   */
+  installMCPWithPath(cli: CLIProvider, serverPath: string): DeepLinkResult {
     const displayName = CLI_DISPLAY_NAMES[cli]
-    const mcpServerPath = MCPServerManager.getMcpServerPath()
-
     try {
       if (cli === 'claude') {
-        return this.installClaudeMCP(cli, displayName, mcpServerPath)
+        return this.installClaudeMCP(cli, displayName, serverPath)
       }
-
-      // For all other CLIs, write JSON/TOML config files
       switch (cli) {
         case 'gemini':
           this.installJSONMCP(
             path.join(os.homedir(), '.gemini', 'settings.json'),
             'mcpServers',
-            { command: 'node', args: [mcpServerPath] }
+            { command: 'node', args: [serverPath] }
           )
           break
         case 'codex':
           this.installCodexMCP(
             path.join(os.homedir(), '.codex', 'config.toml'),
-            mcpServerPath
+            serverPath
           )
           break
         case 'opencode':
-          // OpenCode uses project-root config; skip if no project context
           return { success: false, cli, displayName, error: 'OpenCode requires a project context to configure MCP.' }
       }
-
       return { success: true, cli, displayName }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       return { success: false, cli, displayName, error: message }
     }
+  }
+
+  private installMCP(cli: CLIProvider): DeepLinkResult {
+    const mcpServerPath = MCPServerManager.getMcpServerPath()
+    return this.installMCPWithPath(cli, mcpServerPath)
   }
 
   private installClaudeMCP(cli: CLIProvider, displayName: string, mcpServerPath: string): DeepLinkResult {
@@ -124,8 +127,11 @@ export class DeepLinkService {
     if (fs.existsSync(configPath)) {
       try {
         config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+        // Back up before modifying
+        fs.copyFileSync(configPath, configPath + '.bak')
       } catch {
-        // Corrupted file — start fresh
+        // Corrupted file — start fresh (backup the corrupted file too)
+        try { fs.copyFileSync(configPath, configPath + '.corrupted.bak') } catch { /* ignore */ }
       }
     }
 

@@ -11,6 +11,7 @@ import { useDeferredMCPStatus } from '@renderer/hooks/useMCPStatus'
 import { useDeferredPremium } from '@renderer/hooks/usePremium'
 import NotificationBell from '@renderer/components/NotificationBell'
 import { UpdateBanner } from '@renderer/components/UpdateBanner'
+import MCPBanner from '@renderer/components/StatusBar/MCPBanner'
 import logoIcon from '../../../resources/icon.png'
 
 // Eager: default tab (Tasks) and lightweight views
@@ -270,6 +271,7 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
         </div>
 
         <UpdateBanner />
+        {project && <MCPBanner projectPath={project.path} />}
 
         {/* Tab bar */}
         <TabBar activeTab={activeTab} onTabChange={setActiveTab} hiddenTabs={hiddenTabs} />

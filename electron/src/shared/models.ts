@@ -355,6 +355,9 @@ export interface AppConfig {
   supabaseUrl: string
   supabaseAnonKey: string
   autoShareSessions: boolean
+  // MCP auto-setup
+  mcpAutoSetupDismissed: boolean
+  mcpDismissedProjects: string[]
 }
 
 // ─── Snapshot & Pattern Models ────────────────────────────────────────────────
