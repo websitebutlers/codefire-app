@@ -126,7 +126,19 @@ export function registerPremiumHandlers(
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(limit || 50)
-    return data || []
+    // Transform snake_case Supabase columns to camelCase for renderer
+    return (data || []).map((n: Record<string, unknown>) => ({
+      id: n.id,
+      userId: n.user_id,
+      projectId: n.project_id,
+      type: n.type,
+      title: n.title,
+      body: n.body,
+      entityType: n.entity_type,
+      entityId: n.entity_id,
+      isRead: n.is_read,
+      createdAt: n.created_at,
+    }))
   })
 
   ipcMain.handle('premium:markNotificationRead', async (_e, notificationId: string) => {

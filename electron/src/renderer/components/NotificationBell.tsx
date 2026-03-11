@@ -68,12 +68,17 @@ export default function NotificationBell() {
     <div ref={containerRef} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="relative flex items-center justify-center w-7 h-7 rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
+        className={`relative flex items-center justify-center w-7 h-7 rounded hover:text-neutral-200 hover:bg-neutral-800 transition-colors ${
+          unreadCount > 0 ? 'text-codefire-orange animate-pulse' : 'text-neutral-400'
+        }`}
         title="Notifications"
       >
-        <Bell size={15} />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-codefire-orange text-[10px] font-bold text-white leading-none">
+          <span className="absolute inset-0 rounded bg-codefire-orange/10 animate-ping" style={{ animationDuration: '2s' }} />
+        )}
+        <Bell size={15} className="relative z-10" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-codefire-orange text-[10px] font-bold text-white leading-none z-10">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
