@@ -116,6 +116,7 @@ export class MCPAutoSetup {
    */
   private static updateStalePaths(): void {
     const currentPath = MCPServerManager.getMcpServerPath()
+    const nodePath = DeepLinkService.resolveNodePath()
 
     // Check Claude Code config
     const claudeConfig = path.join(os.homedir(), '.claude.json')
@@ -123,14 +124,24 @@ export class MCPAutoSetup {
       if (fs.existsSync(claudeConfig)) {
         const config = JSON.parse(fs.readFileSync(claudeConfig, 'utf-8'))
         const entry = config?.mcpServers?.codefire
-        if (entry?.args?.[0] && entry.args[0] !== currentPath) {
-          // Skip if it looks like a dev path
-          if (entry.args[0].includes('dist-electron')) return
-          // Back up before modifying
-          fs.copyFileSync(claudeConfig, claudeConfig + '.bak')
-          entry.args[0] = currentPath
-          fs.writeFileSync(claudeConfig, JSON.stringify(config, null, 2) + '\n', 'utf-8')
-          console.log('[MCPAutoSetup] Updated stale Claude Code MCP path')
+        if (entry) {
+          let changed = false
+          // Update stale server path
+          if (entry.args?.[0] && entry.args[0] !== currentPath) {
+            if (entry.args[0].includes('dist-electron')) return
+            entry.args[0] = currentPath
+            changed = true
+          }
+          // Update bare "node" to absolute path
+          if (entry.command === 'node') {
+            entry.command = nodePath
+            changed = true
+          }
+          if (changed) {
+            fs.copyFileSync(claudeConfig, claudeConfig + '.bak')
+            fs.writeFileSync(claudeConfig, JSON.stringify(config, null, 2) + '\n', 'utf-8')
+            console.log('[MCPAutoSetup] Updated Claude Code MCP config')
+          }
         }
       }
     } catch (err) {
@@ -143,15 +154,52 @@ export class MCPAutoSetup {
       if (fs.existsSync(geminiConfig)) {
         const config = JSON.parse(fs.readFileSync(geminiConfig, 'utf-8'))
         const entry = config?.mcpServers?.codefire
-        if (entry?.args?.[0] && entry.args[0] !== currentPath) {
-          if (entry.args[0].includes('dist-electron')) return
-          entry.args[0] = currentPath
-          fs.writeFileSync(geminiConfig, JSON.stringify(config, null, 2) + '\n', 'utf-8')
-          console.log('[MCPAutoSetup] Updated stale Gemini CLI MCP path')
+        if (entry) {
+          let changed = false
+          if (entry.args?.[0] && entry.args[0] !== currentPath) {
+            if (entry.args[0].includes('dist-electron')) return
+            entry.args[0] = currentPath
+            changed = true
+          }
+          if (entry.command === 'node') {
+            entry.command = nodePath
+            changed = true
+          }
+          if (changed) {
+            fs.writeFileSync(geminiConfig, JSON.stringify(config, null, 2) + '\n', 'utf-8')
+            console.log('[MCPAutoSetup] Updated Gemini CLI MCP config')
+          }
         }
       }
     } catch (err) {
       console.error('[MCPAutoSetup] Failed to update Gemini config:', err)
+    }
+
+    // Check project-level .mcp.json in home directory
+    const homeMcpJson = path.join(os.homedir(), '.mcp.json')
+    try {
+      if (fs.existsSync(homeMcpJson)) {
+        const config = JSON.parse(fs.readFileSync(homeMcpJson, 'utf-8'))
+        const entry = config?.mcpServers?.codefire
+        if (entry) {
+          let changed = false
+          if (entry.args?.[0] && entry.args[0] !== currentPath) {
+            if (entry.args[0].includes('dist-electron')) return
+            entry.args[0] = currentPath
+            changed = true
+          }
+          if (entry.command === 'node') {
+            entry.command = nodePath
+            changed = true
+          }
+          if (changed) {
+            fs.writeFileSync(homeMcpJson, JSON.stringify(config, null, 2) + '\n', 'utf-8')
+            console.log('[MCPAutoSetup] Updated ~/.mcp.json MCP config')
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[MCPAutoSetup] Failed to update ~/.mcp.json:', err)
     }
   }
 

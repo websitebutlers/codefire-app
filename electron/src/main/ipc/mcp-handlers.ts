@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { MCPServerManager } from '../services/MCPServerManager'
+import { DeepLinkService } from '../services/DeepLinkService'
 
 export function registerMCPHandlers(mcpManager: MCPServerManager) {
   ipcMain.handle('mcp:status', () => ({
@@ -50,7 +51,7 @@ export function registerMCPHandlers(mcpManager: MCPServerManager) {
     const servers = (config.mcpServers as Record<string, unknown>) ?? {}
     servers['codefire'] = {
       type: 'stdio',
-      command: 'node',
+      command: DeepLinkService.resolveNodePath(),
       args: [serverPath],
     }
     config.mcpServers = servers
