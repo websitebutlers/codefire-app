@@ -16,6 +16,7 @@ import { GmailService } from './services/GmailService'
 import { readConfig, writeMCPSecrets } from './services/ConfigStore'
 import { MCPServerManager } from './services/MCPServerManager'
 import { DeepLinkService } from './services/DeepLinkService'
+import { MCPAutoSetup } from './services/MCPAutoSetup'
 import { SearchEngine } from './services/SearchEngine'
 import { ContextEngine } from './services/ContextEngine'
 import { EmbeddingClient } from './services/EmbeddingClient'
@@ -401,7 +402,13 @@ app.whenReady().then(() => {
 
   // Defer heavy service init until after window is visible
   mainWin.once('ready-to-show', () => {
-    setTimeout(() => initDeferredServices(), 100)
+    setTimeout(() => {
+      initDeferredServices()
+      // Run MCP auto-setup after main window is visible
+      MCPAutoSetup.run(mainWin).catch(err => {
+        console.error('[MCPAutoSetup] Error:', err)
+      })
+    }, 100)
   })
 
   // Auto-recover from renderer crashes
