@@ -55,6 +55,13 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [open])
 
+  // Auto-mark all as read when panel is opened
+  useEffect(() => {
+    if (open && unreadCount > 0) {
+      markAllRead()
+    }
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!premiumEnabled) return null
 
   return (

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { MessageSquare, GripVertical, Bot, User, Mail, Cpu, FolderOpen, Play, Trash2, ArrowRight, Users } from 'lucide-react'
+import { MessageSquare, GripVertical, Bot, User, Mail, Cpu, FolderOpen, Play, Trash2, ArrowRight, Users, AlertTriangle } from 'lucide-react'
 import type { TaskItem } from '@shared/models'
 
 interface TaskCardProps {
@@ -21,6 +21,20 @@ const PRIORITY_BORDER_COLORS: Record<number, string> = {
   2: 'border-l-yellow-500',
   3: 'border-l-orange-500',
   4: 'border-l-red-500',
+}
+
+const PRIORITY_COLORS: Record<number, string> = {
+  1: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  2: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  3: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  4: 'bg-red-500/20 text-red-400 border-red-500/30',
+}
+
+const PRIORITY_LABELS: Record<number, string> = {
+  1: 'Low',
+  2: 'Med',
+  3: 'High',
+  4: 'Urgent',
 }
 
 const SOURCE_BADGES: Record<string, { label: string; color: string; bg: string }> = {
@@ -142,8 +156,16 @@ export default function TaskCard({ task, onClick, noteCount = 0, projectName, is
             </div>
           )}
 
-          {/* Labels + Source row */}
+          {/* Priority + Labels + Source row */}
           <div className="flex items-center flex-wrap gap-1 mt-1.5">
+            {task.priority > 0 && (
+              <span
+                className={`text-xs px-1.5 py-0.5 rounded border flex items-center gap-1 ${PRIORITY_COLORS[task.priority] || ''}`}
+              >
+                {task.priority >= 3 && <AlertTriangle size={10} />}
+                {PRIORITY_LABELS[task.priority] || `P${task.priority}`}
+              </span>
+            )}
             {task.remoteOwnerName && (
               <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 flex items-center gap-1">
                 <Users size={10} />
