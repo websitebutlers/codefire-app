@@ -10,9 +10,11 @@ export default function MCPBanner({ projectPath }: MCPBannerProps) {
   const [connecting, setConnecting] = useState(false)
 
   useEffect(() => {
-    window.api.invoke('mcp:checkProjectConfig', projectPath).then((result: { connected: boolean }) => {
+    window.api.invoke('mcp:checkProjectConfig', projectPath).then((raw) => {
+      const result = raw as { connected: boolean }
       if (!result.connected) {
-        window.api.invoke('settings:get').then((config: { mcpDismissedProjects?: string[] }) => {
+        window.api.invoke('settings:get').then((rawConfig) => {
+          const config = rawConfig as { mcpDismissedProjects?: string[] }
           const dismissed = config.mcpDismissedProjects || []
           if (!dismissed.includes(projectPath)) {
             setVisible(true)
