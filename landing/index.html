@@ -610,19 +610,19 @@
       </div>
 
       <div class="reveal grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-2xl mx-auto">
-        <a href="codefire://install-mcp?client=claude-code"
+        <a href="codefire://install-mcp?client=claude"
            class="cli-btn group flex flex-col items-center gap-3 border border-surface-300 hover:border-gray-500 rounded-xl px-4 py-5 transition-all hover:bg-white/[0.02]">
           <span class="text-white font-medium text-sm">Claude Code</span>
           <span class="text-[11px] text-gray-600 group-hover:text-gray-400 transition-colors">Install MCP</span>
         </a>
 
-        <a href="codefire://install-mcp?client=gemini-cli"
+        <a href="codefire://install-mcp?client=gemini"
            class="cli-btn group flex flex-col items-center gap-3 border border-surface-300 hover:border-gray-500 rounded-xl px-4 py-5 transition-all hover:bg-white/[0.02]">
           <span class="text-white font-medium text-sm">Gemini CLI</span>
           <span class="text-[11px] text-gray-600 group-hover:text-gray-400 transition-colors">Install MCP</span>
         </a>
 
-        <a href="codefire://install-mcp?client=codex-cli"
+        <a href="codefire://install-mcp?client=codex"
            class="cli-btn group flex flex-col items-center gap-3 border border-surface-300 hover:border-gray-500 rounded-xl px-4 py-5 transition-all hover:bg-white/[0.02]">
           <span class="text-white font-medium text-sm">Codex CLI</span>
           <span class="text-[11px] text-gray-600 group-hover:text-gray-400 transition-colors">Install MCP</span>
@@ -656,6 +656,11 @@
         </p>
       </div>
 
+      <p class="reveal text-sm text-gray-500 mb-6">
+        For platform-specific paths, see the <a href="getting-started.html#step-3" class="text-gray-400 hover:text-white underline underline-offset-2 transition-colors">Getting Started guide</a>.
+        The examples below use the macOS path.
+      </p>
+
       <div class="space-y-4">
         <!-- Claude Code -->
         <details class="reveal group">
@@ -666,7 +671,7 @@
           </summary>
           <div class="mt-3 code-block p-5">
             <code class="font-mono text-sm text-gray-300">
-              <span class="text-gray-600">$</span> <span class="text-fire-400">claude</span> mcp add codefire ~/Library/Application\ Support/CodeFire/bin/CodeFireMCP
+              <span class="text-gray-600">$</span> <span class="text-fire-400">claude</span> mcp add codefire -- node /Applications/CodeFire.app/Contents/Resources/mcp-server/server.js
             </code>
           </div>
         </details>
@@ -683,8 +688,8 @@
 {
   <span class="text-fire-400">"mcpServers"</span>: {
     <span class="text-fire-300">"codefire"</span>: {
-      <span class="text-emerald-400">"command"</span>: <span class="text-amber-300">"~/Library/Application Support/CodeFire/bin/CodeFireMCP"</span>,
-      <span class="text-emerald-400">"args"</span>: []
+      <span class="text-emerald-400">"command"</span>: <span class="text-amber-300">"node"</span>,
+      <span class="text-emerald-400">"args"</span>: [<span class="text-amber-300">"/Applications/CodeFire.app/Contents/Resources/mcp-server/server.js"</span>]
     }
   }
 }</pre>
@@ -701,8 +706,8 @@
           <div class="mt-3 code-block p-5">
 <pre class="font-mono text-sm text-gray-300"><span class="text-gray-600"># ~/.codex/config.toml</span>
 <span class="text-fire-400">[mcp_servers.codefire]</span>
-<span class="text-emerald-400">command</span> = <span class="text-amber-300">"~/Library/Application Support/CodeFire/bin/CodeFireMCP"</span>
-<span class="text-emerald-400">args</span> = []</pre>
+<span class="text-emerald-400">command</span> = <span class="text-amber-300">"node"</span>
+<span class="text-emerald-400">args</span> = [<span class="text-amber-300">"/Applications/CodeFire.app/Contents/Resources/mcp-server/server.js"</span>]</pre>
           </div>
         </details>
 
@@ -711,15 +716,15 @@
           <summary class="flex items-center gap-3 bg-surface border border-surface-200 rounded-xl px-6 py-4 hover:border-surface-300 transition-colors">
             <i data-lucide="chevron-right" class="chevron-icon w-4 h-4 text-gray-600 flex-shrink-0"></i>
             <span class="font-medium text-white">OpenCode</span>
-            <span class="text-xs text-gray-600 ml-auto font-mono">~/.opencode/config.json</span>
+            <span class="text-xs text-gray-600 ml-auto font-mono">opencode.json (project root)</span>
           </summary>
           <div class="mt-3 code-block p-5">
-<pre class="font-mono text-sm text-gray-300"><span class="text-gray-600">// ~/.opencode/config.json</span>
+<pre class="font-mono text-sm text-gray-300"><span class="text-gray-600">// opencode.json</span>
 {
   <span class="text-fire-400">"mcpServers"</span>: {
     <span class="text-fire-300">"codefire"</span>: {
-      <span class="text-emerald-400">"command"</span>: <span class="text-amber-300">"~/Library/Application Support/CodeFire/bin/CodeFireMCP"</span>,
-      <span class="text-emerald-400">"args"</span>: []
+      <span class="text-emerald-400">"type"</span>: <span class="text-amber-300">"local"</span>,
+      <span class="text-emerald-400">"command"</span>: [<span class="text-amber-300">"node"</span>, <span class="text-amber-300">"/Applications/CodeFire.app/Contents/Resources/mcp-server/server.js"</span>]
     }
   }
 }</pre>

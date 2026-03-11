@@ -13,9 +13,10 @@ import { TerminalService } from './services/TerminalService'
 import { GitService } from './services/GitService'
 import { GoogleOAuth } from './services/GoogleOAuth'
 import { GmailService } from './services/GmailService'
-import { readConfig } from './services/ConfigStore'
+import { readConfig, writeMCPSecrets } from './services/ConfigStore'
 import { MCPServerManager } from './services/MCPServerManager'
 import { DeepLinkService } from './services/DeepLinkService'
+import { MCPAutoSetup } from './services/MCPAutoSetup'
 import { SearchEngine } from './services/SearchEngine'
 import { ContextEngine } from './services/ContextEngine'
 import { EmbeddingClient } from './services/EmbeddingClient'
@@ -61,8 +62,8 @@ const gitService = new GitService()
 // Read config early (lightweight)
 const config = readConfig()
 
-// On Linux AppImage, copy the MCP server to a stable path before anything else
-MCPServerManager.syncMcpServerForLinux()
+// Copy bundled MCP server to stable user-data path (survives app updates)
+MCPServerManager.syncMcpServer()
 
 // Initialize MCP server manager (polls for active MCP connections)
 const mcpManager = new MCPServerManager()
@@ -81,6 +82,9 @@ const browserSessionToken = randomBytes(32).toString('hex')
 // Write token to app data so MCP server can read it
 const tokenPath = path.join(app.getPath('userData'), '.browser-session-token')
 try { fs.writeFileSync(tokenPath, browserSessionToken, { mode: 0o600 }) } catch { /* ignore */ }
+
+// Write decrypted API keys for MCP server (separate process can't use safeStorage)
+writeMCPSecrets()
 let liveWatcher: LiveSessionWatcher
 let sessionWatcher: SessionWatcher
 
@@ -398,7 +402,13 @@ app.whenReady().then(() => {
 
   // Defer heavy service init until after window is visible
   mainWin.once('ready-to-show', () => {
-    setTimeout(() => initDeferredServices(), 100)
+    setTimeout(() => {
+      initDeferredServices()
+      // Run MCP auto-setup after main window is visible
+      MCPAutoSetup.run(mainWin).catch(err => {
+        console.error('[MCPAutoSetup] Error:', err)
+      })
+    }, 100)
   })
 
   // Auto-recover from renderer crashes

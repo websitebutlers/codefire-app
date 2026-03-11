@@ -74,6 +74,9 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   supabaseUrl: process.env.CODEFIRE_SUPABASE_URL || 'https://hofreldxofygaerodowt.supabase.co',
   supabaseAnonKey: process.env.CODEFIRE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhvZnJlbGR4b2Z5Z2Flcm9kb3d0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjc2NjksImV4cCI6MjA4ODQwMzY2OX0.MBwqQBeDfu9uxb99tYTZD54P_U3tjuh2zddMUjTlCuA',
   autoShareSessions: false,
+  // MCP auto-setup
+  mcpAutoSetupDismissed: false,
+  mcpDismissedProjects: [],
 }
 
 function getConfigPath(): string {
@@ -171,4 +174,24 @@ export function writeConfig(config: Partial<AppConfig>): void {
 
 export function getConfigValue<K extends keyof AppConfig>(key: K): AppConfig[K] {
   return readConfig()[key]
+}
+
+/**
+ * Write decrypted API keys to a file the MCP server can read.
+ * The MCP server runs as a separate Node process without access to Electron's
+ * safeStorage, so it can't decrypt keys from codefire-settings.json.
+ * See CodeFire note: "OpenRouter API Key Security — Intentionally Not Hardened"
+ */
+export function writeMCPSecrets(): void {
+  try {
+    const config = readConfig()
+    const secrets: Record<string, string> = {}
+    if (config.openRouterKey) secrets.openRouterKey = config.openRouterKey
+    if (config.openAiKey) secrets.openAiKey = config.openAiKey
+    const secretsPath = path.join(app.getPath('userData'), 'mcp-secrets.json')
+    // Atomic write: write to temp file then rename (prevents corrupt reads)
+    const tmpPath = secretsPath + '.tmp'
+    fs.writeFileSync(tmpPath, JSON.stringify(secrets, null, 2), { mode: 0o600 })
+    fs.renameSync(tmpPath, secretsPath)
+  } catch { /* non-critical */ }
 }

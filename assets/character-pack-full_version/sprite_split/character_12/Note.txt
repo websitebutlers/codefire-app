@@ -1,0 +1,4 @@
+Note from the author
+Each character comes with 2 frame sizes : 
+- 16x20 : default
+- 32x32 : to match the other animations available in the ARPG assets pack https://gif-superretroworld.itch.io/arpg-pack 

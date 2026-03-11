@@ -11,6 +11,7 @@ import { useDeferredMCPStatus } from '@renderer/hooks/useMCPStatus'
 import { useDeferredPremium } from '@renderer/hooks/usePremium'
 import NotificationBell from '@renderer/components/NotificationBell'
 import { UpdateBanner } from '@renderer/components/UpdateBanner'
+import MCPBanner from '@renderer/components/StatusBar/MCPBanner'
 import logoIcon from '../../../resources/icon.png'
 
 // Eager: default tab (Tasks) and lightweight views
@@ -280,6 +281,7 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
         </div>
 
         <UpdateBanner />
+        {project && <MCPBanner projectPath={project.path} />}
 
         {/* Tab bar */}
         <TabBar activeTab={activeTab} onTabChange={setActiveTab} hiddenTabs={hiddenTabs} />
@@ -303,32 +305,16 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
           onDrop={() => setDragOverSide(null)}
         >
           {showTerminal ? (
-            <Group orientation="horizontal" id="project-layout" key={terminalOnLeft ? 'tl' : 'tr'}>
-              {terminalOnLeft ? (
-                <>
-                  <Panel id="terminal-chat" defaultSize="40%" minSize="20%">
-                    {renderTerminalChat()}
-                  </Panel>
-                  <Separator className="w-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" />
-                  <Panel id="content" defaultSize="60%" minSize="30%">
-                    <div className="h-full overflow-hidden flex flex-col">
-                      {renderActiveView(activeTab, projectId, setActiveTab)}
-                    </div>
-                  </Panel>
-                </>
-              ) : (
-                <>
-                  <Panel id="content" defaultSize="60%" minSize="30%">
-                    <div className="h-full overflow-hidden flex flex-col">
-                      {renderActiveView(activeTab, projectId, setActiveTab)}
-                    </div>
-                  </Panel>
-                  <Separator className="w-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" />
-                  <Panel id="terminal-chat" defaultSize="40%" minSize="20%">
-                    {renderTerminalChat()}
-                  </Panel>
-                </>
-              )}
+            <Group orientation="horizontal" id="project-layout">
+              <Panel id="content" defaultSize="60%" minSize="30%" style={{ order: terminalOnLeft ? 2 : 1 }}>
+                <div className="h-full overflow-hidden flex flex-col">
+                  {renderActiveView(activeTab, projectId, setActiveTab)}
+                </div>
+              </Panel>
+              <Separator className="w-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" style={{ order: terminalOnLeft ? 2 : 2 }} />
+              <Panel id="terminal-chat" defaultSize="40%" minSize="20%" style={{ order: terminalOnLeft ? 1 : 3 }}>
+                {renderTerminalChat()}
+              </Panel>
             </Group>
           ) : (
             <div className="h-full overflow-hidden flex flex-col">
