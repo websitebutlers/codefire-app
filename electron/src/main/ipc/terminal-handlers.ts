@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, app, powerSaveBlocker } from 'electron'
+import { ipcMain, BrowserWindow, webContents, app, powerSaveBlocker } from 'electron'
 import { TerminalService } from '../services/TerminalService'
 import { NotificationService } from '../services/NotificationService'
 import * as path from 'path'
@@ -19,6 +19,17 @@ function releasePowerSaveBlocker() {
     powerSaveBlocker.stop(powerSaveId)
     powerSaveId = null
   }
+}
+
+/**
+ * Look up a BrowserWindow by webContents ID. More resilient than capturing
+ * the BrowserWindow reference in a closure — survives renderer reloads and
+ * avoids stale references in multi-window setups (project windows).
+ */
+function getWindowByWebContentsId(wcId: number): BrowserWindow | null {
+  const wc = webContents.fromId(wcId)
+  if (!wc || wc.isDestroyed()) return null
+  return BrowserWindow.fromWebContents(wc)
 }
 
 /**
@@ -57,17 +68,23 @@ export function registerTerminalHandlers(terminalService: TerminalService) {
       // React Strict Mode may call terminal:create twice for the same ID;
       // create() kills the old PTY first, so markListenersRegistered resets.
       if (terminalService.markListenersRegistered(id)) {
-        const senderWindow = BrowserWindow.fromWebContents(_event.sender)
+        // Store the webContents ID instead of capturing the BrowserWindow ref.
+        // This allows dynamic lookup on each event, which is more resilient
+        // when project windows reload or recover from crashes.
+        const senderWebContentsId = _event.sender.id
 
         terminalService.onData(id, (data) => {
-          if (senderWindow && !senderWindow.isDestroyed()) {
-            senderWindow.webContents.send('terminal:data', id, data)
+          const win = getWindowByWebContentsId(senderWebContentsId)
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('terminal:data', id, data)
           }
         })
 
         terminalService.onExit(id, (exitCode, signal) => {
-          if (senderWindow && !senderWindow.isDestroyed()) {
-            senderWindow.webContents.send('terminal:exit', id, exitCode, signal)
+          console.error(`[TERMINAL] PTY exited: id=${id} exitCode=${exitCode} signal=${signal ?? 'none'}`)
+          const win = getWindowByWebContentsId(senderWebContentsId)
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('terminal:exit', id, exitCode, signal)
           }
           NotificationService.getInstance().notifyClaudeDone(id)
           // Don't delete session here — renderer will call terminal:create to restart

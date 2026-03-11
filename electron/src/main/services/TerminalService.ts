@@ -93,7 +93,7 @@ export class TerminalService {
     // Verify cwd exists — fallback to HOME if project dir is gone
     const actualCwd = fs.existsSync(projectPath) ? projectPath : (cleanEnv.HOME || '/')
 
-    console.log(`[terminal] Spawning shell="${shell}" cwd="${actualCwd}" id="${id}"`)
+    console.log(`[TERMINAL] Creating PTY: id=${id} shell=${shell} cwd=${actualCwd}`)
 
     const term = pty!.spawn(shell, shellArgs, {
       name: 'xterm-256color',

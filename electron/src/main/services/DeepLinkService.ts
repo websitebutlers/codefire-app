@@ -4,6 +4,33 @@ import os from 'os'
 import { execFileSync } from 'child_process'
 import { MCPServerManager } from './MCPServerManager'
 
+/**
+ * Resolve the absolute path of a binary by checking common locations and `which`.
+ * GUI-spawned processes on macOS don't inherit the user's shell PATH (nvm, Homebrew,
+ * Volta, etc.), so bare command names like "node" or "claude" fail with ENOENT.
+ */
+function resolveAbsoluteBinary(name: string, extraPaths: string[] = []): string {
+  // 1. Check well-known locations first (no shell needed)
+  for (const candidate of extraPaths) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+
+  // 2. Try `which` inside a login shell to pick up nvm/Homebrew/Volta PATH.
+  //    Uses execFileSync with explicit shell args to avoid shell injection.
+  try {
+    const shell = process.env.SHELL || '/bin/zsh'
+    const result = execFileSync(shell, ['-lc', `which ${name}`], {
+      timeout: 5000,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+    if (result && fs.existsSync(result)) return result
+  } catch { /* not found via shell */ }
+
+  // 3. Fallback: return bare name (will work if PATH happens to be correct)
+  return name
+}
+
 export type CLIProvider = 'claude' | 'gemini' | 'codex' | 'opencode'
 
 const CLI_DISPLAY_NAMES: Record<CLIProvider, string> = {
@@ -64,18 +91,22 @@ export class DeepLinkService {
       if (cli === 'claude') {
         return this.installClaudeMCP(cli, displayName, serverPath)
       }
+
+      // For all other CLIs, write JSON/TOML config files
+      const nodePath = DeepLinkService.resolveNodePath()
       switch (cli) {
         case 'gemini':
           this.installJSONMCP(
             path.join(os.homedir(), '.gemini', 'settings.json'),
             'mcpServers',
-            { command: 'node', args: [serverPath] }
+            { command: nodePath, args: [serverPath] }
           )
           break
         case 'codex':
           this.installCodexMCP(
             path.join(os.homedir(), '.codex', 'config.toml'),
-            serverPath
+            serverPath,
+            nodePath
           )
           break
         case 'opencode':
@@ -94,10 +125,20 @@ export class DeepLinkService {
   }
 
   private installClaudeMCP(cli: CLIProvider, displayName: string, mcpServerPath: string): DeepLinkResult {
+    const nodePath = DeepLinkService.resolveNodePath()
+
     // Try `claude mcp add` command first
     try {
-      const claudeCmd = process.platform === 'win32' ? 'claude.cmd' : 'claude'
-      execFileSync(claudeCmd, ['mcp', 'add', 'codefire', '--', 'node', mcpServerPath], {
+      const claudeCmd = resolveAbsoluteBinary(
+        process.platform === 'win32' ? 'claude.cmd' : 'claude',
+        [
+          '/usr/local/bin/claude',
+          '/opt/homebrew/bin/claude',
+          path.join(os.homedir(), '.claude', 'local', 'claude'),
+          path.join(os.homedir(), '.npm-global', 'bin', 'claude'),
+        ]
+      )
+      execFileSync(claudeCmd, ['mcp', 'add', 'codefire', '--', nodePath, mcpServerPath], {
         stdio: 'ignore',
         timeout: 10000,
       })
@@ -109,7 +150,7 @@ export class DeepLinkService {
     // Fallback: write to global claude config
     const configPath = path.join(os.homedir(), '.claude.json')
     this.installJSONMCP(configPath, 'mcpServers', {
-      command: 'node',
+      command: nodePath,
       args: [mcpServerPath],
     })
     return { success: true, cli, displayName }
@@ -142,15 +183,27 @@ export class DeepLinkService {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8')
   }
 
+  /** Resolve the absolute path to the node binary. */
+  static resolveNodePath(): string {
+    return resolveAbsoluteBinary('node', [
+      '/usr/local/bin/node',
+      '/opt/homebrew/bin/node',
+      path.join(os.homedir(), '.nvm/current/bin/node'),
+      path.join(os.homedir(), '.volta/bin/node'),
+      'C:\\Program Files\\nodejs\\node.exe',
+    ])
+  }
+
   /**
    * Merge-safe TOML MCP config writer for Codex CLI.
    */
-  private installCodexMCP(configPath: string, mcpServerPath: string): void {
+  private installCodexMCP(configPath: string, mcpServerPath: string, nodePath: string): void {
     const dir = path.dirname(configPath)
     fs.mkdirSync(dir, { recursive: true })
 
     const escapedPath = mcpServerPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-    const section = `\n[mcp_servers.codefire]\ncommand = "node"\nargs = ["${escapedPath}"]\n`
+    const escapedNode = nodePath.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    const section = `\n[mcp_servers.codefire]\ncommand = "${escapedNode}"\nargs = ["${escapedPath}"]\n`
 
     if (fs.existsSync(configPath)) {
       let content = fs.readFileSync(configPath, 'utf-8')

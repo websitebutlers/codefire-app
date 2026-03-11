@@ -68,6 +68,14 @@ export class WindowManager {
 
     this.projectWindows.set(projectId, projectWindow)
 
+    // Auto-recover from renderer crashes (matches main window behavior)
+    win.webContents.on('render-process-gone', (_event, details) => {
+      console.error(`[PROJECT:${projectId}] Renderer crashed:`, details.reason, details.exitCode)
+      if (details.reason !== 'clean-exit') {
+        win.webContents.reload()
+      }
+    })
+
     win.on('closed', () => {
       this.projectWindows.delete(projectId)
     })
