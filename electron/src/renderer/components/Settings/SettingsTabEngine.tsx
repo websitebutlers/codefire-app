@@ -204,20 +204,13 @@ export default function SettingsTabEngine({ config, onChange }: Props) {
       <Section title="API Keys">
         <TextInput
           label="OpenRouter API Key"
-          hint="Used for embeddings, chat, and image generation. Get one at openrouter.ai"
+          hint="Used for embeddings, chat, image generation, and audio transcription. Get one at openrouter.ai"
           placeholder="sk-or-..."
           value={config.openRouterKey}
           onChange={(v) => onChange({ openRouterKey: v })}
           secret
         />
-        <TextInput
-          label="OpenAI API Key"
-          hint="Used for Whisper audio transcription. Get one at platform.openai.com"
-          placeholder="sk-..."
-          value={config.openAiKey}
-          onChange={(v) => onChange({ openAiKey: v })}
-          secret
-        />
+
       </Section>
 
       <Section title="Models">

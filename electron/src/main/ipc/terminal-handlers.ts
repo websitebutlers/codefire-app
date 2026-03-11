@@ -1,8 +1,25 @@
-import { ipcMain, BrowserWindow, app } from 'electron'
+import { ipcMain, BrowserWindow, app, powerSaveBlocker } from 'electron'
 import { TerminalService } from '../services/TerminalService'
 import { NotificationService } from '../services/NotificationService'
 import * as path from 'path'
 import * as fs from 'fs'
+
+// Prevent macOS App Nap from suspending PTY child processes.
+// Without this, backgrounded terminals can receive SIGHUP and exit (code 0).
+let powerSaveId: number | null = null
+
+function ensurePowerSaveBlocker() {
+  if (powerSaveId === null || !powerSaveBlocker.isStarted(powerSaveId)) {
+    powerSaveId = powerSaveBlocker.start('prevent-app-suspension')
+  }
+}
+
+function releasePowerSaveBlocker() {
+  if (powerSaveId !== null && powerSaveBlocker.isStarted(powerSaveId)) {
+    powerSaveBlocker.stop(powerSaveId)
+    powerSaveId = null
+  }
+}
 
 /**
  * Register IPC handlers for terminal management.
@@ -34,9 +51,11 @@ export function registerTerminalHandlers(terminalService: TerminalService) {
       }
 
       terminalService.create(id, projectPath)
+      ensurePowerSaveBlocker()
 
       // Wire up PTY output → renderer, but only once per session.
-      // React Strict Mode may call terminal:create twice for the same ID.
+      // React Strict Mode may call terminal:create twice for the same ID;
+      // create() kills the old PTY first, so markListenersRegistered resets.
       if (terminalService.markListenersRegistered(id)) {
         const senderWindow = BrowserWindow.fromWebContents(_event.sender)
 
@@ -51,7 +70,11 @@ export function registerTerminalHandlers(terminalService: TerminalService) {
             senderWindow.webContents.send('terminal:exit', id, exitCode, signal)
           }
           NotificationService.getInstance().notifyClaudeDone(id)
-          terminalService.kill(id)
+          // Don't delete session here — renderer will call terminal:create to restart
+          // or terminal:kill to clean up. This prevents stale-exit race conditions.
+          if (terminalService.getActiveIds().length === 0) {
+            releasePowerSaveBlocker()
+          }
         })
       }
 
@@ -64,6 +87,9 @@ export function registerTerminalHandlers(terminalService: TerminalService) {
       throw new Error('Terminal id is required and must be a string')
     }
     terminalService.kill(id)
+    if (terminalService.getActiveIds().length === 0) {
+      releasePowerSaveBlocker()
+    }
     return { success: true }
   })
 

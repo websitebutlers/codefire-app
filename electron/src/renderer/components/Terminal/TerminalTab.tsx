@@ -3,7 +3,6 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
-import logoIcon from '../../../../resources/icon.png'
 
 interface TerminalTabProps {
   /** Unique ID for this terminal session */
@@ -220,13 +219,40 @@ export default function TerminalTab({ terminalId, isActive, projectPath, initial
       })
 
     // ─── PTY exit ─────────────────────────────────────────────────────────
+    let rapidExitCount = 0
+    let lastExitTime = 0
+    const MAX_RAPID_EXITS = 3
+    const RAPID_WINDOW_MS = 5000
+
     const removeExitListener = window.api.on(
       'terminal:exit',
       (id: unknown, exitCode: unknown) => {
-        if (id === terminalId) {
-          ptyExitedRef.current = true
-          terminal.write(`\r\n\x1b[90m[Process exited with code ${exitCode}. Press any key to restart.]\x1b[0m\r\n`)
+        if (id !== terminalId) return
+
+        const now = Date.now()
+        if (now - lastExitTime > RAPID_WINDOW_MS) rapidExitCount = 0
+
+        // Auto-restart on clean exit (code 0) — macOS App Nap, SIGHUP, or
+        // React Strict Mode can cause unexpected clean exits.
+        if (exitCode === 0 && rapidExitCount < MAX_RAPID_EXITS) {
+          rapidExitCount++
+          lastExitTime = now
+          ptyExitedRef.current = false
+          // Silently restart — user never sees the dead terminal
+          setTimeout(() => {
+            window.api.invoke('terminal:create', terminalId, projectPath)
+              .then(() => terminal.clear())
+              .catch(() => {
+                ptyExitedRef.current = true
+                terminal.write(`\r\n\x1b[90m[Shell exited. Press any key to restart.]\x1b[0m\r\n`)
+              })
+          }, 150)
+          return
         }
+
+        // Non-zero exit or too many rapid exits: show message
+        ptyExitedRef.current = true
+        terminal.write(`\r\n\x1b[90m[Process exited with code ${exitCode}. Press any key to restart.]\x1b[0m\r\n`)
       }
     )
 
@@ -376,17 +402,6 @@ export default function TerminalTab({ terminalId, isActive, projectPath, initial
         ref={containerRef}
         className="h-full w-full"
         style={{ backgroundColor: '#171717', padding: '8px 4px 4px 8px' }}
-      />
-      {/* Faint background logo overlay */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.015] select-none z-[2]"
-        style={{
-          backgroundImage: `url(${logoIcon})`,
-          backgroundRepeat: 'no-repeat',
-          backgroundPosition: 'center',
-          backgroundSize: 'auto 100%',
-        }}
       />
       {dragOver && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/40 border-2 border-dashed border-codefire-orange/60 rounded pointer-events-none z-10">

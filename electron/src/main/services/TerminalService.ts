@@ -12,6 +12,7 @@ interface TerminalSession {
   pty: ptyType.IPty
   projectPath: string
   listenersRegistered: boolean
+  generation: number
 }
 
 /**
@@ -83,15 +84,28 @@ export class TerminalService {
       cleanEnv.SHELL = shell
     }
 
+    // Verify shell exists before attempting spawn
+    const fs = require('fs')
+    if (!isWindows && !fs.existsSync(shell)) {
+      throw new Error(`Shell not found at "${shell}". Set SHELL env var to a valid shell path.`)
+    }
+
+    // Verify cwd exists — fallback to HOME if project dir is gone
+    const actualCwd = fs.existsSync(projectPath) ? projectPath : (cleanEnv.HOME || '/')
+
+    console.log(`[terminal] Spawning shell="${shell}" cwd="${actualCwd}" id="${id}"`)
+
     const term = pty!.spawn(shell, shellArgs, {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
-      cwd: projectPath,
+      cwd: actualCwd,
       env: cleanEnv,
     })
 
-    this.sessions.set(id, { id, pty: term, projectPath, listenersRegistered: false })
+    const prev = this.sessions.get(id)
+    const generation = (prev?.generation ?? 0) + 1
+    this.sessions.set(id, { id, pty: term, projectPath, listenersRegistered: false, generation })
   }
 
   /**
@@ -155,6 +169,14 @@ export class TerminalService {
    */
   has(id: string): boolean {
     return this.sessions.has(id)
+  }
+
+  /**
+   * Get session info (for reading projectPath on restart).
+   */
+  getSession(id: string): { projectPath: string; generation: number } | undefined {
+    const session = this.sessions.get(id)
+    return session ? { projectPath: session.projectPath, generation: session.generation } : undefined
   }
 
   /**
