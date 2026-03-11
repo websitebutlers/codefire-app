@@ -5,8 +5,10 @@ import os from 'os'
 import { app } from 'electron'
 import type { MCPConnection } from '@shared/models'
 
-/** Stable install directory for the MCP server on Linux (AppImage mounts to ephemeral /tmp paths) */
-const LINUX_MCP_DIR = path.join(os.homedir(), '.local', 'share', 'CodeFire', 'mcp-server')
+/** Stable install directory for the MCP server — survives app updates */
+function getStableMcpDir(): string {
+  return path.join(app.getPath('userData'), 'mcp-server')
+}
 
 export type MCPServerStatus = 'connected' | 'disconnected' | 'error'
 
@@ -152,30 +154,21 @@ export class MCPServerManager {
     }
   }
 
-  /** Get the path to the MCP server executable for .mcp.json configuration */
+  /** Get the path to the MCP server for CLI configuration */
   static getMcpServerPath(): string {
     if (!app.isPackaged) {
-      // In dev, use the compiled output
       return path.join(__dirname, '..', 'mcp', 'server.js')
     }
-
-    // Linux AppImage: use the stable copy in ~/.local/share/CodeFire/mcp-server/
-    // (AppImage mounts to ephemeral /tmp/.mount_* paths that change every launch)
-    if (process.platform === 'linux') {
-      return path.join(LINUX_MCP_DIR, 'server.js')
-    }
-
-    // macOS / Windows: resources path is stable across launches
-    return path.join(process.resourcesPath, 'mcp-server', 'server.js')
+    return path.join(getStableMcpDir(), 'server.js')
   }
 
   /**
-   * On Linux, sync the bundled MCP server from the AppImage mount to a stable
-   * path so Claude Code can find it even after the AppImage is relaunched.
+   * Copy the bundled MCP server to a stable user-data path so AI CLIs
+   * can find it at a predictable location that survives app updates.
    * Should be called early in app startup, before any MCP registration.
    */
-  static syncMcpServerForLinux(): void {
-    if (process.platform !== 'linux' || !app.isPackaged) return
+  static syncMcpServer(): void {
+    if (!app.isPackaged) return
 
     const source = path.join(process.resourcesPath, 'mcp-server')
     if (!fs.existsSync(source)) {
@@ -183,13 +176,24 @@ export class MCPServerManager {
       return
     }
 
-    try {
-      // Ensure target directory exists
-      fs.mkdirSync(LINUX_MCP_DIR, { recursive: true })
+    const target = getStableMcpDir()
 
-      // Copy the entire mcp-server directory (server.js + node_modules)
-      fs.cpSync(source, LINUX_MCP_DIR, { recursive: true, force: true })
-      console.log('[MCP] Synced MCP server to stable path:', LINUX_MCP_DIR)
+    // Skip copy if versions match (avoid unnecessary startup delay)
+    try {
+      const sourcePkg = JSON.parse(fs.readFileSync(path.join(source, 'package.json'), 'utf-8'))
+      const targetPkg = JSON.parse(fs.readFileSync(path.join(target, 'package.json'), 'utf-8'))
+      if (sourcePkg.version === targetPkg.version) {
+        console.log('[MCP] Stable MCP server is up-to-date (v' + sourcePkg.version + ')')
+        return
+      }
+    } catch {
+      // Target doesn't exist or is corrupted — proceed with copy
+    }
+
+    try {
+      fs.mkdirSync(target, { recursive: true })
+      fs.cpSync(source, target, { recursive: true, force: true })
+      console.log('[MCP] Synced MCP server to stable path:', target)
     } catch (err) {
       console.error('[MCP] Failed to sync MCP server to stable path:', err)
     }
