@@ -166,7 +166,7 @@ export function registerPremiumHandlers(
       const { error } = await client.from('notifications').insert({
         user_id: recipientUserId,
         project_id: remoteProjectId,
-        type: 'mention',
+        type: 'message',
         title: `Alert from ${senderName}`,
         body: message,
         entity_type: 'user',

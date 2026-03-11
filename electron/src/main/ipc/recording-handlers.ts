@@ -156,7 +156,7 @@ export function registerRecordingHandlers(db: Database.Database) {
               Authorization: `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-              model: 'google/gemini-2.5-flash',
+              model: 'google/gemini-3.1-flash-lite-preview',
               messages: [
                 {
                   role: 'user',
