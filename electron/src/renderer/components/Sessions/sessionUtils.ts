@@ -29,33 +29,39 @@ export function getSessionTopic(session: Session): string | null {
  * Derives a human-readable display name for a session.
  *
  * Fallback chain:
- * 1. Topic from summary (first user message, before " | Files:")
- * 2. GitHub PR title (if a PR exists for the session's branch)
- * 3. Git branch name (formatted)
- * 4. Slug or truncated session ID
+ * 1. AI-generated title (set by the AI Summary action)
+ * 2. Topic from summary (first user message, before " | Files:")
+ * 3. GitHub PR title (if a PR exists for the session's branch)
+ * 4. Git branch name (formatted)
+ * 5. Slug or truncated session ID
  */
 export function getSessionDisplayName(
   session: Session,
   maxLength = 60,
   prTitle?: string
 ): string {
-  // 1. Try to extract topic from summary (the first user message)
+  // 1. Prefer the AI-generated title if available
+  if (session.title) {
+    return session.title.length > maxLength ? session.title.slice(0, maxLength - 1) + '…' : session.title
+  }
+
+  // 2. Try to extract topic from summary (the first user message)
   const topic = getSessionTopic(session)
   if (topic) {
     return topic.length > maxLength ? topic.slice(0, maxLength - 1) + '…' : topic
   }
 
-  // 2. Use GitHub PR title if available for this branch
+  // 3. Use GitHub PR title if available for this branch
   if (prTitle) {
     return prTitle.length > maxLength ? prTitle.slice(0, maxLength - 1) + '…' : prTitle
   }
 
-  // 3. Use git branch as a hint
+  // 4. Use git branch as a hint
   if (session.gitBranch) {
     return session.gitBranch
   }
 
-  // 4. Fall back to slug or truncated ID
+  // 5. Fall back to slug or truncated ID
   return session.slug || session.id.slice(0, 8)
 }
 

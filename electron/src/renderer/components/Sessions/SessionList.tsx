@@ -84,7 +84,7 @@ export default function SessionList({ sessions, selectedId, onSelect, prTitleMap
             // The title is based on the user message (topic) — if the display
             // name fell back to branch/slug, we still want to show it but the
             // user can't easily tell what the session was about.
-            const hasMeaningfulTitle = !!topic || !!prTitle
+            const hasMeaningfulTitle = !!session.title || !!topic || !!prTitle
 
             return (
               <button

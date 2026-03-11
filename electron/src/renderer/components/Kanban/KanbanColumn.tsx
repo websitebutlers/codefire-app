@@ -4,6 +4,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Plus, Expand, Circle, CircleDot, CheckCircle2 } from 'lucide-react'
 import type { TaskItem } from '@shared/models'
 import TaskCard from './TaskCard'
+import logoIcon from '../../../../resources/icon.png'
 
 const COLUMN_ICONS = {
   'circle': Circle,
@@ -78,9 +79,20 @@ export default function KanbanColumn({
 
   return (
     <div
-      className={`flex flex-col bg-[#111111] rounded-cf border transition-colors min-h-0
+      className={`flex flex-col bg-[#111111] rounded-cf border transition-colors min-h-0 relative overflow-hidden
         ${highlighted ? `${DROP_BORDER[color] || 'border-neutral-500'} bg-neutral-800/30` : 'border-neutral-800'}`}
     >
+      {/* Faint background logo */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.015] select-none"
+        style={{
+          backgroundImage: `url(${logoIcon})`,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          backgroundSize: 'auto 100%',
+        }}
+      />
       {/* Column header */}
       <div className="shrink-0">
         <div className="flex items-center gap-2 px-3 h-9">

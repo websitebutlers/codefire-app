@@ -47,7 +47,7 @@ export default function IndexIndicator({
           </span>
         ) : (
           <span
-            className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${dotClass(status)}`}
+            className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${dotClass(status)}${status === 'idle' ? ' animate-pulse' : ''}`}
           />
         )}
 
@@ -72,7 +72,7 @@ export default function IndexIndicator({
 function dotClass(status: IndexIndicatorProps['status']): string {
   switch (status) {
     case 'idle':
-      return 'bg-neutral-600'
+      return 'bg-codefire-orange'
     case 'ready':
       return 'bg-success'
     case 'error':

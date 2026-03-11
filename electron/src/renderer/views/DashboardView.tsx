@@ -4,6 +4,7 @@ import {
   Clock, CircleDotDashed, ArrowRightLeft,
   GitBranch, Cpu, MessageSquare, Wrench, DollarSign,
 } from 'lucide-react'
+import logoIcon from '../../../resources/icon.png'
 import { useSessions, calculateSessionCost } from '@renderer/hooks/useSessions'
 import { useTasks } from '@renderer/hooks/useTasks'
 import { api } from '@renderer/lib/api'
@@ -93,7 +94,18 @@ export default function DashboardView({ projectId, projectPath, onTabChange }: D
   }
 
   return (
-    <div className="p-4 overflow-y-auto h-full">
+    <div className="p-4 overflow-y-auto h-full relative">
+      {/* Faint background logo */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.015] select-none"
+        style={{
+          backgroundImage: `url(${logoIcon})`,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          backgroundSize: 'auto 100%',
+        }}
+      />
       <h2 className="text-title text-neutral-200 font-medium mb-4">Dashboard</h2>
 
       {/* Quick action buttons */}

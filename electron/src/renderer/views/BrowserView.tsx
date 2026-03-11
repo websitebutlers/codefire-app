@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Globe } from 'lucide-react'
+import logoIcon from '../../../resources/icon.png'
 import { useBrowserTabs } from '@renderer/hooks/useBrowserTabs'
 import BrowserTabStrip from '@renderer/components/Browser/BrowserTabStrip'
 import BrowserToolbar from '@renderer/components/Browser/BrowserToolbar'
@@ -388,9 +389,20 @@ export default function BrowserView({ projectId }: BrowserViewProps) {
         ref={webviewContainerRef}
         className="flex-1 min-h-0 overflow-hidden relative"
       >
+        {/* Faint background logo */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.015] select-none"
+          style={{
+            backgroundImage: `url(${logoIcon})`,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+            backgroundSize: 'auto 100%',
+          }}
+        />
         {/* Placeholder shown when no page is loaded */}
         {!hasWebview && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-900">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-900/80">
             <Globe size={32} className="text-neutral-700 mb-3" />
             <p className="text-sm text-neutral-600">Enter a URL to get started</p>
           </div>

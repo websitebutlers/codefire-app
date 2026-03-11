@@ -139,13 +139,21 @@ export default function SessionDetail({ session, prTitleMap }: SessionDetailProp
         session.summary ? `Existing summary: ${session.summary}` : '',
       ].filter(Boolean).join('\n')
 
-      const summary = await callAI(
+      const result = await callAI(
         sessionInfo,
-        'You are a coding assistant. Summarize this AI coding session in 2-3 concise sentences. Focus on what was accomplished, key changes, and outcomes. Be specific about files and features.'
+        'You are a coding assistant. Provide a short title and a summary for this AI coding session.\n\nReturn your response in this exact format:\nTITLE: <a concise title, max 60 characters, describing what was done>\nSUMMARY: <2-3 concise sentences about what was accomplished, key changes, and outcomes. Be specific about files and features.>'
       )
 
-      await api.sessions.update(session.id, { summary })
-      // Update local state by triggering a re-read
+      // Parse title and summary from the response
+      const titleMatch = result.match(/TITLE:\s*(.+)/i)
+      const summaryMatch = result.match(/SUMMARY:\s*([\s\S]+)/i)
+
+      const title = titleMatch?.[1]?.trim()
+      const summary = summaryMatch?.[1]?.trim() || result.trim()
+
+      await api.sessions.update(session.id, { ...(title ? { title } : {}), summary })
+      // Update local state
+      if (title) session.title = title
       session.summary = summary
     } catch (err) {
       setAiError(err instanceof Error ? err.message : 'Failed to generate summary')

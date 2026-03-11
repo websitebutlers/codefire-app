@@ -3,6 +3,7 @@ import { Mail, RefreshCw, AlertCircle, UserPlus } from 'lucide-react'
 import { api } from '@renderer/lib/api'
 import type { ProcessedEmail, GmailAccount } from '@shared/models'
 import SettingsModal from '@renderer/components/Settings/SettingsModal'
+import logoIcon from '../../../../resources/icon.png'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -129,7 +130,18 @@ export default function RecentEmails() {
   // No accounts placeholder — clickable to open Settings → Gmail
   if (!loading && accounts.length === 0) {
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full relative overflow-hidden">
+        {/* Faint background logo */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.015] select-none"
+          style={{
+            backgroundImage: `url(${logoIcon})`,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+            backgroundSize: 'auto 100%',
+          }}
+        />
         {header}
         <div
           className="flex-1 flex flex-col items-center justify-center gap-2 text-neutral-500 cursor-pointer
@@ -149,7 +161,18 @@ export default function RecentEmails() {
 
   if (loading) {
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full relative overflow-hidden">
+        {/* Faint background logo */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.015] select-none"
+          style={{
+            backgroundImage: `url(${logoIcon})`,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+            backgroundSize: 'auto 100%',
+          }}
+        />
         {header}
         <div className="flex-1 flex items-center justify-center text-neutral-600 text-xs">
           Loading emails...
@@ -160,7 +183,18 @@ export default function RecentEmails() {
 
   if (error) {
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full relative overflow-hidden">
+        {/* Faint background logo */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.015] select-none"
+          style={{
+            backgroundImage: `url(${logoIcon})`,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+            backgroundSize: 'auto 100%',
+          }}
+        />
         {header}
         <div className="flex-1 flex flex-col items-center justify-center gap-2 text-neutral-600">
           <AlertCircle size={16} />
@@ -172,7 +206,18 @@ export default function RecentEmails() {
 
   if (syncing && emails.length === 0) {
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full relative overflow-hidden">
+        {/* Faint background logo */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.015] select-none"
+          style={{
+            backgroundImage: `url(${logoIcon})`,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+            backgroundSize: 'auto 100%',
+          }}
+        />
         {header}
         <div className="flex-1 flex flex-col items-center justify-center gap-2 text-neutral-500">
           <RefreshCw size={16} className="animate-spin text-neutral-600" />
@@ -184,7 +229,18 @@ export default function RecentEmails() {
 
   if (emails.length === 0) {
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full relative overflow-hidden">
+        {/* Faint background logo */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.015] select-none"
+          style={{
+            backgroundImage: `url(${logoIcon})`,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+            backgroundSize: 'auto 100%',
+          }}
+        />
         {header}
         <div className="flex-1 flex flex-col items-center justify-center gap-2 text-neutral-500">
           <Mail size={20} className="text-neutral-600" />
@@ -196,7 +252,18 @@ export default function RecentEmails() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative overflow-hidden">
+      {/* Faint background logo */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.015] select-none"
+        style={{
+          backgroundImage: `url(${logoIcon})`,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          backgroundSize: 'auto 100%',
+        }}
+      />
       {header}
       <div className="flex-1 overflow-y-auto">
         {emails.map((email) => (

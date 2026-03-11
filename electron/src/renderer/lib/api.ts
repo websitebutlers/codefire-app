@@ -170,12 +170,14 @@ export const api = {
       startedAt?: string
       model?: string
       gitBranch?: string
+      title?: string
       summary?: string
     }) => invoke('sessions:create', data) as Promise<Session>,
     update: (
       id: string,
       data: {
         endedAt?: string
+        title?: string
         summary?: string
         messageCount?: number
         toolUseCount?: number
@@ -378,8 +380,8 @@ export const api = {
       invoke('recordings:delete', id) as Promise<boolean>,
     saveAudio: (id: string, audioData: ArrayBuffer) =>
       invoke('recordings:saveAudio', id, audioData) as Promise<boolean>,
-    transcribe: (id: string, apiKey: string) =>
-      invoke('recordings:transcribe', id, apiKey) as Promise<Recording>,
+    transcribe: (id: string) =>
+      invoke('recordings:transcribe', id) as Promise<Recording>,
     importFile: (projectId: string) =>
       invoke('recordings:importFile', projectId) as Promise<Recording | null>,
   },
@@ -586,6 +588,10 @@ export const api = {
       invoke('premium:markNotificationRead', notificationId) as Promise<void>,
     markAllNotificationsRead: () =>
       invoke('premium:markAllNotificationsRead') as Promise<void>,
+
+    // Team messages
+    sendTeamMessage: (recipientUserId: string, message: string, projectId?: string) =>
+      invoke('premium:sendTeamMessage', recipientUserId, message, projectId) as Promise<void>,
 
     // Activity feed
     getActivityFeed: (projectId: string, limit?: number) =>

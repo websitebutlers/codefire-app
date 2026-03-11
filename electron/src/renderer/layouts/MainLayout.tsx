@@ -1,6 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { Terminal } from 'lucide-react'
+import { Terminal, Target } from 'lucide-react'
 import logoIcon from '../../../resources/icon.png'
 import { api } from '@renderer/lib/api'
 import TerminalPanel from '@renderer/components/Terminal/TerminalPanel'
@@ -24,6 +24,7 @@ const DocsView = lazy(() => import('@renderer/views/DocsView'))
 const BrowserView = lazy(() => import('@renderer/views/BrowserView'))
 const RecordingsView = lazy(() => import('@renderer/views/RecordingsView'))
 const ReviewsView = lazy(() => import('@renderer/views/ReviewsView'))
+const BriefingDrawer = lazy(() => import('@renderer/components/Dashboard/BriefingDrawer'))
 
 /** Tabs that require a project path and can't run in global context */
 const PROJECT_ONLY_TABS = new Set([
@@ -41,6 +42,7 @@ export default function MainLayout() {
   const [showTerminal, setShowTerminal] = useState(true)
   const [terminalOnLeft, setTerminalOnLeft] = useState(false)
   const [showChat, setShowChat] = useState(true)
+  const [showBriefing, setShowBriefing] = useState(false)
   const [dragOverSide, setDragOverSide] = useState<'left' | 'right' | 'active' | null>(null)
   const [activeTab, setActiveTab] = useState('Tasks')
 
@@ -119,7 +121,7 @@ export default function MainLayout() {
       <div className="flex flex-col" style={{ height: isMac ? 'calc(100vh - 28px)' : '100vh' }}>
         {/* Top bar */}
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-neutral-800 bg-neutral-950 shrink-0">
-          <img src={logoIcon} alt="CodeFire" className="w-4 h-4" />
+          <img src={logoIcon} alt="CodeFire" className="w-[22px] h-[22px]" />
           <span className="text-sm font-semibold text-neutral-200 tracking-tight">CodeFire</span>
 
           <ProjectDropdown />
@@ -140,6 +142,14 @@ export default function MainLayout() {
           </button>
           <NotificationBell />
           <MCPIndicator status={mcpStatus} sessionCount={mcpSessionCount} onConnect={startMCP} onDisconnect={stopMCP} />
+          <div className="w-px h-4 bg-neutral-700 mx-0.5" />
+          <button
+            onClick={() => setShowBriefing(v => !v)}
+            className="p-1 rounded-md text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors relative"
+            title="Daily Briefing"
+          >
+            <Target className="w-3.5 h-3.5" />
+          </button>
         </div>
 
         <UpdateBanner />
@@ -233,6 +243,13 @@ export default function MainLayout() {
             </>
           )}
         </div>
+
+        {/* Global Briefing Drawer */}
+        {showBriefing && (
+          <Suspense fallback={null}>
+            <BriefingDrawer projectId="__global__" onClose={() => setShowBriefing(false)} />
+          </Suspense>
+        )}
 
         {/* Status bar */}
         <div className="w-full h-7 flex-shrink-0 flex items-center gap-2 px-3 bg-neutral-950 border-t border-neutral-800 no-drag">

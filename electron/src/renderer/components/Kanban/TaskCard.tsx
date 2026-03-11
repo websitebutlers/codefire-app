@@ -15,19 +15,12 @@ interface TaskCardProps {
   onDeleteTask?: (taskId: number) => void
 }
 
-const PRIORITY_COLORS: Record<number, string> = {
-  0: '',
-  1: 'bg-neutral-500/20 text-neutral-400 border-neutral-500/30',
-  2: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  3: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  4: 'bg-red-500/20 text-red-400 border-red-500/30',
-}
-
-const PRIORITY_LABELS: Record<number, string> = {
-  1: 'Low',
-  2: 'Med',
-  3: 'High',
-  4: 'Critical',
+const PRIORITY_BORDER_COLORS: Record<number, string> = {
+  0: 'border-neutral-700/50',
+  1: 'border-l-neutral-500',
+  2: 'border-l-yellow-500',
+  3: 'border-l-orange-500',
+  4: 'border-l-red-500',
 }
 
 const SOURCE_BADGES: Record<string, { label: string; color: string; bg: string }> = {
@@ -122,7 +115,7 @@ export default function TaskCard({ task, onClick, noteCount = 0, projectName, is
     <div
       ref={setNodeRef}
       style={style}
-      className={`bg-neutral-800 border border-neutral-700/50 rounded-cf p-2.5
+      className={`bg-neutral-800 border border-neutral-700/50 border-l-2 ${PRIORITY_BORDER_COLORS[task.priority] || 'border-neutral-700/50'} rounded-cf p-2.5
         hover:border-neutral-600 hover:shadow-[0_2px_8px_rgba(0,0,0,0.15)] transition-all duration-150 cursor-pointer group
         ${isDragging ? 'shadow-lg ring-1 ring-codefire-orange/30' : ''}`}
       onClick={onClick}
@@ -149,15 +142,8 @@ export default function TaskCard({ task, onClick, noteCount = 0, projectName, is
             </div>
           )}
 
-          {/* Priority + Labels + Source row */}
+          {/* Labels + Source row */}
           <div className="flex items-center flex-wrap gap-1 mt-1.5">
-            {task.priority > 0 && (
-              <span
-                className={`text-xs px-1.5 py-0.5 rounded border ${PRIORITY_COLORS[task.priority] || ''}`}
-              >
-                {PRIORITY_LABELS[task.priority] || `P${task.priority}`}
-              </span>
-            )}
             {task.remoteOwnerName && (
               <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 flex items-center gap-1">
                 <Users size={10} />

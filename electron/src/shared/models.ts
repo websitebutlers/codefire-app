@@ -21,6 +21,7 @@ export interface Session {
   endedAt: string | null
   model: string | null
   gitBranch: string | null
+  title: string | null
   summary: string | null
   messageCount: number
   toolUseCount: number

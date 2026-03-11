@@ -1,6 +1,7 @@
 import { ipcMain, app, dialog, BrowserWindow } from 'electron'
 import Database from 'better-sqlite3'
 import { RecordingDAO } from '../database/dao/RecordingDAO'
+import { getConfigValue } from '../services/ConfigStore'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
 
@@ -114,11 +115,16 @@ export function registerRecordingHandlers(db: Database.Database) {
 
   ipcMain.handle(
     'recordings:transcribe',
-    async (_e, id: string, apiKey: string) => {
+    async (_e, id: string) => {
       const recording = recordingDAO.getById(id)
       if (!recording) throw new Error('Recording not found')
       if (!fs.existsSync(recording.audioPath)) {
         throw new Error('Audio file not found')
+      }
+
+      const apiKey = getConfigValue('openRouterKey')
+      if (!apiKey) {
+        throw new Error('OpenRouter API key not set. Add one in Settings → Engine.')
       }
 
       recordingDAO.update(id, { status: 'transcribing' })
@@ -132,33 +138,62 @@ export function registerRecordingHandlers(db: Database.Database) {
           '.aac': 'audio/aac', '.wma': 'audio/x-ms-wma', '.mp4': 'audio/mp4',
         }
         const mimeType = mimeTypes[ext] || 'audio/webm'
-        const fileName = `recording${ext || '.webm'}`
-        const formData = new FormData()
-        const blob = new Blob([audioBuffer], { type: mimeType })
-        formData.append('file', blob, fileName)
-        formData.append('model', 'whisper-1')
-        formData.append('response_format', 'verbose_json')
+        const audioBase64 = audioBuffer.toString('base64')
+        // Map MIME type to OpenRouter audio format
+        const formatMap: Record<string, string> = {
+          'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/webm': 'webm',
+          'audio/ogg': 'ogg', 'audio/mp4': 'mp4', 'audio/flac': 'flac',
+          'audio/aac': 'aac', 'audio/x-ms-wma': 'wma',
+        }
+        const audioFormat = formatMap[mimeType] || 'webm'
 
         const response = await fetch(
-          'https://api.openai.com/v1/audio/transcriptions',
+          'https://openrouter.ai/api/v1/chat/completions',
           {
             method: 'POST',
             headers: {
+              'Content-Type': 'application/json',
               Authorization: `Bearer ${apiKey}`,
             },
-            body: formData,
+            body: JSON.stringify({
+              model: 'google/gemini-3.1-flash-lite-preview',
+              messages: [
+                {
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'input_audio',
+                      input_audio: {
+                        data: audioBase64,
+                        format: audioFormat,
+                      },
+                    },
+                    {
+                      type: 'text',
+                      text: 'Transcribe this audio accurately and verbatim. Return ONLY the transcription text with no additional commentary, labels, or formatting.',
+                    },
+                  ],
+                },
+              ],
+            }),
           }
         )
 
         if (!response.ok) {
           const error = await response.text()
-          throw new Error(`Whisper API error: ${response.status} ${error}`)
+          throw new Error(`Gemini transcription error: ${response.status} ${error}`)
         }
 
-        const result = (await response.json()) as { text: string; duration: number }
+        const result = (await response.json()) as {
+          choices: Array<{ message: { content: string } }>
+        }
+        const transcript = result.choices?.[0]?.message?.content?.trim() || ''
+        if (!transcript) {
+          throw new Error('Gemini returned empty transcription')
+        }
+
         return recordingDAO.update(id, {
-          transcript: result.text,
-          duration: result.duration,
+          transcript,
           status: 'done',
         })
       } catch (err) {

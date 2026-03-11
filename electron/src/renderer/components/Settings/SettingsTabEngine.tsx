@@ -262,15 +262,15 @@ export default function SettingsTabEngine({ config, onChange }: Props) {
       <Section title="Automation">
         <Toggle
           label="Auto-transcribe recordings"
-          hint="Automatically transcribe recordings with OpenAI Whisper when they finish"
+          hint="Automatically transcribe recordings with Gemini when they finish"
           value={config.autoTranscribe}
           onChange={(v) => onChange({ autoTranscribe: v })}
         />
-        {config.autoTranscribe && !config.openAiKey && (
+        {config.autoTranscribe && !config.openRouterKey && (
           <div className="flex items-center gap-2 px-2.5 py-2 rounded bg-yellow-500/10 border border-yellow-500/20">
             <AlertTriangle size={12} className="text-yellow-400 shrink-0" />
             <span className="text-[10px] text-yellow-400">
-              Auto-transcribe is enabled but no OpenAI API key is set. Add one above for transcription to work.
+              Auto-transcribe is enabled but no OpenRouter API key is set. Add one above for transcription to work.
             </span>
           </div>
         )}

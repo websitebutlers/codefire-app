@@ -717,4 +717,16 @@ export const migrations: Migration[] = [
       `)
     },
   },
+
+  // Migration 30: Add title column to sessions for AI-generated session titles
+  {
+    version: 30,
+    name: 'v30_addSessionTitle',
+    up: (db) => {
+      const cols = db.pragma('table_info(sessions)') as { name: string }[]
+      if (!cols.some(c => c.name === 'title')) {
+        db.exec(`ALTER TABLE sessions ADD COLUMN title TEXT;`)
+      }
+    },
+  },
 ]

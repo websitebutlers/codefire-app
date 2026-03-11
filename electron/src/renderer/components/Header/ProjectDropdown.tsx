@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { Folder, FolderOpen, Settings, Plus, ChevronDown, Check, X, LayoutGrid, Users, Tag, Trash2 } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef, type DragEvent } from 'react'
+import { Folder, FolderOpen, Settings, Plus, ChevronDown, Check, X, LayoutGrid, Users, Tag, Trash2, GripVertical } from 'lucide-react'
 import type { Project, Client } from '@shared/models'
 import { api } from '@renderer/lib/api'
 import SettingsModal from '@renderer/components/Settings/SettingsModal'
@@ -46,6 +46,9 @@ export default function ProjectDropdown() {
   const [newGroupColor, setNewGroupColor] = useState('#F97316')
   const [collapsedClients, setCollapsedClients] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ProjectContextMenu | null>(null)
+  const [dragProjectId, setDragProjectId] = useState<string | null>(null)
+  const [dragOverClientId, setDragOverClientId] = useState<string | null>(null)
+  const [dragOverUngrouped, setDragOverUngrouped] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const addGroupInputRef = useRef<HTMLInputElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
@@ -177,6 +180,48 @@ export default function ProjectDropdown() {
     load()
   }
 
+  function handleDragStart(e: DragEvent, projectId: string) {
+    e.dataTransfer.setData('application/x-codefire-project', projectId)
+    e.dataTransfer.effectAllowed = 'move'
+    setDragProjectId(projectId)
+  }
+
+  function handleDragEnd() {
+    setDragProjectId(null)
+    setDragOverClientId(null)
+    setDragOverUngrouped(false)
+  }
+
+  function handleGroupDragOver(e: DragEvent, clientId: string) {
+    if (!e.dataTransfer.types.includes('application/x-codefire-project')) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverClientId(clientId)
+    setDragOverUngrouped(false)
+  }
+
+  function handleUngroupedDragOver(e: DragEvent) {
+    if (!e.dataTransfer.types.includes('application/x-codefire-project')) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverClientId(null)
+    setDragOverUngrouped(true)
+  }
+
+  async function handleGroupDrop(e: DragEvent, clientId: string | null) {
+    e.preventDefault()
+    const projectId = e.dataTransfer.getData('application/x-codefire-project')
+    if (!projectId) return
+    setDragProjectId(null)
+    setDragOverClientId(null)
+    setDragOverUngrouped(false)
+    const project = projects.find((p) => p.id === projectId)
+    if (project && project.clientId !== clientId) {
+      await api.projects.update(projectId, { clientId })
+      load()
+    }
+  }
+
   // Close context menu on outside click
   useEffect(() => {
     if (!contextMenu) return
@@ -224,8 +269,15 @@ export default function ProjectDropdown() {
                 {clients.map((client) => {
                   const clientProjects = clientProjectMap.get(client.id) ?? []
                   const isExpanded = !collapsedClients.has(client.id)
+                  const isDropTarget = dragProjectId !== null && dragOverClientId === client.id
                   return (
-                    <div key={client.id}>
+                    <div
+                      key={client.id}
+                      onDragOver={(e) => handleGroupDragOver(e, client.id)}
+                      onDragLeave={() => { if (dragOverClientId === client.id) setDragOverClientId(null) }}
+                      onDrop={(e) => handleGroupDrop(e, client.id)}
+                      className={`transition-colors duration-100 ${isDropTarget ? 'bg-codefire-orange/10 ring-1 ring-inset ring-codefire-orange/30 rounded' : ''}`}
+                    >
                       <button
                         onClick={() => toggleClient(client.id)}
                         className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]"
@@ -242,18 +294,23 @@ export default function ProjectDropdown() {
                       </button>
                       {isExpanded && clientProjects.length === 0 && (
                         <div className="pl-7 pr-3 py-1.5 text-[11px] text-neutral-600 italic">
-                          No projects — right-click a project to assign
+                          {dragProjectId ? 'Drop here to add' : 'No projects — drag or right-click to assign'}
                         </div>
                       )}
                       {isExpanded && clientProjects.map((project) => {
                         const tag = firstTag(project)
+                        const isDragging = dragProjectId === project.id
                         return (
                           <button
                             key={project.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, project.id)}
+                            onDragEnd={handleDragEnd}
                             onClick={() => handleOpenProject(project.id)}
                             onContextMenu={(e) => handleProjectContextMenu(e, project)}
-                            className="w-full flex items-center gap-2 pl-7 pr-3 py-1.5 text-[12px] transition-colors text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-200"
+                            className={`w-full flex items-center gap-2 pl-5 pr-3 py-1.5 text-[12px] transition-colors text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-200 group ${isDragging ? 'opacity-40' : ''}`}
                           >
+                            <GripVertical size={10} className="flex-shrink-0 text-neutral-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
                             <Folder size={12} className="flex-shrink-0 text-neutral-600" />
                             <span className="truncate">{displayName(project)}</span>
                             {tag && (
@@ -269,22 +326,34 @@ export default function ProjectDropdown() {
                 })}
 
                 {/* Ungrouped projects */}
-                {ungrouped.length > 0 && (
-                  <>
+                {(ungrouped.length > 0 || dragProjectId !== null) && (
+                  <div
+                    onDragOver={handleUngroupedDragOver}
+                    onDragLeave={() => setDragOverUngrouped(false)}
+                    onDrop={(e) => handleGroupDrop(e, null)}
+                    className={`transition-colors duration-100 ${dragOverUngrouped ? 'bg-neutral-700/20 ring-1 ring-inset ring-neutral-600/40 rounded' : ''}`}
+                  >
                     {clients.length > 0 && (
                       <div className="px-3 py-1 mt-1">
-                        <span className="text-[10px] font-semibold text-neutral-600 uppercase tracking-wider">Projects</span>
+                        <span className="text-[10px] font-semibold text-neutral-600 uppercase tracking-wider">
+                          {dragProjectId ? 'Drop here to ungroup' : 'Projects'}
+                        </span>
                       </div>
                     )}
                     {ungrouped.map((project) => {
                       const tag = firstTag(project)
+                      const isDragging = dragProjectId === project.id
                       return (
                         <button
                           key={project.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, project.id)}
+                          onDragEnd={handleDragEnd}
                           onClick={() => handleOpenProject(project.id)}
                           onContextMenu={(e) => handleProjectContextMenu(e, project)}
-                          className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] transition-colors text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-200"
+                          className={`w-full flex items-center gap-2 px-1.5 pr-3 py-1.5 text-[12px] transition-colors text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-200 group ${isDragging ? 'opacity-40' : ''}`}
                         >
+                          <GripVertical size={10} className="flex-shrink-0 text-neutral-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
                           <Folder size={12} className="flex-shrink-0 text-neutral-600" />
                           <span className="truncate">{displayName(project)}</span>
                           {tag && (
@@ -295,7 +364,7 @@ export default function ProjectDropdown() {
                         </button>
                       )
                     })}
-                  </>
+                  </div>
                 )}
 
                 {displayProjects.length === 0 && (

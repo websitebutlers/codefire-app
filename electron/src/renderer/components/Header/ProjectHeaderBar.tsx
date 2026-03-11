@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Folder, Radio, Code, FolderOpen, Newspaper } from 'lucide-react'
+import { Folder, Radio, Code, FolderOpen, Target, AlertCircle } from 'lucide-react'
 
 interface ProjectHeaderBarProps {
   projectName: string
@@ -67,16 +67,16 @@ export function ProjectHeaderRight({
         onDisconnect={onMCPDisconnect}
       />
 
-      {/* Briefing bell button */}
+      {/* Daily Briefing button */}
       {onBriefingClick && (
         <>
           <div className="w-px h-4 bg-neutral-700 mx-0.5" />
           <button
             onClick={onBriefingClick}
             className="p-1 rounded-md text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors relative"
-            title="Briefing"
+            title="Daily Briefing"
           >
-            <Newspaper className="w-3.5 h-3.5" />
+            <Target className="w-3.5 h-3.5" />
             {(briefingCount ?? 0) > 0 && (
               <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-codefire-orange text-white text-[7px] font-bold flex items-center justify-center">
                 {briefingCount! > 9 ? '9+' : briefingCount}
@@ -118,7 +118,7 @@ function HeaderIndexIndicator({
   const [showError, setShowError] = useState(false)
 
   const colors = {
-    idle: { text: 'text-neutral-500', bg: 'bg-neutral-500/10', border: 'border-transparent' },
+    idle: { text: 'text-codefire-orange', bg: 'bg-codefire-orange/10', border: 'border-codefire-orange/40' },
     indexing: { text: 'text-codefire-orange', bg: 'bg-codefire-orange/10', border: 'border-codefire-orange/30' },
     ready: { text: 'text-success', bg: 'bg-success/10', border: 'border-success/30' },
     error: { text: 'text-error', bg: 'bg-error/10', border: 'border-error/30' },
@@ -159,6 +159,8 @@ function HeaderIndexIndicator({
       >
         {status === 'indexing' ? (
           <span className="inline-block w-3 h-3 border-[1.5px] border-codefire-orange border-t-transparent rounded-full animate-spin" />
+        ) : status === 'idle' ? (
+          <AlertCircle className="w-3 h-3 animate-pulse" />
         ) : (
           <Code className="w-3 h-3" />
         )}

@@ -9,22 +9,29 @@ interface Props {
 export default function SettingsTabBriefing({ config, onChange }: Props) {
   return (
     <div className="space-y-6">
-      <Section title="Auto-Refresh">
+      <Section title="Briefing">
         <NumberInput
-          label="Staleness threshold (hours)"
-          hint="Regenerate the briefing after this many hours"
+          label="Auto-refresh threshold (hours)"
+          hint="Regenerate the briefing when it's older than this"
           value={config.briefingStalenessHours}
           onChange={(v) => onChange({ briefingStalenessHours: v })}
           min={1}
           max={24}
           step={1}
         />
+        <p className="text-[11px] text-neutral-500 mt-2 leading-relaxed">
+          The Daily Briefing analyzes your tasks, sessions, emails, and projects across all workspaces
+          to generate personalized priorities, surface items needing attention, and recommend quick wins.
+        </p>
       </Section>
 
-      <Section title="Sources">
+      <Section title="Tech Pulse Sources">
+        <p className="text-[11px] text-neutral-500 mb-3">
+          Optional — adds a collapsible tech news section to your briefing. Remove all feeds to disable.
+        </p>
         <StringList
           label="RSS feeds"
-          hint="Feed URLs to include in the daily briefing"
+          hint="Feed URLs to include in the Tech Pulse section"
           values={config.briefingRSSFeeds}
           onChange={(v) => onChange({ briefingRSSFeeds: v })}
           placeholder="https://example.com/feed.xml"

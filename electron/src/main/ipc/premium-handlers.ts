@@ -143,6 +143,40 @@ export function registerPremiumHandlers(
     await client.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false)
   })
 
+  // Team messages
+  ipcMain.handle(
+    'premium:sendTeamMessage',
+    async (_e, recipientUserId: string, message: string, projectId?: string) => {
+      const client = getSupabaseClient()
+      if (!client) throw ensureError('Supabase not configured')
+      const { data: { user } } = await client.auth.getUser()
+      if (!user) throw ensureError('Not authenticated')
+
+      const { data: profile } = await client
+        .from('users')
+        .select('display_name')
+        .eq('id', user.id)
+        .single()
+      const senderName = profile?.display_name || user.email || 'A team member'
+
+      const remoteProjectId = projectId
+        ? await resolveProjectId(syncEngine, projectId)
+        : null
+
+      const { error } = await client.from('notifications').insert({
+        user_id: recipientUserId,
+        project_id: remoteProjectId,
+        type: 'message',
+        title: `Alert from ${senderName}`,
+        body: message,
+        entity_type: 'user',
+        entity_id: user.id,
+        is_read: false,
+      })
+      if (error) throw ensureError(error)
+    }
+  )
+
   // Activity feed
   ipcMain.handle('premium:getActivityFeed', async (_e, projectId: string, limit?: number) => {
     const client = getSupabaseClient()

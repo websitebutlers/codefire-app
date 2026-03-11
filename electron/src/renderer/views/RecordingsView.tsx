@@ -13,7 +13,7 @@ export default function RecordingsView({ projectId }: RecordingsViewProps) {
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [selected, setSelected] = useState<Recording | null>(null)
   const [isTranscribing, setIsTranscribing] = useState(false)
-  const [hasOpenAiKey, setHasOpenAiKey] = useState(false)
+  const [hasApiKey, setHasApiKey] = useState(false)
 
   useEffect(() => {
     api.recordings.list(projectId).then((recs) => {
@@ -22,28 +22,21 @@ export default function RecordingsView({ projectId }: RecordingsViewProps) {
     })
   }, [projectId])
 
-  // Check for OpenAI key on mount and periodically when window regains focus
+  // Check for OpenRouter key on mount and periodically when window regains focus
   useEffect(() => {
     async function checkKey() {
-      const config = await window.api.invoke('settings:get') as { openAiKey?: string } | undefined
-      setHasOpenAiKey(!!config?.openAiKey)
+      const config = await window.api.invoke('settings:get') as { openRouterKey?: string } | undefined
+      setHasApiKey(!!config?.openRouterKey)
     }
     checkKey()
     window.addEventListener('focus', checkKey)
     return () => window.removeEventListener('focus', checkKey)
   }, [])
 
-  async function getOpenAiKey(): Promise<string | null> {
-    const config = await window.api.invoke('settings:get') as { openAiKey?: string } | undefined
-    return config?.openAiKey || null
-  }
-
   async function autoTranscribeIfEnabled(id: string) {
-    const config = await window.api.invoke('settings:get') as { autoTranscribe?: boolean } | undefined
-    if (!config?.autoTranscribe) return
-    const key = await getOpenAiKey()
-    if (!key) return
-    handleTranscribe(id, key)
+    const config = await window.api.invoke('settings:get') as { autoTranscribe?: boolean; openRouterKey?: string } | undefined
+    if (!config?.autoTranscribe || !config?.openRouterKey) return
+    handleTranscribe(id)
   }
 
   async function handleRecordingComplete(blob: Blob, title: string) {
@@ -76,13 +69,10 @@ export default function RecordingsView({ projectId }: RecordingsViewProps) {
     }
   }
 
-  async function handleTranscribe(id: string, providedKey?: string) {
-    const apiKey = providedKey || await getOpenAiKey()
-    if (!apiKey) return
-
+  async function handleTranscribe(id: string) {
     setIsTranscribing(true)
     try {
-      const updated = await api.recordings.transcribe(id, apiKey)
+      const updated = await api.recordings.transcribe(id)
       if (updated) {
         setRecordings((prev) =>
           prev.map((r) => (r.id === id ? updated : r))
@@ -131,7 +121,7 @@ export default function RecordingsView({ projectId }: RecordingsViewProps) {
             onTranscribe={handleTranscribe}
             isTranscribing={isTranscribing}
             projectId={projectId}
-            hasOpenAiKey={hasOpenAiKey}
+            hasApiKey={hasApiKey}
           />
         </div>
       </div>

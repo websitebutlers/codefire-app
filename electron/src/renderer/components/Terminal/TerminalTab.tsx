@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
+import logoIcon from '../../../../resources/icon.png'
 
 interface TerminalTabProps {
   /** Unique ID for this terminal session */
@@ -67,6 +68,7 @@ export default function TerminalTab({ terminalId, isActive, projectPath, initial
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const openedRef = useRef(false)
   const [dragOver, setDragOver] = useState(false)
   // Track whether the PTY has exited so keystrokes restart instead of write
   const ptyExitedRef = useRef(false)
@@ -112,18 +114,30 @@ export default function TerminalTab({ terminalId, isActive, projectPath, initial
 
     terminal.loadAddon(fitAddon)
     terminal.loadAddon(webLinksAddon)
-    terminal.open(container)
 
     terminalRef.current = terminal
     fitAddonRef.current = fitAddon
+    openedRef.current = false
     ptyExitedRef.current = false
 
-    // Initial fit
-    try {
-      fitAddon.fit()
-    } catch {
-      // Container may not be visible yet
+    // Defer terminal.open() until the container has real dimensions.
+    // When the container has display:none (inactive tab), open() produces
+    // a 0×0 canvas that stays blank until a resize event — which
+    // ResizeObserver won't fire for a CSS display change.
+    const openWhenVisible = () => {
+      if (openedRef.current) return
+      if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+        terminal.open(container)
+        openedRef.current = true
+        try {
+          fitAddon.fit()
+        } catch {
+          // ignore
+        }
+      }
     }
+
+    openWhenVisible()
 
     // ─── Restart PTY helper ───────────────────────────────────────────────
     function restartPTY() {
@@ -218,6 +232,11 @@ export default function TerminalTab({ terminalId, isActive, projectPath, initial
 
     // ─── Resize handling ──────────────────────────────────────────────────
     const resizeObserver = new ResizeObserver(() => {
+      // If terminal hasn't been opened yet and container now has dimensions, open it
+      if (!openedRef.current) {
+        openWhenVisible()
+        return
+      }
       try {
         fitAddon.fit()
       } catch {
@@ -243,19 +262,32 @@ export default function TerminalTab({ terminalId, isActive, projectPath, initial
     }
   }, [terminalId])
 
-  // Re-fit when the tab becomes active (it may have been resized while hidden)
+  // When the tab becomes active, open the terminal if it hasn't been opened yet
+  // (container was display:none at mount time), then re-fit to current dimensions.
   useEffect(() => {
-    if (isActive && fitAddonRef.current) {
-      // Small delay to allow layout to settle
-      const timer = setTimeout(() => {
+    if (!isActive) return
+
+    const container = containerRef.current
+    const terminal = terminalRef.current
+    const fitAddon = fitAddonRef.current
+    if (!container || !terminal || !fitAddon) return
+
+    // Use requestAnimationFrame to wait for the browser to apply display:block
+    // and compute the layout, then fit the terminal.
+    const rafId = requestAnimationFrame(() => {
+      if (!openedRef.current && container.offsetWidth > 0 && container.offsetHeight > 0) {
+        terminal.open(container)
+        openedRef.current = true
+      }
+      if (openedRef.current) {
         try {
-          fitAddonRef.current?.fit()
+          fitAddon.fit()
         } catch {
           // Ignore
         }
-      }, 50)
-      return () => clearTimeout(timer)
-    }
+      }
+    })
+    return () => cancelAnimationFrame(rafId)
   }, [isActive])
 
   // Shell-escape a file path for safe pasting into terminal
@@ -344,6 +376,17 @@ export default function TerminalTab({ terminalId, isActive, projectPath, initial
         ref={containerRef}
         className="h-full w-full"
         style={{ backgroundColor: '#171717', padding: '8px 4px 4px 8px' }}
+      />
+      {/* Faint background logo overlay */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.015] select-none z-[2]"
+        style={{
+          backgroundImage: `url(${logoIcon})`,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          backgroundSize: 'auto 100%',
+        }}
       />
       {dragOver && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/40 border-2 border-dashed border-codefire-orange/60 rounded pointer-events-none z-10">

@@ -24,12 +24,13 @@ export class SessionDAO {
     startedAt?: string
     model?: string
     gitBranch?: string
+    title?: string
     summary?: string
   }): Session {
     this.db
       .prepare(
-        `INSERT INTO sessions (id, projectId, slug, startedAt, model, gitBranch, summary, messageCount, toolUseCount, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0)`
+        `INSERT INTO sessions (id, projectId, slug, startedAt, model, gitBranch, title, summary, messageCount, toolUseCount, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0)`
       )
       .run(
         data.id,
@@ -38,6 +39,7 @@ export class SessionDAO {
         data.startedAt ?? new Date().toISOString(),
         data.model ?? null,
         data.gitBranch ?? null,
+        data.title ?? null,
         data.summary ?? null
       )
     return this.getById(data.id)!
@@ -47,6 +49,7 @@ export class SessionDAO {
     id: string,
     data: {
       endedAt?: string
+      title?: string
       summary?: string
       messageCount?: number
       toolUseCount?: number
@@ -63,13 +66,14 @@ export class SessionDAO {
     this.db
       .prepare(
         `UPDATE sessions
-         SET endedAt = ?, summary = ?, messageCount = ?, toolUseCount = ?,
+         SET endedAt = ?, title = ?, summary = ?, messageCount = ?, toolUseCount = ?,
              filesChanged = ?, inputTokens = ?, outputTokens = ?,
              cacheCreationTokens = ?, cacheReadTokens = ?
          WHERE id = ?`
       )
       .run(
         data.endedAt ?? existing.endedAt,
+        data.title ?? existing.title,
         data.summary ?? existing.summary,
         data.messageCount ?? existing.messageCount,
         data.toolUseCount ?? existing.toolUseCount,

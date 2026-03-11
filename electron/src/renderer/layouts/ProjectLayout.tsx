@@ -109,8 +109,18 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
         setProject(proj)
         document.title = `${proj.name} — CodeFire`
 
-        // Always trigger indexing when a project is opened
-        handleRequestIndex()
+        // Check existing index state instead of auto-indexing
+        try {
+          const state = await api.search.getIndexState(projectId)
+          if (state) {
+            setIndexStatus(state.status as typeof indexStatus)
+            if (state.lastError) setIndexLastError(state.lastError)
+          }
+          // If no state or status is 'idle', leave as 'idle' — the indicator
+          // will show "Not Indexed" with a click-to-index prompt
+        } catch {
+          // If we can't fetch state, leave as idle
+        }
       } catch (err) {
         if (!cancelled) {
           console.error('Failed to load project:', err)
@@ -123,7 +133,7 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
     return () => {
       cancelled = true
     }
-  }, [projectId, handleRequestIndex])
+  }, [projectId])
 
   if (error) {
     return (
@@ -232,8 +242,8 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
 
       <div className="flex flex-col" style={{ height: isMac ? 'calc(100vh - 28px)' : '100vh' }}>
         {/* Top bar with project indicators */}
-        <div className="flex items-center gap-3 px-4 py-2 border-b border-neutral-800 bg-neutral-950 shrink-0">
-          <img src={logoIcon} alt="CodeFire" className="w-4 h-4" />
+        <div className="flex items-center gap-1 px-4 py-2 border-b border-neutral-800 bg-neutral-950 shrink-0">
+          <img src={logoIcon} alt="CodeFire" className="w-[22px] h-[22px]" />
           <span className="text-sm font-semibold text-neutral-200 tracking-tight">CodeFire</span>
           <ProjectDropdown />
           <div className="w-px h-4 bg-neutral-700" />

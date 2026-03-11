@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Send, Loader2, Plus, ChevronDown, Trash2, Copy, ListTodo, StickyNote, Terminal, Flame, Zap, BookOpen, Wrench } from 'lucide-react'
+import logoIcon from '../../../../resources/icon.png'
 import type { ChatConversation, ChatMessage, Session } from '@shared/models'
 import { api } from '@renderer/lib/api'
 
@@ -969,7 +970,18 @@ export default function CodeFireChat({ projectId, projectName = 'All Projects' }
   const dropdownLabel = activeConversation?.title || 'Select thread...'
 
   return (
-    <div className="flex flex-col h-full bg-neutral-900">
+    <div className="flex flex-col h-full bg-neutral-900 relative overflow-hidden">
+      {/* Faint background logo */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.015] select-none"
+        style={{
+          backgroundImage: `url(${logoIcon})`,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          backgroundSize: 'auto 100%',
+        }}
+      />
       {/* Header */}
       <div className="flex items-center gap-2 px-3 h-9 border-b border-neutral-800 bg-neutral-950 shrink-0">
         <Flame size={14} className="text-codefire-orange shrink-0" />

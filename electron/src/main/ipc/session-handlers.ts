@@ -27,6 +27,7 @@ export function registerSessionHandlers(db: Database.Database) {
         startedAt?: string
         model?: string
         gitBranch?: string
+        title?: string
         summary?: string
       }
     ) => sessionDAO.create(data)
@@ -39,6 +40,7 @@ export function registerSessionHandlers(db: Database.Database) {
       id: string,
       data: {
         endedAt?: string
+        title?: string
         summary?: string
         messageCount?: number
         toolUseCount?: number

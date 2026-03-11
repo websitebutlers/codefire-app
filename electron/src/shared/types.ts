@@ -178,6 +178,7 @@ export type PremiumChannel =
   | 'premium:requestReview'
   | 'premium:resolveReview'
   | 'premium:listReviewRequests'
+  | 'premium:sendTeamMessage'
   | 'premium:joinPresence'
   | 'premium:leavePresence'
   | 'premium:getPresence'

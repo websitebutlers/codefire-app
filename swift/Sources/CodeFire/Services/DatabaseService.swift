@@ -587,6 +587,10 @@ class DatabaseService {
             """)
         }
 
+        migrator.registerMigration("v23_addSessionTitle") { db in
+            try db.execute(sql: "ALTER TABLE sessions ADD COLUMN title TEXT")
+        }
+
         return migrator
     }
 }

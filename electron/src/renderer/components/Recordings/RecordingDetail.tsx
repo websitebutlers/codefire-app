@@ -8,7 +8,7 @@ interface RecordingDetailProps {
   onTranscribe: (id: string) => void
   isTranscribing: boolean
   projectId?: string
-  hasOpenAiKey: boolean
+  hasApiKey: boolean
 }
 
 export default function RecordingDetail({
@@ -16,7 +16,7 @@ export default function RecordingDetail({
   onTranscribe,
   isTranscribing,
   projectId,
-  hasOpenAiKey,
+  hasApiKey,
 }: RecordingDetailProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackProgress, setPlaybackProgress] = useState(0)
@@ -202,7 +202,7 @@ export default function RecordingDetail({
         </div>
 
         {recording.status !== 'done' && recording.status !== 'transcribing' && (
-          hasOpenAiKey ? (
+          hasApiKey ? (
             <button
               type="button"
               onClick={() => onTranscribe(recording.id)}
@@ -219,7 +219,7 @@ export default function RecordingDetail({
           ) : (
             <span
               className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 text-neutral-500 rounded text-xs cursor-default"
-              title="Add your OpenAI API key in Settings → Engine to enable transcription"
+              title="Add your OpenRouter API key in Settings → Engine to enable transcription"
             >
               <Settings size={12} />
               Transcribe (no API key)
@@ -267,7 +267,7 @@ export default function RecordingDetail({
         {recording.status === 'transcribing' && (
           <div className="flex items-center justify-center gap-2 py-8 text-neutral-500">
             <Loader2 size={16} className="animate-spin" />
-            <p className="text-sm">Transcribing with Whisper...</p>
+            <p className="text-sm">Transcribing with Gemini...</p>
           </div>
         )}
 
@@ -292,9 +292,9 @@ export default function RecordingDetail({
             <div className="flex flex-col items-center justify-center h-full text-neutral-500 gap-2">
               <p className="text-xs">No transcript yet</p>
               <p className="text-[10px] text-neutral-600">
-                {hasOpenAiKey
-                  ? 'Click "Transcribe" to generate one with OpenAI Whisper'
-                  : 'Add your OpenAI API key in Settings → Engine to enable transcription'}
+                {hasApiKey
+                  ? 'Click "Transcribe" to generate one with Gemini'
+                  : 'Add your OpenRouter API key in Settings → Engine to enable transcription'}
               </p>
             </div>
           )
