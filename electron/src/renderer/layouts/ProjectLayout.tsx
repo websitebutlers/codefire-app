@@ -313,7 +313,9 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
               </Panel>
               <Separator className="w-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" style={{ order: terminalOnLeft ? 2 : 2 }} />
               <Panel id="terminal-chat" defaultSize="40%" minSize="20%" style={{ order: terminalOnLeft ? 1 : 3 }}>
-                {renderTerminalChat()}
+                <div className={`h-full ${terminalOnLeft ? 'border-r' : 'border-l'} border-neutral-800`}>
+                  {renderTerminalChat()}
+                </div>
               </Panel>
             </Group>
           ) : (

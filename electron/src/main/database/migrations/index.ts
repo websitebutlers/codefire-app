@@ -729,4 +729,29 @@ export const migrations: Migration[] = [
       }
     },
   },
+
+  // Migration 31: Create audit log table for MCP agent action tracking
+  {
+    version: 31,
+    name: 'v31_createAgentAuditLog',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS agentAuditLog (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+          agentPid INTEGER,
+          projectId TEXT,
+          toolName TEXT NOT NULL,
+          toolCategory TEXT,
+          parameters TEXT,
+          resultStatus TEXT NOT NULL DEFAULT 'success',
+          durationMs INTEGER,
+          sessionSlug TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_auditLog_projectId ON agentAuditLog(projectId);
+        CREATE INDEX IF NOT EXISTS idx_auditLog_toolName ON agentAuditLog(toolName);
+        CREATE INDEX IF NOT EXISTS idx_auditLog_timestamp ON agentAuditLog(timestamp);
+      `)
+    },
+  },
 ]

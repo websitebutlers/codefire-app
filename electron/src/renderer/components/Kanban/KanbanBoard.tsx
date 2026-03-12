@@ -305,28 +305,28 @@ export default function KanbanBoard({
             await onUpdateTask(task.id, { title: data.title, ...statusUpdate })
           }}
         />
-
-        {selectedTask && (
-          <TaskDetailSheet
-            task={selectedTask}
-            onClose={() => setSelectedTask(null)}
-            onUpdate={async (id, data) => {
-              await onUpdateTask(id, data)
-              const tasks = [...todoTasks, ...inProgressTasks, ...doneTasks]
-              const updated = tasks.find((t) => t.id === id)
-              if (updated) {
-                const merged = { ...updated, ...data } as Record<string, unknown>
-                // labels is stored as JSON string in the model but passed as string[] in the update
-                if (data.labels) {
-                  merged.labels = JSON.stringify(data.labels)
-                }
-                setSelectedTask(merged as unknown as TaskItem)
-              }
-            }}
-            onDelete={onDeleteTask}
-          />
-        )}
       </div>
+
+      {selectedTask && (
+        <TaskDetailSheet
+          task={selectedTask}
+          onClose={() => setSelectedTask(null)}
+          onUpdate={async (id, data) => {
+            await onUpdateTask(id, data)
+            const tasks = [...todoTasks, ...inProgressTasks, ...doneTasks]
+            const updated = tasks.find((t) => t.id === id)
+            if (updated) {
+              const merged = { ...updated, ...data } as Record<string, unknown>
+              // labels is stored as JSON string in the model but passed as string[] in the update
+              if (data.labels) {
+                merged.labels = JSON.stringify(data.labels)
+              }
+              setSelectedTask(merged as unknown as TaskItem)
+            }
+          }}
+          onDelete={onDeleteTask}
+        />
+      )}
 
       <DragOverlay dropAnimation={null}>
         {activeTask ? (
