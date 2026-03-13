@@ -55,6 +55,7 @@ export default function MemoryEditor({
         highlightActiveLine(),
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
+        EditorView.lineWrapping,
         markdown(),
         oneDark,
         darkTheme,

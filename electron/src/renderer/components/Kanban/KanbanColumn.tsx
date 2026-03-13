@@ -4,7 +4,6 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Plus, Expand, Circle, CircleDot, CheckCircle2 } from 'lucide-react'
 import type { TaskItem } from '@shared/models'
 import TaskCard from './TaskCard'
-import logoIcon from '../../../../resources/icon.png'
 
 const COLUMN_ICONS = {
   'circle': Circle,
@@ -45,6 +44,10 @@ interface KanbanColumnProps {
   onLaunchSession?: (task: TaskItem) => void
   onDeleteTask?: (taskId: number) => void
   projectNames?: Record<string, string>
+  projectColors?: Record<string, string | null>
+  projectGroupColors?: Record<string, string | null>
+  memberAvatars?: Record<string, string>
+  localUserName?: string
 }
 
 export default function KanbanColumn({
@@ -61,6 +64,10 @@ export default function KanbanColumn({
   onLaunchSession,
   onDeleteTask,
   projectNames,
+  projectColors,
+  projectGroupColors,
+  memberAvatars,
+  localUserName,
 }: KanbanColumnProps) {
   const [newTitle, setNewTitle] = useState('')
   const [showInput, setShowInput] = useState(false)
@@ -82,17 +89,6 @@ export default function KanbanColumn({
       className={`flex flex-col bg-[#111111] rounded-cf border transition-colors min-h-0 relative overflow-hidden
         ${highlighted ? `${DROP_BORDER[color] || 'border-neutral-500'} bg-neutral-800/30` : 'border-neutral-800'}`}
     >
-      {/* Faint background logo */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.015] select-none"
-        style={{
-          backgroundImage: `url(${logoIcon})`,
-          backgroundRepeat: 'no-repeat',
-          backgroundPosition: 'center',
-          backgroundSize: 'auto 100%',
-        }}
-      />
       {/* Column header */}
       <div className="shrink-0">
         <div className="flex items-center gap-2 px-3 h-9">
@@ -164,14 +160,22 @@ export default function KanbanColumn({
               onLaunchSession={onLaunchSession}
               onDeleteTask={onDeleteTask}
               projectName={projectNames?.[task.projectId]}
+              projectColor={projectColors?.[task.projectId]}
+              groupColor={projectGroupColors?.[task.projectId]}
+              memberAvatars={memberAvatars}
+              localUserName={localUserName}
             />
           ))}
         </SortableContext>
 
         {tasks.length === 0 && !showInput && (
-          <div className={`text-xs text-center py-4 rounded-cf transition-colors
-            ${highlighted ? `${DROP_EMPTY[color]?.text || 'text-neutral-400'} ${DROP_EMPTY[color]?.bg || 'bg-neutral-800/5'} border border-dashed ${DROP_EMPTY[color]?.border || 'border-neutral-500/30'}` : 'text-neutral-600'}`}>
-            Drop tasks here
+          <div
+            className={`text-xs text-center py-4 rounded-cf transition-colors cursor-pointer hover:bg-neutral-800/40
+            ${highlighted ? `${DROP_EMPTY[color]?.text || 'text-neutral-400'} ${DROP_EMPTY[color]?.bg || 'bg-neutral-800/5'} border border-dashed ${DROP_EMPTY[color]?.border || 'border-neutral-500/30'}` : 'text-neutral-600 hover:text-neutral-400 border border-dashed border-transparent hover:border-neutral-700'}`}
+            onClick={() => onOpenCreateModal?.()}
+          >
+            <Plus size={16} className="mx-auto mb-1 opacity-60" />
+            Click to add a task
           </div>
         )}
       </div>

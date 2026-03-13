@@ -1,4 +1,5 @@
 import SwiftUI
+import GRDB
 
 struct TeamSettingsTab: View {
     @ObservedObject var settings: AppSettings
@@ -42,6 +43,12 @@ struct TeamSettingsTab: View {
     // Pending invites
     @State private var pendingInvites: [TeamInviteWithName] = []
     @State private var isJoining = false
+
+    // Team projects
+    @State private var localProjects: [(id: String, name: String, repoUrl: String?)] = []
+    @State private var syncedProjectIds: Set<String> = []
+    @State private var invitingProjectId: String?
+    @State private var projectInviteMessage: String?
 
     // Billing
     @State private var selectedPlan: String = "starter"
@@ -194,6 +201,7 @@ struct TeamSettingsTab: View {
             if let team = premiumService.status.team {
                 teamSection(team)
                 cloudSyncSection(team)
+                teamProjectsSection(team)
                 ossGrantSection(team)
             }
             // No team + not paid: paywall
@@ -514,6 +522,135 @@ struct TeamSettingsTab: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.orange)
         }
+    }
+
+    // MARK: - Team Projects
+
+    private func teamProjectsSection(_ team: Team) -> some View {
+        GroupBox("Team Projects") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Share projects with your team to sync tasks and notes. Invite team members to collaborate on any project.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+
+                if let msg = projectInviteMessage {
+                    Text(msg)
+                        .font(.system(size: 11))
+                        .foregroundColor(msg.hasPrefix("Failed") ? .red : .green)
+                }
+
+                if localProjects.isEmpty {
+                    Text("No projects discovered yet.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .italic()
+                } else {
+                    ForEach(localProjects, id: \.id) { project in
+                        HStack(spacing: 8) {
+                            Image(systemName: syncedProjectIds.contains(project.id) ? "folder.badge.person.crop" : "folder")
+                                .font(.system(size: 12))
+                                .foregroundColor(syncedProjectIds.contains(project.id) ? .green : .secondary)
+                                .frame(width: 16)
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(project.name)
+                                    .font(.system(size: 12, weight: .medium))
+                                if syncedProjectIds.contains(project.id) {
+                                    Text("Synced with team")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.green)
+                                }
+                            }
+
+                            Spacer()
+
+                            Button {
+                                Task { await inviteTeamToProject(team: team, project: project) }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    if invitingProjectId == project.id {
+                                        ProgressView().controlSize(.small).scaleEffect(0.5)
+                                    } else {
+                                        Image(systemName: "person.badge.plus")
+                                            .font(.system(size: 10))
+                                    }
+                                    Text(syncedProjectIds.contains(project.id) ? "Re-invite Team" : "Invite Team Members")
+                                        .font(.system(size: 10, weight: .medium))
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.accentColor)
+                            .controlSize(.small)
+                            .disabled(invitingProjectId == project.id)
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .background(Color(nsColor: .controlBackgroundColor).opacity(0.3))
+                        .cornerRadius(6)
+                    }
+                }
+            }
+            .padding(8)
+        }
+        .task {
+            await loadLocalProjects(teamId: team.id)
+        }
+    }
+
+    private func loadLocalProjects(teamId: String) async {
+        do {
+            let projects: [(id: String, name: String, repoUrl: String?)] = try await DatabaseService.shared.db.read { db in
+                try Row.fetchAll(db, sql: "SELECT id, name, repoUrl FROM projects WHERE id != '__global__' ORDER BY name")
+                    .map { (id: $0["id"], name: $0["name"], repoUrl: $0["repoUrl"]) }
+            }
+            localProjects = projects
+
+            // Fetch synced project IDs from Supabase
+            let data = try await premiumService.supabaseGetPublic(
+                "synced_projects",
+                queryParams: [
+                    ("team_id", "eq.\(teamId)"),
+                    ("select", "id"),
+                ]
+            )
+            if let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                syncedProjectIds = Set(rows.compactMap { $0["id"] as? String })
+            }
+        } catch {
+            // Non-fatal
+        }
+    }
+
+    private func inviteTeamToProject(team: Team, project: (id: String, name: String, repoUrl: String?)) async {
+        invitingProjectId = project.id
+        projectInviteMessage = nil
+        do {
+            try await premiumService.syncProject(teamId: team.id, projectId: project.id, name: project.name, repoUrl: project.repoUrl)
+
+            // Send notifications to other team members
+            let otherMembers = members.filter { $0.userId != premiumService.status.user?.id }
+            if !otherMembers.isEmpty {
+                let senderName = premiumService.status.user?.displayName ?? "A team member"
+                for member in otherMembers {
+                    _ = try? await premiumService.supabaseInsertPublic("notifications", body: [
+                        "user_id": member.userId,
+                        "project_id": project.id,
+                        "type": "project_invite",
+                        "title": "Project invite: \(project.name)",
+                        "body": "\(senderName) invited you to collaborate on \"\(project.name)\"",
+                        "entity_type": "project",
+                        "entity_id": project.id,
+                        "is_read": false,
+                    ])
+                }
+            }
+
+            syncedProjectIds.insert(project.id)
+            projectInviteMessage = "Invited \(otherMembers.count) team member\(otherMembers.count == 1 ? "" : "s") to \"\(project.name)\""
+        } catch {
+            projectInviteMessage = "Failed: \(error.localizedDescription)"
+        }
+        invitingProjectId = nil
     }
 
     // MARK: - OSS Grant

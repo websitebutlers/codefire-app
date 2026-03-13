@@ -40,6 +40,7 @@ export function registerProjectHandlers(db: Database.Database) {
         clientId?: string | null
         tags?: string | null
         sortOrder?: number
+        color?: string | null
       }
     ) => projectDAO.update(id, data)
   )

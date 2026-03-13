@@ -1,3 +1,4 @@
+import { getConfigValue } from '../../services/ConfigStore'
 import type { Migration } from '../migrator'
 
 export const migrations: Migration[] = [
@@ -727,6 +728,99 @@ export const migrations: Migration[] = [
       if (!cols.some(c => c.name === 'title')) {
         db.exec(`ALTER TABLE sessions ADD COLUMN title TEXT;`)
       }
+    },
+  },
+
+  // Migration 31: Create audit log table for MCP agent action tracking
+  {
+    version: 31,
+    name: 'v31_createAgentAuditLog',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS agentAuditLog (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+          agentPid INTEGER,
+          projectId TEXT,
+          toolName TEXT NOT NULL,
+          toolCategory TEXT,
+          parameters TEXT,
+          resultStatus TEXT NOT NULL DEFAULT 'success',
+          durationMs INTEGER,
+          sessionSlug TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_auditLog_projectId ON agentAuditLog(projectId);
+        CREATE INDEX IF NOT EXISTS idx_auditLog_toolName ON agentAuditLog(toolName);
+        CREATE INDEX IF NOT EXISTS idx_auditLog_timestamp ON agentAuditLog(timestamp);
+      `)
+    },
+  },
+
+  // Migration 32: Add color column to projects
+  {
+    version: 32,
+    name: 'v32_addProjectColor',
+    up: (db) => {
+      db.exec(`ALTER TABLE projects ADD COLUMN color TEXT DEFAULT NULL`)
+    },
+  },
+
+  // Migration 33: Add completedBy column to taskItems
+  {
+    version: 33,
+    name: 'v33_addCompletedBy',
+    up: (db) => {
+      db.exec(`ALTER TABLE taskItems ADD COLUMN completedBy TEXT DEFAULT NULL`)
+    },
+  },
+
+  // Migration 34: Backfill completedBy for existing completed tasks
+  // Replaces ALL completedBy values (including OS usernames from the old code) with the CodeFire profile name
+  {
+    version: 34,
+    name: 'v34_backfillCompletedBy',
+    up: (db) => {
+      const profileName = getConfigValue('profileName') || 'You'
+      db.prepare(
+        `UPDATE taskItems SET completedBy = ? WHERE status = 'done'`
+      ).run(profileName)
+    },
+  },
+
+  // Migration 35: Purge any remaining OS usernames from completedBy
+  // Migration 34 may have already run with a NULL-only filter before the fix,
+  // so this ensures all OS usernames are scrubbed
+  {
+    version: 35,
+    name: 'v35_purgeOsUsernames',
+    up: (db) => {
+      const profileName = getConfigValue('profileName') || 'You'
+      // Replace any completedBy that isn't already the profile name or 'You'
+      db.prepare(
+        `UPDATE taskItems SET completedBy = ? WHERE status = 'done' AND completedBy IS NOT NULL AND completedBy != ? AND completedBy != 'You'`
+      ).run(profileName, profileName)
+    },
+  },
+
+  // Migration 36: Add createdBy column to taskItems and backfill existing tasks
+  {
+    version: 36,
+    name: 'v36_addCreatedBy',
+    up: (db) => {
+      db.exec(`ALTER TABLE taskItems ADD COLUMN createdBy TEXT DEFAULT NULL`)
+      const profileName = getConfigValue('profileName') || 'You'
+      db.prepare(`UPDATE taskItems SET createdBy = ? WHERE createdBy IS NULL`).run(profileName)
+    },
+  },
+
+  // Migration 37: Fix attribution for Nick Norris tasks
+  // Tasks 4, 5: completed by Nick (not local user). Task 3: created by Nick.
+  {
+    version: 37,
+    name: 'v37_fixNickAttribution',
+    up: (db) => {
+      db.prepare(`UPDATE taskItems SET completedBy = 'Nick Norris' WHERE id IN (3, 4, 5) AND completedBy != 'Nick Norris'`).run()
+      db.prepare(`UPDATE taskItems SET createdBy = 'Nick Norris' WHERE id = 3 AND createdBy != 'Nick Norris'`).run()
     },
   },
 ]

@@ -62,6 +62,7 @@ export class ProjectDAO {
       tags?: string | null
       sortOrder?: number
       repoUrl?: string | null
+      color?: string | null
     }
   ): Project | undefined {
     const existing = this.getById(id)
@@ -70,7 +71,7 @@ export class ProjectDAO {
     this.db
       .prepare(
         `UPDATE projects
-         SET name = ?, path = ?, claudeProject = ?, clientId = ?, tags = ?, sortOrder = ?, repoUrl = ?
+         SET name = ?, path = ?, claudeProject = ?, clientId = ?, tags = ?, sortOrder = ?, repoUrl = ?, color = ?
          WHERE id = ?`
       )
       .run(
@@ -81,6 +82,7 @@ export class ProjectDAO {
         data.tags !== undefined ? data.tags : existing.tags,
         data.sortOrder ?? existing.sortOrder,
         data.repoUrl !== undefined ? data.repoUrl : existing.repoUrl,
+        data.color !== undefined ? data.color : existing.color,
         id
       )
     return this.getById(id)

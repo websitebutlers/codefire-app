@@ -1,5 +1,5 @@
 import { Mic, Square, Loader2, FileAudio, Monitor, MicIcon, ChevronDown } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRecorder, type RecordingMode } from '@renderer/hooks/useRecorder'
 
 interface RecordingBarProps {
@@ -57,6 +57,19 @@ export default function RecordingBar({ onRecordingComplete, onImportFile }: Reco
   const [starting, setStarting] = useState(false)
   const [mode, setMode] = useState<RecordingMode>('mic')
   const [showDevices, setShowDevices] = useState(false)
+  const deviceDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close device dropdown on click outside
+  useEffect(() => {
+    if (!showDevices) return
+    function handleClickOutside(e: MouseEvent) {
+      if (deviceDropdownRef.current && !deviceDropdownRef.current.contains(e.target as Node)) {
+        setShowDevices(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showDevices])
 
   const selectedDevice = devices.find((d) => d.deviceId === selectedDeviceId)
   const deviceLabel = selectedDevice?.label || 'Default microphone'
@@ -160,7 +173,7 @@ export default function RecordingBar({ onRecordingComplete, onImportFile }: Reco
 
       {/* Device selector row — visible when mic or both mode and not recording */}
       {!isRecording && mode !== 'system' && devices.length > 0 && (
-        <div className="relative">
+        <div className="relative" ref={deviceDropdownRef}>
           <button
             type="button"
             onClick={() => setShowDevices(!showDevices)}

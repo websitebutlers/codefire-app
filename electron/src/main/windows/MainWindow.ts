@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeImage, screen } from 'electron'
+import { app, BrowserWindow, nativeImage, screen, session } from 'electron'
 import path from 'path'
 import { WINDOW_SIZES } from '@shared/theme'
 import { WindowStateStore, type WindowState } from './WindowStateStore'
@@ -49,6 +49,17 @@ export class MainWindow {
         sandbox: false,
         webviewTag: true,
       },
+    })
+
+    this.window.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: ws:; img-src 'self' data: blob: https:; font-src 'self' data:; media-src 'self' blob:; worker-src 'self' blob:;",
+          ],
+        },
+      })
     })
 
     this.window.once('ready-to-show', () => {

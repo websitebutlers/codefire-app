@@ -164,6 +164,8 @@ export type PremiumChannel =
   | 'premium:syncProject'
   | 'premium:unsyncProject'
   | 'premium:listSyncedProjects'
+  | 'premium:inviteToProject'
+  | 'premium:getSyncStatus'
   | 'premium:getNotifications'
   | 'premium:markNotificationRead'
   | 'premium:markAllNotificationsRead'

@@ -90,8 +90,8 @@ export default function SettingsModal({ open, onClose, initialTab }: SettingsMod
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[720px] h-[80vh] bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-[720px] h-[80vh] bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-800">
           <h2 className="text-sm font-semibold text-neutral-200">Settings</h2>

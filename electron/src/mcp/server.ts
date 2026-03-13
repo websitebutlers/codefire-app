@@ -21,22 +21,34 @@ const execFileAsync = promisify(execFile)
 // ─── Database ────────────────────────────────────────────────────────────────
 
 function getDatabasePath(): string {
-  let dir: string
+  const dir = getAppDataDir()
+  fs.mkdirSync(dir, { recursive: true })
+  return path.join(dir, 'codefire.db')
+}
+
+function getAppDataDir(): string {
   switch (process.platform) {
     case 'darwin':
-      dir = path.join(os.homedir(), 'Library', 'Application Support', 'CodeFire')
-      break
+      return path.join(os.homedir(), 'Library', 'Application Support', 'CodeFire')
     case 'win32':
-      dir = path.join(
+      return path.join(
         process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
         'CodeFire'
       )
-      break
     default:
-      dir = path.join(os.homedir(), '.config', 'CodeFire')
+      return path.join(os.homedir(), '.config', 'CodeFire')
   }
-  fs.mkdirSync(dir, { recursive: true })
-  return path.join(dir, 'codefire.db')
+}
+
+/** Read the CodeFire profile name from the settings file */
+function getProfileName(): string {
+  try {
+    const settingsPath = path.join(getAppDataDir(), 'codefire-settings.json')
+    const data = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+    return data.profileName || ''
+  } catch {
+    return ''
+  }
 }
 
 function openDatabase(): Database.Database {
@@ -116,10 +128,128 @@ function detectProject(db: Database.Database): { id: string; name: string; path:
 
 const db = openDatabase()
 
+// Ensure agentAuditLog table exists (migration 31)
+{
+  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='agentAuditLog'").all()
+  if (tables.length === 0) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS agentAuditLog (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        agentPid INTEGER,
+        projectId TEXT,
+        toolName TEXT NOT NULL,
+        toolCategory TEXT,
+        parameters TEXT,
+        resultStatus TEXT NOT NULL DEFAULT 'success',
+        durationMs INTEGER,
+        sessionSlug TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_auditLog_projectId ON agentAuditLog(projectId);
+      CREATE INDEX IF NOT EXISTS idx_auditLog_toolName ON agentAuditLog(toolName);
+      CREATE INDEX IF NOT EXISTS idx_auditLog_timestamp ON agentAuditLog(timestamp);
+    `)
+  }
+}
+
+// ─── Audit logging ──────────────────────────────────────────────────────────
+
+const SENSITIVE_KEYS = ['token', 'password', 'secret', 'key', 'cookie', 'authorization', 'credential']
+
+const TOOL_CATEGORIES: Record<string, string> = {
+  get_current_project: 'read', list_projects: 'read', get_project_profile: 'read',
+  get_project_environment: 'read', detect_project_stack: 'read', detect_services: 'read',
+  detect_dev_environment: 'read', detect_coding_agents: 'read', detect_ai_agents: 'read',
+  list_tasks: 'read', get_task: 'read', create_task: 'write', update_task: 'write',
+  list_task_notes: 'read', create_task_note: 'write',
+  list_notes: 'read', get_note: 'read', create_note: 'write', update_note: 'write', delete_note: 'write',
+  search_notes: 'read', search_code: 'read', context_search: 'read',
+  list_sessions: 'read', search_sessions: 'read',
+  list_clients: 'read', create_client: 'write',
+  list_images: 'read', get_image: 'read', generate_image: 'write', edit_image: 'write',
+  get_patterns: 'read', get_env_variables: 'read', list_env_files: 'read',
+  get_system_info: 'system',
+  git_status: 'git', git_diff: 'git', git_log: 'git', git_stage: 'git', git_unstage: 'git', git_commit: 'git',
+  browser_navigate: 'browser', browser_click: 'browser', browser_type: 'browser',
+  browser_scroll: 'browser', browser_screenshot: 'browser', browser_snapshot: 'browser',
+  browser_hover: 'browser', browser_select: 'browser', browser_press: 'browser',
+  browser_drag: 'browser', browser_wait: 'browser', browser_eval: 'browser',
+  browser_extract: 'browser', browser_console_logs: 'browser',
+  browser_network_requests: 'browser', browser_network_inspect: 'browser', browser_network_clear: 'browser',
+  browser_tab_open: 'browser', browser_tab_close: 'browser', browser_tab_switch: 'browser',
+  browser_list_tabs: 'browser', browser_iframe: 'browser', browser_upload: 'browser',
+  browser_get_cookies: 'browser', browser_set_cookie: 'browser',
+  browser_get_storage: 'browser', browser_clear_session: 'browser',
+}
+
+function redactParams(params: Record<string, unknown> | undefined): string | null {
+  if (!params || Object.keys(params).length === 0) return null
+  const redacted: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(params)) {
+    if (SENSITIVE_KEYS.some(s => k.toLowerCase().includes(s))) {
+      redacted[k] = '[REDACTED]'
+    } else {
+      redacted[k] = v
+    }
+  }
+  return JSON.stringify(redacted)
+}
+
+const auditInsert = db.prepare(
+  `INSERT INTO agentAuditLog (agentPid, projectId, toolName, toolCategory, parameters, resultStatus, durationMs)
+   VALUES (?, ?, ?, ?, ?, ?, ?)`
+)
+
+function logToolCall(
+  toolName: string,
+  params: Record<string, unknown> | undefined,
+  resultStatus: string,
+  durationMs: number
+): void {
+  try {
+    const project = detectProject(db)
+    auditInsert.run(
+      process.ppid ?? null,
+      project?.id ?? null,
+      toolName,
+      TOOL_CATEGORIES[toolName] ?? 'unknown',
+      redactParams(params),
+      resultStatus,
+      Math.round(durationMs)
+    )
+  } catch {
+    // Audit logging should never break tool execution
+  }
+}
+
+// Clean up old audit logs on startup (older than 30 days)
+try {
+  db.prepare("DELETE FROM agentAuditLog WHERE timestamp < datetime('now', '-30 days')").run()
+} catch {
+  // ignore cleanup errors
+}
+
 const server = new McpServer({
   name: 'codefire',
   version: '1.0.4',
 })
+
+// Wrap server.registerTool to add audit logging
+const originalRegisterTool = server.registerTool.bind(server)
+server.registerTool = function (name: string, config: any, handler: (...args: any[]) => any) {
+  const wrappedHandler = async (...args: any[]) => {
+    const start = Date.now()
+    try {
+      const result = await handler(...args)
+      logToolCall(name, args[0] as Record<string, unknown>, 'success', Date.now() - start)
+      return result
+    } catch (err) {
+      logToolCall(name, args[0] as Record<string, unknown>, 'error', Date.now() - start)
+      throw err
+    }
+  }
+  return originalRegisterTool(name, config, wrappedHandler)
+} as typeof server.registerTool
 
 // ── Projects ─────────────────────────────────────────────────────────────────
 
@@ -232,12 +362,13 @@ server.registerTool(
     }
 
     const now = new Date().toISOString()
+    const createdBy = getProfileName() || 'You'
     const result = db
       .prepare(
-        `INSERT INTO taskItems (projectId, title, description, status, priority, source, isGlobal, createdAt, updatedAt)
-         VALUES (?, ?, ?, 'todo', ?, 'mcp', ?, ?, ?)`
+        `INSERT INTO taskItems (projectId, title, description, status, priority, source, isGlobal, createdBy, createdAt, updatedAt)
+         VALUES (?, ?, ?, 'todo', ?, 'mcp', ?, ?, ?, ?)`
       )
-      .run(projectId, title, description ?? null, Math.min(4, Math.max(0, priority ?? 0)), isGlobal ? 1 : 0, now, now)
+      .run(projectId, title, description ?? null, Math.min(4, Math.max(0, priority ?? 0)), isGlobal ? 1 : 0, createdBy, now, now)
     const task = db.prepare('SELECT * FROM taskItems WHERE id = ?').get(result.lastInsertRowid)
     return { content: [{ type: 'text' as const, text: JSON.stringify(task, null, 2) }] }
   }
@@ -254,9 +385,11 @@ server.registerTool(
       description: z.string().optional().describe('New description'),
       status: z.enum(['todo', 'in_progress', 'done']).optional().describe('New status'),
       priority: z.number().min(0).max(4).optional().describe('New priority 0-4'),
+      completedBy: z.string().optional().describe('Override who completed the task'),
+      createdBy: z.string().optional().describe('Override who created the task'),
     }),
   },
-  async ({ taskId, title, description, status, priority }) => {
+  async ({ taskId, title, description, status, priority, completedBy: completedByOverride, createdBy: createdByOverride }) => {
     const existing = db.prepare('SELECT * FROM taskItems WHERE id = ?').get(taskId) as Record<string, unknown> | undefined
     if (!existing) {
       return { content: [{ type: 'text' as const, text: `Task ${taskId} not found.` }] }
@@ -268,15 +401,26 @@ server.registerTool(
         : status && status !== 'done'
           ? null
           : existing.completedAt
-    const updatedAt = (status && status !== existing.status) ? now : (existing.updatedAt ?? now)
+    const isNewlyDone = status === 'done' && existing.status !== 'done'
+    const completedBy = completedByOverride !== undefined
+      ? completedByOverride
+      : isNewlyDone
+        ? getProfileName() || 'You'
+        : status && status !== 'done'
+          ? null
+          : existing.completedBy
+    const createdBy = createdByOverride ?? existing.createdBy
+    const updatedAt = (status && status !== existing.status) || completedByOverride || createdByOverride ? now : (existing.updatedAt ?? now)
     db.prepare(
-      `UPDATE taskItems SET title = ?, description = ?, status = ?, priority = ?, completedAt = ?, updatedAt = ? WHERE id = ?`
+      `UPDATE taskItems SET title = ?, description = ?, status = ?, priority = ?, completedAt = ?, completedBy = ?, createdBy = ?, updatedAt = ? WHERE id = ?`
     ).run(
       title ?? existing.title,
       description ?? existing.description,
       status ?? existing.status,
       priority ?? existing.priority,
       completedAt,
+      completedBy,
+      createdBy,
       updatedAt,
       taskId
     )
@@ -1243,7 +1387,7 @@ server.registerTool(
   {
     title: 'Browser Get Cookies',
     description:
-      'Get cookies for the current page, including httpOnly cookies not visible to JavaScript. Useful for debugging authentication, session management, and tracking. Requires CodeFire browser.',
+      'Get non-sensitive cookies for the current page. HttpOnly cookies are excluded for security. Useful for debugging authentication flows and tracking. Requires CodeFire browser.',
     inputSchema: z.object({
       domain: z
         .string()
@@ -1251,12 +1395,27 @@ server.registerTool(
         .describe("Filter cookies by domain substring (e.g. 'example.com')"),
       tab_id: z.string().optional().describe('Tab ID (defaults to active tab)'),
     }),
+    annotations: {
+      destructiveHint: false,
+      readOnlyHint: true,
+      openWorldHint: true,
+    },
   },
   async ({ domain, tab_id }) => {
     const args: Record<string, unknown> = {}
     if (domain) args.domain = domain
     if (tab_id) args.tab_id = tab_id
     const result = await executeBrowserCommand('browser_get_cookies', args)
+    // Filter out httpOnly cookies to prevent session hijacking
+    try {
+      const parsed = JSON.parse(result)
+      if (parsed.cookies && Array.isArray(parsed.cookies)) {
+        parsed.cookies = parsed.cookies.filter((c: { httpOnly?: boolean }) => !c.httpOnly)
+        return textResult(JSON.stringify(parsed, null, 2))
+      }
+    } catch {
+      // If result isn't JSON, return as-is
+    }
     return textResult(result)
   }
 )
@@ -1268,7 +1427,7 @@ server.registerTool(
   {
     title: 'Browser Get Storage',
     description:
-      'Read localStorage or sessionStorage contents. Returns item count, key-value pairs, and total size in bytes. Requires CodeFire browser.',
+      'Read localStorage or sessionStorage contents. Returns item count, key-value pairs, and total size in bytes. Keys containing tokens, secrets, or credentials are redacted. Requires CodeFire browser.',
     inputSchema: z.object({
       type: z
         .enum(['localStorage', 'sessionStorage'])
@@ -1279,12 +1438,32 @@ server.registerTool(
         .describe('Only return keys starting with this prefix'),
       tab_id: z.string().optional().describe('Tab ID (defaults to active tab)'),
     }),
+    annotations: {
+      destructiveHint: false,
+      readOnlyHint: true,
+      openWorldHint: true,
+    },
   },
   async ({ type: storageType, prefix, tab_id }) => {
     const args: Record<string, unknown> = { type: storageType ?? 'localStorage' }
     if (prefix) args.prefix = prefix
     if (tab_id) args.tab_id = tab_id
     const result = await executeBrowserCommand('browser_get_storage', args)
+    // Redact values for keys that likely contain sensitive data
+    const sensitivePattern = /token|secret|credential|password|api.?key|session.?id|auth|jwt/i
+    try {
+      const parsed = JSON.parse(result)
+      if (parsed.items && typeof parsed.items === 'object') {
+        for (const key of Object.keys(parsed.items)) {
+          if (sensitivePattern.test(key)) {
+            parsed.items[key] = '[REDACTED]'
+          }
+        }
+        return textResult(JSON.stringify(parsed, null, 2))
+      }
+    } catch {
+      // If result isn't JSON, return as-is
+    }
     return textResult(result)
   }
 )
@@ -2909,6 +3088,33 @@ async function generateProfile(projectId: string, projectPath: string, projectNa
 
   return profileText
 }
+
+// ── Agent Audit Log ─────────────────────────────────────────────────────────
+
+server.registerTool(
+  'list_agent_activity',
+  {
+    title: 'List Agent Activity',
+    description: 'View the audit log of MCP tool invocations by AI agents. Filter by project or tool name.',
+    inputSchema: z.object({
+      projectId: z.string().optional().describe('Filter by project ID'),
+      toolName: z.string().optional().describe('Filter by tool name'),
+      limit: z.number().optional().default(50).describe('Max entries to return (default 50)'),
+    }),
+  },
+  async ({ projectId, toolName, limit }) => {
+    const cap = Math.min(limit ?? 50, 200)
+    let rows
+    if (projectId) {
+      rows = db.prepare('SELECT * FROM agentAuditLog WHERE projectId = ? ORDER BY timestamp DESC LIMIT ?').all(projectId, cap)
+    } else if (toolName) {
+      rows = db.prepare('SELECT * FROM agentAuditLog WHERE toolName = ? ORDER BY timestamp DESC LIMIT ?').all(toolName, cap)
+    } else {
+      rows = db.prepare('SELECT * FROM agentAuditLog ORDER BY timestamp DESC LIMIT ?').all(cap)
+    }
+    return { content: [{ type: 'text' as const, text: JSON.stringify(rows, null, 2) }] }
+  }
+)
 
 // ─── Start ───────────────────────────────────────────────────────────────────
 

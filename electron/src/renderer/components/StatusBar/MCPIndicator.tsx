@@ -102,7 +102,7 @@ export default function MCPIndicator({
   }, [menuOpen])
 
   const statusColor = isConnected
-    ? 'text-success'
+    ? 'text-codefire-orange'
     : isError
       ? 'text-error'
       : 'text-neutral-500'
@@ -114,16 +114,16 @@ export default function MCPIndicator({
       : 'bg-neutral-600'
 
   const bgColor = isConnected
-    ? 'bg-success/10'
+    ? 'bg-codefire-orange/10'
     : isError
       ? 'bg-error/10'
       : 'bg-transparent'
 
   const tooltipText = isConnected
-    ? `MCP connected${sessionCount ? ` (${sessionCount} session${sessionCount !== 1 ? 's' : ''})` : ''} — click to disconnect`
+    ? `CodeFire connected${sessionCount ? ` (${sessionCount} session${sessionCount !== 1 ? 's' : ''})` : ''} — click to disconnect`
     : isError
-      ? 'MCP connection error — click to reconnect'
-      : 'MCP not connected — click to connect'
+      ? 'CodeFire connection error — click to reconnect'
+      : 'CodeFire not connected — click to connect'
 
   function handleIndicatorClick() {
     if (isConnected) {
@@ -151,9 +151,9 @@ export default function MCPIndicator({
         <span
           className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${dotColor} ${isConnected ? 'animate-pulse' : ''}`}
         />
-        <Radio className={`w-3 h-3 flex-shrink-0 ${statusColor}`} />
+        <span className={`text-tiny font-semibold ${statusColor}`}>MCP</span>
         <span className={`text-tiny font-medium ${statusColor}`}>
-          MCP
+          {isConnected ? 'Connected' : isError ? 'Error' : 'Disconnected'}
         </span>
         {isConnected && sessionCount !== undefined && sessionCount > 0 && (
           <span className="ml-0.5 px-1 py-px rounded-full bg-success text-white text-[9px] font-bold leading-none">
@@ -171,7 +171,7 @@ export default function MCPIndicator({
               <div className="flex items-center gap-2">
                 <span className={`inline-block w-2.5 h-2.5 rounded-full ${dotColor}`} />
                 <span className="text-xs font-semibold text-neutral-200">
-                  MCP Server — {isConnected ? 'Connected' : isError ? 'Error' : 'Not Connected'}
+                  CodeFire — {isConnected ? 'Connected' : isError ? 'Error' : 'Not Connected'}
                 </span>
               </div>
               {isConnected ? (

@@ -29,16 +29,28 @@ export default function AllProjectsView() {
 
   // Fetch projects and clients/groups for filter options
   const [projectNames, setProjectNames] = useState<Record<string, string>>({})
+  const [projectColors, setProjectColors] = useState<Record<string, string | null>>({})
+  const [projectGroupColors, setProjectGroupColors] = useState<Record<string, string | null>>({})
   const [projects, setProjects] = useState<Project[]>([])
   const [clients, setClients] = useState<Client[]>([])
 
   useEffect(() => {
     Promise.all([api.projects.list(), api.clients.list()]).then(([projectList, clientList]) => {
       const map: Record<string, string> = {}
+      const colors: Record<string, string | null> = {}
+      const groupColors: Record<string, string | null> = {}
+      const clientColorMap = new Map<string, string>()
+      for (const c of clientList) clientColorMap.set(c.id, c.color)
       for (const p of projectList) {
-        if (p.id !== '__global__') map[p.id] = p.name
+        if (p.id !== '__global__') {
+          map[p.id] = p.name
+          colors[p.id] = p.color
+          groupColors[p.id] = p.clientId ? (clientColorMap.get(p.clientId) ?? null) : null
+        }
       }
       setProjectNames(map)
+      setProjectColors(colors)
+      setProjectGroupColors(groupColors)
       setProjects(projectList)
       setClients(clientList)
     }).catch(() => {})
@@ -153,6 +165,8 @@ export default function AllProjectsView() {
                 onDeleteTask={deleteTask}
                 onAddTask={createTask}
                 projectNames={projectNames}
+                projectColors={projectColors}
+                projectGroupColors={projectGroupColors}
                 projectId="__global__"
                 pollingPaused={pollingPaused}
               />

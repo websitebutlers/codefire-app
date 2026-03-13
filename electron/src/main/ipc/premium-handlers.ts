@@ -69,6 +69,26 @@ export function registerPremiumHandlers(
   ipcMain.handle('premium:unsyncProject', (_e, projectId: string) => {
     return teamService.unsyncProject(projectId)
   })
+  ipcMain.handle('premium:listSyncedProjects', (_e, teamId: string) => {
+    return teamService.listSyncedProjects(teamId)
+  })
+  ipcMain.handle('premium:inviteToProject', (_e, teamId: string, projectId: string, projectName: string, repoUrl: string | null, memberUserIds: string[]) => {
+    return teamService.inviteToProject(teamId, projectId, projectName, repoUrl, memberUserIds)
+  })
+
+  // Sync status
+  ipcMain.handle('premium:getSyncStatus', () => {
+    const states = syncEngine.getSyncStates()
+    const dirtyCount = states.filter((s) => s.dirty).length
+    const lastSynced = states
+      .filter((s) => s.lastSyncedAt)
+      .sort((a, b) => (b.lastSyncedAt! > a.lastSyncedAt! ? 1 : -1))
+    return {
+      lastSyncAt: lastSynced.length > 0 ? lastSynced[0].lastSyncedAt : null,
+      dirtyCount,
+      isSyncing: false, // SyncEngine doesn't expose isSyncing publicly; approximate
+    }
+  })
 
   // Billing
   ipcMain.handle('premium:createCheckout', async (_e, teamId: string | null, plan: string, extraSeats?: number) => {
@@ -126,7 +146,19 @@ export function registerPremiumHandlers(
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(limit || 50)
-    return data || []
+    // Transform snake_case Supabase columns to camelCase for renderer
+    return (data || []).map((n: Record<string, unknown>) => ({
+      id: n.id,
+      userId: n.user_id,
+      projectId: n.project_id,
+      type: n.type,
+      title: n.title,
+      body: n.body,
+      entityType: n.entity_type,
+      entityId: n.entity_id,
+      isRead: n.is_read,
+      createdAt: n.created_at,
+    }))
   })
 
   ipcMain.handle('premium:markNotificationRead', async (_e, notificationId: string) => {
