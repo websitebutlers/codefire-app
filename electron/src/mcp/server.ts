@@ -21,22 +21,34 @@ const execFileAsync = promisify(execFile)
 // ─── Database ────────────────────────────────────────────────────────────────
 
 function getDatabasePath(): string {
-  let dir: string
+  const dir = getAppDataDir()
+  fs.mkdirSync(dir, { recursive: true })
+  return path.join(dir, 'codefire.db')
+}
+
+function getAppDataDir(): string {
   switch (process.platform) {
     case 'darwin':
-      dir = path.join(os.homedir(), 'Library', 'Application Support', 'CodeFire')
-      break
+      return path.join(os.homedir(), 'Library', 'Application Support', 'CodeFire')
     case 'win32':
-      dir = path.join(
+      return path.join(
         process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
         'CodeFire'
       )
-      break
     default:
-      dir = path.join(os.homedir(), '.config', 'CodeFire')
+      return path.join(os.homedir(), '.config', 'CodeFire')
   }
-  fs.mkdirSync(dir, { recursive: true })
-  return path.join(dir, 'codefire.db')
+}
+
+/** Read the CodeFire profile name from the settings file */
+function getProfileName(): string {
+  try {
+    const settingsPath = path.join(getAppDataDir(), 'codefire-settings.json')
+    const data = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+    return data.profileName || ''
+  } catch {
+    return ''
+  }
 }
 
 function openDatabase(): Database.Database {
@@ -350,12 +362,13 @@ server.registerTool(
     }
 
     const now = new Date().toISOString()
+    const createdBy = getProfileName() || 'You'
     const result = db
       .prepare(
-        `INSERT INTO taskItems (projectId, title, description, status, priority, source, isGlobal, createdAt, updatedAt)
-         VALUES (?, ?, ?, 'todo', ?, 'mcp', ?, ?, ?)`
+        `INSERT INTO taskItems (projectId, title, description, status, priority, source, isGlobal, createdBy, createdAt, updatedAt)
+         VALUES (?, ?, ?, 'todo', ?, 'mcp', ?, ?, ?, ?)`
       )
-      .run(projectId, title, description ?? null, Math.min(4, Math.max(0, priority ?? 0)), isGlobal ? 1 : 0, now, now)
+      .run(projectId, title, description ?? null, Math.min(4, Math.max(0, priority ?? 0)), isGlobal ? 1 : 0, createdBy, now, now)
     const task = db.prepare('SELECT * FROM taskItems WHERE id = ?').get(result.lastInsertRowid)
     return { content: [{ type: 'text' as const, text: JSON.stringify(task, null, 2) }] }
   }
@@ -372,9 +385,11 @@ server.registerTool(
       description: z.string().optional().describe('New description'),
       status: z.enum(['todo', 'in_progress', 'done']).optional().describe('New status'),
       priority: z.number().min(0).max(4).optional().describe('New priority 0-4'),
+      completedBy: z.string().optional().describe('Override who completed the task'),
+      createdBy: z.string().optional().describe('Override who created the task'),
     }),
   },
-  async ({ taskId, title, description, status, priority }) => {
+  async ({ taskId, title, description, status, priority, completedBy: completedByOverride, createdBy: createdByOverride }) => {
     const existing = db.prepare('SELECT * FROM taskItems WHERE id = ?').get(taskId) as Record<string, unknown> | undefined
     if (!existing) {
       return { content: [{ type: 'text' as const, text: `Task ${taskId} not found.` }] }
@@ -386,15 +401,26 @@ server.registerTool(
         : status && status !== 'done'
           ? null
           : existing.completedAt
-    const updatedAt = (status && status !== existing.status) ? now : (existing.updatedAt ?? now)
+    const isNewlyDone = status === 'done' && existing.status !== 'done'
+    const completedBy = completedByOverride !== undefined
+      ? completedByOverride
+      : isNewlyDone
+        ? getProfileName() || 'You'
+        : status && status !== 'done'
+          ? null
+          : existing.completedBy
+    const createdBy = createdByOverride ?? existing.createdBy
+    const updatedAt = (status && status !== existing.status) || completedByOverride || createdByOverride ? now : (existing.updatedAt ?? now)
     db.prepare(
-      `UPDATE taskItems SET title = ?, description = ?, status = ?, priority = ?, completedAt = ?, updatedAt = ? WHERE id = ?`
+      `UPDATE taskItems SET title = ?, description = ?, status = ?, priority = ?, completedAt = ?, completedBy = ?, createdBy = ?, updatedAt = ? WHERE id = ?`
     ).run(
       title ?? existing.title,
       description ?? existing.description,
       status ?? existing.status,
       priority ?? existing.priority,
       completedAt,
+      completedBy,
+      createdBy,
       updatedAt,
       taskId
     )

@@ -11,7 +11,7 @@ import {
   useSensors,
   closestCenter,
 } from '@dnd-kit/core'
-import type { TaskItem } from '@shared/models'
+import type { TaskItem, AppConfig } from '@shared/models'
 import KanbanColumn from './KanbanColumn'
 import TaskDetailSheet from './TaskDetailSheet'
 import TaskCreateModal from './TaskCreateModal'
@@ -73,6 +73,37 @@ export default function KanbanBoard({
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null)
   const [overColumnId, setOverColumnId] = useState<string | null>(null)
   const [createModalStatus, setCreateModalStatus] = useState<string | null>(null)
+
+  // Map of display name → avatar URL for watermark icons on task cards
+  const [memberAvatars, setMemberAvatars] = useState<Record<string, string>>({})
+  const [localUserName, setLocalUserName] = useState<string>('')
+
+  useEffect(() => {
+    const map: Record<string, string> = {}
+    // Local user avatar
+    window.api.invoke('settings:get').then((config: unknown) => {
+      const c = config as AppConfig | undefined
+      if (c?.profileName) {
+        setLocalUserName(c.profileName)
+        if (c.profileAvatarUrl) {
+          map[c.profileName] = c.profileAvatarUrl
+        }
+      }
+      setMemberAvatars((prev) => ({ ...prev, ...map }))
+    }).catch(() => {})
+    // Team member avatars
+    api.premium.getTeam().then((team) => {
+      if (!team) return
+      api.premium.listMembers(team.id).then((members) => {
+        for (const m of members) {
+          if (m.user?.displayName && m.user.avatarUrl) {
+            map[m.user.displayName] = m.user.avatarUrl
+          }
+        }
+        setMemberAvatars((prev) => ({ ...prev, ...map }))
+      }).catch(() => {})
+    }).catch(() => {})
+  }, [])
 
   // Local optimistic state: null means "use props", otherwise use this override
   const [optimisticTasks, setOptimisticTasks] = useState<Record<string, TaskItem[]> | null>(null)
@@ -277,6 +308,8 @@ export default function KanbanBoard({
               projectNames={projectNames}
               projectColors={projectColors}
               projectGroupColors={projectGroupColors}
+              memberAvatars={memberAvatars}
+              localUserName={localUserName}
             />
           ))}
         </div>
@@ -345,6 +378,8 @@ export default function KanbanBoard({
               projectName={projectNames?.[activeTask.projectId]}
               projectColor={projectColors?.[activeTask.projectId]}
               groupColor={projectGroupColors?.[activeTask.projectId]}
+              memberAvatars={memberAvatars}
+              localUserName={localUserName}
               isDragOverlay
             />
           </div>

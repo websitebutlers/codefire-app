@@ -1,8 +1,8 @@
-import { Folder, AlertTriangle } from 'lucide-react'
+import { Folder, GitBranch, Search, Globe, FileText, ListTodo, StickyNote, Image, Monitor, Database, Zap } from 'lucide-react'
 import MCPIndicator from './MCPIndicator'
 import IndexIndicator from './IndexIndicator'
 import { useAgentMonitor } from '../../hooks/useAgentMonitor'
-import type { AgentInfo } from '@shared/models'
+import type { MCPActivity } from '@shared/models'
 
 interface AgentStatusBarProps {
   projectId: string
@@ -27,7 +27,7 @@ function truncatePath(path: string, maxSegments = 2): string {
 }
 
 /** Format elapsed seconds into a human-readable string. */
-function formatElapsed(seconds: number): string {
+export function formatElapsed(seconds: number): string {
   if (seconds < 60) return `${seconds}s`
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
   const h = Math.floor(seconds / 3600)
@@ -35,25 +35,42 @@ function formatElapsed(seconds: number): string {
   return `${h}h ${m}m`
 }
 
-/** A compact pill showing a single agent's status. */
-function AgentPill({ agent }: { agent: AgentInfo }) {
-  const color = agent.isPotentiallyFrozen ? 'orange' : 'blue'
-  const dotClass = agent.isPotentiallyFrozen ? 'bg-orange-400' : 'bg-blue-400'
-  const textClass = agent.isPotentiallyFrozen ? 'text-orange-400' : 'text-blue-400'
-  const bgClass = agent.isPotentiallyFrozen
-    ? 'bg-orange-400/10 border-orange-400/25'
-    : 'bg-blue-400/10 border-blue-400/25'
+/** Icons for MCP activity categories */
+const CATEGORY_ICONS: Record<string, typeof Zap> = {
+  Git: GitBranch,
+  Tasks: ListTodo,
+  Notes: StickyNote,
+  Search: Search,
+  Browser: Globe,
+  Images: Image,
+  Sessions: FileText,
+  Projects: Folder,
+  System: Monitor,
+  Clients: Database,
+  Reading: FileText,
+  Writing: FileText,
+}
+
+/** Compact pill showing an MCP activity category */
+export function ActivityPill({ activity }: { activity: MCPActivity }) {
+  const Icon = CATEGORY_ICONS[activity.category] || Zap
+  const isActive = activity.isActive
+  const dotClass = isActive ? 'bg-green-400' : 'bg-neutral-500'
+  const textClass = isActive ? 'text-green-400' : 'text-neutral-500'
+  const bgClass = isActive
+    ? 'bg-green-400/10 border-green-400/25'
+    : 'bg-neutral-700/30 border-neutral-600/20'
 
   return (
     <span
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border ${bgClass}`}
-      title={`PID ${agent.pid} — ${formatElapsed(agent.elapsedSeconds)}${agent.isPotentiallyFrozen ? ' (may be frozen)' : ''}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border transition-all duration-500 ${bgClass}`}
+      title={`${activity.category}: ${activity.callCount} call${activity.callCount !== 1 ? 's' : ''} (last: ${activity.toolName})`}
     >
-      <span className={`w-[5px] h-[5px] rounded-full ${dotClass}`} />
-      <span className={`text-[9px] font-semibold ${textClass}`}>Agent</span>
-      <span className="text-[9px] font-mono text-neutral-400">
-        {formatElapsed(agent.elapsedSeconds)}
-      </span>
+      <Icon className={`w-[9px] h-[9px] ${textClass}`} />
+      <span className={`text-[9px] font-semibold ${textClass}`}>{activity.category}</span>
+      {activity.callCount > 1 && (
+        <span className="text-[9px] font-mono text-neutral-500">×{activity.callCount}</span>
+      )}
     </span>
   )
 }
@@ -70,8 +87,7 @@ export default function AgentStatusBar({
   onMCPDisconnect,
   onRequestIndex,
 }: AgentStatusBarProps) {
-  const { claudeProcess, agents } = useAgentMonitor()
-  const hasFrozen = agents.some((a) => a.isPotentiallyFrozen)
+  const { claudeProcess, mcpActivity } = useAgentMonitor()
 
   return (
     <div
@@ -81,7 +97,7 @@ export default function AgentStatusBar({
         no-drag
       "
     >
-      {/* Left: MCP indicator + Agent status */}
+      {/* Left: MCP indicator + Claude Code + Activity */}
       <div className="flex items-center gap-2">
         <MCPIndicator
           status={mcpStatus}
@@ -103,31 +119,23 @@ export default function AgentStatusBar({
                 {formatElapsed(claudeProcess.elapsedSeconds)}
               </span>
             </div>
+          </>
+        )}
 
-            {/* Agent pills */}
-            {agents.length > 0 && (
-              <>
-                <div className="w-px h-3 bg-neutral-700" />
-                <div className="flex items-center gap-1">
-                  {agents.map((agent) => (
-                    <AgentPill key={agent.pid} agent={agent} />
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* Frozen warning */}
-            {hasFrozen && (
-              <>
-                <div className="w-px h-3 bg-neutral-700" />
-                <div className="flex items-center gap-1">
-                  <AlertTriangle className="w-[9px] h-[9px] text-orange-400" />
-                  <span className="text-[10px] font-medium text-orange-400">
-                    Agent may be frozen
-                  </span>
-                </div>
-              </>
-            )}
+        {/* MCP Activity pills */}
+        {mcpActivity && mcpActivity.length > 0 && (
+          <>
+            <div className="w-px h-3 bg-neutral-700" />
+            <div className="flex items-center gap-1">
+              {mcpActivity.slice(0, 5).map((act) => (
+                <ActivityPill key={act.category} activity={act} />
+              ))}
+              {mcpActivity.length > 5 && (
+                <span className="text-[9px] text-neutral-500 px-1">
+                  +{mcpActivity.length - 5}
+                </span>
+              )}
+            </div>
           </>
         )}
       </div>

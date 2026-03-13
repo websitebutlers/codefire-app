@@ -74,6 +74,8 @@ export interface TaskItem {
   recordingId: string | null
   remoteOwnerId: string | null
   remoteOwnerName: string | null
+  completedBy: string | null
+  createdBy: string | null
   createdAt: string
   updatedAt: string | null
   completedAt: string | null
@@ -284,13 +286,24 @@ export interface AgentInfo {
   pid: number
   parentPid: number
   elapsedSeconds: number
-  command: string // "Claude Code" or "Agent"
+  command: string // "Claude Code"
   isPotentiallyFrozen: boolean
+  isIdle: boolean
+  agentIndex: number
+}
+
+export interface MCPActivity {
+  category: string       // e.g. "Git", "Tasks", "Search", "Browser"
+  toolName: string       // most recent tool name in this category
+  callCount: number      // calls in the activity window
+  lastCallAt: string     // ISO timestamp
+  isActive: boolean      // had activity in the last 15s
 }
 
 export interface AgentMonitorState {
   claudeProcess: AgentInfo | null
   agents: AgentInfo[]
+  mcpActivity: MCPActivity[]
 }
 
 // ─── MCP Connection ──────────────────────────────────────────────────────────

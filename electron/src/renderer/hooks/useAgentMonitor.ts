@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { AgentMonitorState } from '@shared/models'
 
-const EMPTY_STATE: AgentMonitorState = { claudeProcess: null, agents: [] }
+const EMPTY_STATE: AgentMonitorState = { claudeProcess: null, agents: [], mcpActivity: [] }
 
 /**
- * Hook that subscribes to agent process detection updates from the main process.
- * Returns the current state of detected Claude Code agents.
+ * Hook that subscribes to agent/MCP activity updates from the main process.
+ * Returns the current state of detected Claude Code CLI and MCP tool activity.
  */
 export function useAgentMonitor(): AgentMonitorState {
   const [state, setState] = useState<AgentMonitorState>(EMPTY_STATE)

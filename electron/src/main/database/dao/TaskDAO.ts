@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3'
+import { getConfigValue } from '../../services/ConfigStore'
 import type { TaskItem } from '@shared/models'
 
 export class TaskDAO {
@@ -65,10 +66,11 @@ export class TaskDAO {
     isGlobal?: boolean
   }): TaskItem {
     const now = new Date().toISOString()
+    const createdBy = getConfigValue('profileName') || 'You'
     const result = this.db
       .prepare(
-        `INSERT INTO taskItems (projectId, title, description, status, priority, source, labels, isGlobal, createdAt)
-         VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?)`
+        `INSERT INTO taskItems (projectId, title, description, status, priority, source, labels, isGlobal, createdBy, createdAt)
+         VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?)`
       )
       .run(
         data.projectId,
@@ -78,6 +80,7 @@ export class TaskDAO {
         data.source ?? 'manual',
         data.labels ? JSON.stringify(data.labels) : null,
         data.isGlobal ? 1 : 0,
+        createdBy,
         now
       )
     return this.getById(Number(result.lastInsertRowid))!
@@ -92,17 +95,30 @@ export class TaskDAO {
       priority?: number
       labels?: string[]
       attachments?: string[]
+      completedBy?: string
+      createdBy?: string
     }
   ): TaskItem | undefined {
     const existing = this.getById(id)
     if (!existing) return undefined
 
-    const completedAt =
-      data.status === 'done' && existing.status !== 'done'
-        ? new Date().toISOString()
+    const isNewlyDone = data.status === 'done' && existing.status !== 'done'
+    const completedAt = isNewlyDone
+      ? new Date().toISOString()
+      : data.status && data.status !== 'done'
+        ? null
+        : existing.completedAt
+
+    // Track who completed the task: explicit override > auto-detect on transition > preserve existing
+    const completedBy = data.completedBy !== undefined
+      ? data.completedBy
+      : isNewlyDone
+        ? getConfigValue('profileName') || 'You'
         : data.status && data.status !== 'done'
           ? null
-          : existing.completedAt
+          : existing.completedBy
+
+    const createdBy = data.createdBy ?? existing.createdBy
 
     const hasChanges =
       (data.title !== undefined && data.title !== existing.title) ||
@@ -110,7 +126,9 @@ export class TaskDAO {
       (data.status !== undefined && data.status !== existing.status) ||
       (data.priority !== undefined && data.priority !== existing.priority) ||
       data.labels !== undefined ||
-      data.attachments !== undefined
+      data.attachments !== undefined ||
+      data.completedBy !== undefined ||
+      data.createdBy !== undefined
 
     const updatedAt = hasChanges
       ? new Date().toISOString()
@@ -119,7 +137,7 @@ export class TaskDAO {
     this.db
       .prepare(
         `UPDATE taskItems
-         SET title = ?, description = ?, status = ?, priority = ?, labels = ?, attachments = ?, completedAt = ?, updatedAt = ?
+         SET title = ?, description = ?, status = ?, priority = ?, labels = ?, attachments = ?, completedAt = ?, completedBy = ?, createdBy = ?, updatedAt = ?
          WHERE id = ?`
       )
       .run(
@@ -130,6 +148,8 @@ export class TaskDAO {
         data.labels ? JSON.stringify(data.labels) : existing.labels,
         data.attachments ? JSON.stringify(data.attachments) : existing.attachments,
         completedAt,
+        completedBy,
+        createdBy,
         updatedAt,
         id
       )

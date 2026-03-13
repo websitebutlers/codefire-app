@@ -7,13 +7,13 @@ import TerminalPanel from '@renderer/components/Terminal/TerminalPanel'
 import CodeFireChat from '@renderer/components/Chat/CodeFireChat'
 import ProjectDropdown from '@renderer/components/Header/ProjectDropdown'
 import MCPIndicator from '@renderer/components/StatusBar/MCPIndicator'
+import { ActivityPill, formatElapsed } from '@renderer/components/StatusBar/AgentStatusBar'
 import TabBar from '@renderer/components/TabBar/TabBar'
 import AllProjectsView from '@renderer/views/AllProjectsView'
 import NotesView from '@renderer/views/NotesView'
 import DashboardView from '@renderer/views/DashboardView'
 import { useMCPStatus } from '@renderer/hooks/useMCPStatus'
 import { useAgentMonitor } from '@renderer/hooks/useAgentMonitor'
-import { AlertTriangle } from 'lucide-react'
 import NotificationBell from '@renderer/components/NotificationBell'
 import { UpdateBanner } from '@renderer/components/UpdateBanner'
 
@@ -36,8 +36,7 @@ const isMac = navigator.platform.toUpperCase().includes('MAC')
 
 export default function MainLayout() {
   const { mcpStatus, mcpSessionCount, startMCP, stopMCP } = useMCPStatus()
-  const { claudeProcess, agents } = useAgentMonitor()
-  const hasFrozenAgent = agents.some((a) => a.isPotentiallyFrozen)
+  const { claudeProcess, mcpActivity } = useAgentMonitor()
   const [defaultTerminalPath, setDefaultTerminalPath] = useState('')
   const [showTerminal, setShowTerminal] = useState(true)
   const [terminalOnLeft, setTerminalOnLeft] = useState(false)
@@ -262,45 +261,20 @@ export default function MainLayout() {
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
                 <span className="text-[10px] font-medium text-neutral-400">Claude Code</span>
                 <span className="text-[10px] font-mono text-neutral-500">
-                  {claudeProcess.elapsedSeconds < 60
-                    ? `${claudeProcess.elapsedSeconds}s`
-                    : claudeProcess.elapsedSeconds < 3600
-                      ? `${Math.floor(claudeProcess.elapsedSeconds / 60)}m ${claudeProcess.elapsedSeconds % 60}s`
-                      : `${Math.floor(claudeProcess.elapsedSeconds / 3600)}h ${Math.floor((claudeProcess.elapsedSeconds % 3600) / 60)}m`}
+                  {formatElapsed(claudeProcess.elapsedSeconds)}
                 </span>
               </div>
+            </>
+          )}
 
-              {agents.length > 0 && (
-                <>
-                  <div className="w-px h-3 bg-neutral-700" />
-                  <div className="flex items-center gap-1">
-                    {agents.map((agent) => {
-                      const frozen = agent.isPotentiallyFrozen
-                      const dotCls = frozen ? 'bg-orange-400' : 'bg-blue-400'
-                      const txtCls = frozen ? 'text-orange-400' : 'text-blue-400'
-                      const bgCls = frozen ? 'bg-orange-400/10 border-orange-400/25' : 'bg-blue-400/10 border-blue-400/25'
-                      const elapsed = agent.elapsedSeconds < 60 ? `${agent.elapsedSeconds}s` : agent.elapsedSeconds < 3600 ? `${Math.floor(agent.elapsedSeconds / 60)}m ${agent.elapsedSeconds % 60}s` : `${Math.floor(agent.elapsedSeconds / 3600)}h ${Math.floor((agent.elapsedSeconds % 3600) / 60)}m`
-                      return (
-                        <span key={agent.pid} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border ${bgCls}`} title={`PID ${agent.pid} — ${elapsed}`}>
-                          <span className={`w-[5px] h-[5px] rounded-full ${dotCls}`} />
-                          <span className={`text-[9px] font-semibold ${txtCls}`}>Agent</span>
-                          <span className="text-[9px] font-mono text-neutral-400">{elapsed}</span>
-                        </span>
-                      )
-                    })}
-                  </div>
-                </>
-              )}
-
-              {hasFrozenAgent && (
-                <>
-                  <div className="w-px h-3 bg-neutral-700" />
-                  <div className="flex items-center gap-1">
-                    <AlertTriangle className="w-[9px] h-[9px] text-orange-400" />
-                    <span className="text-[10px] font-medium text-orange-400">Agent may be frozen</span>
-                  </div>
-                </>
-              )}
+          {mcpActivity && mcpActivity.length > 0 && (
+            <>
+              <div className="w-px h-3 bg-neutral-700" />
+              <div className="flex items-center gap-1">
+                {mcpActivity.slice(0, 5).map((act) => (
+                  <ActivityPill key={act.category} activity={act} />
+                ))}
+              </div>
             </>
           )}
         </div>
