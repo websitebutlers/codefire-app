@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { MessageSquare, GripVertical, Bot, User, Mail, Cpu, FolderOpen, Play, Trash2, ArrowRight, Users, AlertTriangle } from 'lucide-react'
+import { MessageSquare, GripVertical, Play, Trash2, ArrowRight, Users, AlertTriangle } from 'lucide-react'
 import type { TaskItem } from '@shared/models'
 
 interface TaskCardProps {
@@ -15,6 +15,8 @@ interface TaskCardProps {
   onMoveTask?: (taskId: number, newStatus: string) => void
   onLaunchSession?: (task: TaskItem) => void
   onDeleteTask?: (taskId: number) => void
+  memberAvatars?: Record<string, string>
+  localUserName?: string
 }
 
 const PRIORITY_BORDER_COLORS: Record<number, string> = {
@@ -79,13 +81,40 @@ function parseLabels(labels: string | null): string[] {
   }
 }
 
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase()
+  }
+  return name.slice(0, 2).toUpperCase()
+}
+
+const AVATAR_COLORS = [
+  'bg-blue-600',
+  'bg-emerald-600',
+  'bg-violet-600',
+  'bg-amber-600',
+  'bg-rose-600',
+  'bg-cyan-600',
+  'bg-pink-600',
+  'bg-teal-600',
+]
+
+function colorForUser(name: string): string {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}
+
 const MOVE_TARGETS: { status: string; label: string }[] = [
   { status: 'todo', label: 'Todo' },
   { status: 'in_progress', label: 'In Progress' },
   { status: 'done', label: 'Done' },
 ]
 
-export default function TaskCard({ task, onClick, noteCount = 0, projectName, projectColor, groupColor, isDragOverlay, onMoveTask, onLaunchSession, onDeleteTask }: TaskCardProps) {
+export default function TaskCard({ task, onClick, noteCount = 0, projectName, projectColor, groupColor, isDragOverlay, onMoveTask, onLaunchSession, onDeleteTask, memberAvatars, localUserName }: TaskCardProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -132,7 +161,7 @@ export default function TaskCard({ task, onClick, noteCount = 0, projectName, pr
       ref={setNodeRef}
       style={style}
       className={`bg-neutral-800 border border-neutral-700/50 border-l-2 ${PRIORITY_BORDER_COLORS[task.priority] || 'border-neutral-700/50'} rounded-cf p-2.5
-        hover:border-neutral-600 hover:shadow-[0_2px_8px_rgba(0,0,0,0.15)] transition-all duration-150 cursor-pointer group
+        hover:border-neutral-600 hover:shadow-[0_2px_8px_rgba(0,0,0,0.15)] transition-all duration-150 cursor-pointer group relative overflow-hidden
         ${isDragging ? 'shadow-lg ring-1 ring-codefire-orange/30' : ''}`}
       onClick={onClick}
       onContextMenu={handleContextMenu}
@@ -223,6 +252,83 @@ export default function TaskCard({ task, onClick, noteCount = 0, projectName, pr
           </div>
         </div>
       </div>
+
+      {/* Right watermark — progress: who is working on / completed the task */}
+      {(() => {
+        if (task.status === 'todo') return null
+        // For done tasks: if remoteOwnerName is set and completedBy is the local user,
+        // the completedBy was likely backfilled — prefer remoteOwnerName (the actual completer)
+        const rightName =
+          task.status === 'done'
+            ? (task.remoteOwnerName && task.completedBy === localUserName
+                ? task.remoteOwnerName
+                : task.completedBy || localUserName)
+            : (task.remoteOwnerName || localUserName)
+        if (!rightName) return null
+        const avatarUrl = memberAvatars?.[rightName]
+        const tooltip =
+          task.status === 'done'
+            ? `Completed by ${rightName}${task.completedAt ? ` on ${new Date(task.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}`
+            : `In progress: ${rightName}`
+        return (
+          <div
+            className="absolute pointer-events-none"
+            style={{ bottom: -12, right: -12, opacity: 0.25 }}
+            title={tooltip}
+          >
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={rightName}
+                className="w-[50px] h-[50px] rounded-full object-cover"
+              />
+            ) : (
+              <div
+                className={`w-[50px] h-[50px] rounded-full flex items-center justify-center text-sm font-semibold text-white ${colorForUser(rightName)}`}
+              >
+                {getInitials(rightName)}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* Left watermark — creator: who created the task (skip if same as right) */}
+      {(() => {
+        const creatorName = task.createdBy
+        if (!creatorName) return null
+        // Determine the right-side name to check for duplication (must match right watermark logic)
+        const rightName =
+          task.status === 'todo' ? null :
+          task.status === 'done'
+            ? (task.remoteOwnerName && task.completedBy === localUserName
+                ? task.remoteOwnerName
+                : task.completedBy || localUserName)
+            : (task.remoteOwnerName || localUserName)
+        if (rightName && rightName === creatorName) return null
+        const avatarUrl = memberAvatars?.[creatorName]
+        return (
+          <div
+            className="absolute pointer-events-none"
+            style={{ bottom: -12, left: -12, opacity: 0.25 }}
+            title={`Created by ${creatorName}`}
+          >
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={creatorName}
+                className="w-[50px] h-[50px] rounded-full object-cover"
+              />
+            ) : (
+              <div
+                className={`w-[50px] h-[50px] rounded-full flex items-center justify-center text-sm font-semibold text-white ${colorForUser(creatorName)}`}
+              >
+                {getInitials(creatorName)}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Context menu */}
       {contextMenu && (

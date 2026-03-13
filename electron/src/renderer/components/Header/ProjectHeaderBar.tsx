@@ -202,7 +202,7 @@ function HeaderMCPIndicator({
 }) {
   const isConnected = status === 'connected'
   const colors = isConnected
-    ? { text: 'text-success', bg: 'bg-success/10', border: 'border-success/30' }
+    ? { text: 'text-codefire-orange', bg: 'bg-codefire-orange/10', border: 'border-codefire-orange/30' }
     : status === 'error'
       ? { text: 'text-error', bg: 'bg-error/10', border: 'border-error/30' }
       : { text: 'text-neutral-500', bg: 'bg-neutral-500/10', border: 'border-transparent' }
@@ -221,14 +221,14 @@ function HeaderMCPIndicator({
       className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-semibold border cursor-pointer hover:brightness-125 transition-all ${colors.text} ${colors.bg} ${colors.border}`}
       title={
         isConnected
-          ? `MCP connected (${sessionCount} session${sessionCount !== 1 ? 's' : ''}) — click to disconnect`
+          ? `CodeFire connected (${sessionCount} session${sessionCount !== 1 ? 's' : ''}) — click to disconnect`
           : status === 'error'
-            ? 'MCP connection error — click to reconnect'
-            : 'MCP not connected — click to connect'
+            ? 'CodeFire connection error — click to reconnect'
+            : 'CodeFire not connected — click to connect'
       }
     >
-      <Radio className="w-3 h-3" />
-      <span>MCP</span>
+      <span className="font-bold">MCP</span>
+      <span>{isConnected ? 'Connected' : status === 'error' ? 'Error' : 'Disconnected'}</span>
       {isConnected && sessionCount > 1 && (
         <span className="w-4 h-4 rounded-full bg-success text-white text-[9px] font-bold flex items-center justify-center">
           {sessionCount}
