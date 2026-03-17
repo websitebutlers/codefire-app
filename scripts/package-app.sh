@@ -11,7 +11,7 @@ BUILD_DIR="$PROJECT_DIR/build"
 APP_NAME="CodeFire"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 BUNDLE_ID="com.codefire.app"
-VERSION="1.2.4"
+VERSION="1.4.0"
 
 # Signing identity and notarization profile
 SIGN_IDENTITY="Developer ID Application: Nick Norris (GFH3R9N56D)"

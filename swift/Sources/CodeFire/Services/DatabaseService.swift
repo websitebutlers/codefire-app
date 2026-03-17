@@ -588,17 +588,28 @@ class DatabaseService {
         }
 
         migrator.registerMigration("v23_addSessionTitle") { db in
-            try db.execute(sql: "ALTER TABLE sessions ADD COLUMN title TEXT")
+            // Guard: Electron may have already added this column to the shared DB
+            let cols = try Row.fetchAll(db, sql: "PRAGMA table_info(sessions)").map { $0["name"] as String }
+            if !cols.contains("title") {
+                try db.execute(sql: "ALTER TABLE sessions ADD COLUMN title TEXT")
+            }
         }
 
         migrator.registerMigration("v24_addRemoteOwnerColumns") { db in
-            try db.alter(table: "taskItems") { t in
-                t.add(column: "remoteOwnerId", .text)
-                t.add(column: "remoteOwnerName", .text)
+            // Guard: Electron may have already added these columns to the shared DB
+            let taskCols = try Row.fetchAll(db, sql: "PRAGMA table_info(taskItems)").map { $0["name"] as String }
+            if !taskCols.contains("remoteOwnerId") {
+                try db.alter(table: "taskItems") { t in
+                    t.add(column: "remoteOwnerId", .text)
+                    t.add(column: "remoteOwnerName", .text)
+                }
             }
-            try db.alter(table: "notes") { t in
-                t.add(column: "remoteOwnerId", .text)
-                t.add(column: "remoteOwnerName", .text)
+            let noteCols = try Row.fetchAll(db, sql: "PRAGMA table_info(notes)").map { $0["name"] as String }
+            if !noteCols.contains("remoteOwnerId") {
+                try db.alter(table: "notes") { t in
+                    t.add(column: "remoteOwnerId", .text)
+                    t.add(column: "remoteOwnerName", .text)
+                }
             }
         }
 
