@@ -3,21 +3,57 @@ import Combine
 
 struct ProjectDocsView: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject private var premiumService = PremiumService.shared
     @State private var docs: [ProjectDoc] = []
     @State private var selectedDoc: ProjectDoc?
     @State private var editTitle: String = ""
     @State private var editContent: String = ""
     @State private var isLoading = false
     @State private var isSaving = false
+    @State private var loadError: String?
 
     // Debounce publishers
     @State private var titleSubject = PassthroughSubject<String, Never>()
     @State private var contentSubject = PassthroughSubject<String, Never>()
     @State private var cancellables = Set<AnyCancellable>()
 
-    private var premiumService: PremiumService { PremiumService.shared }
-
     var body: some View {
+        Group {
+            if !premiumService.status.authenticated {
+                notAuthenticatedView
+            } else if premiumService.isRestoringSession {
+                ProgressView("Loading session...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                docsContent
+            }
+        }
+        .task {
+            await premiumService.ensureProfileLoaded()
+            if premiumService.status.authenticated && premiumService.status.user != nil {
+                setupDebounce()
+                await loadDocs()
+            }
+        }
+    }
+
+    private var notAuthenticatedView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "book")
+                .font(.system(size: 32))
+                .foregroundColor(.secondary.opacity(0.5))
+            Text("Team Docs")
+                .font(.system(size: 15, weight: .semibold))
+            Text("Sign in to your team account in Settings → Team to access shared project documents.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 300)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var docsContent: some View {
         HSplitView {
             // Sidebar: doc list
             VStack(spacing: 0) {
@@ -43,6 +79,22 @@ struct ProjectDocsView: View {
                 if isLoading {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let error = loadError {
+                    VStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 24))
+                            .foregroundColor(.orange)
+                        Text(error)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button("Retry") {
+                            Task { await loadDocs() }
+                        }
+                        .font(.system(size: 11))
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if docs.isEmpty {
                     VStack(spacing: 8) {
                         Image(systemName: "book")
@@ -123,10 +175,6 @@ struct ProjectDocsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        }
-        .task {
-            setupDebounce()
-            await loadDocs()
         }
     }
 
@@ -214,9 +262,11 @@ struct ProjectDocsView: View {
     private func loadDocs() async {
         guard let projectId = appState.currentProject?.id else { return }
         isLoading = true
+        loadError = nil
         do {
             docs = try await premiumService.listProjectDocs(projectId: projectId)
         } catch {
+            loadError = "Failed to load docs: \(error.localizedDescription)"
             print("ProjectDocs: failed to load: \(error)")
         }
         isLoading = false
