@@ -64,9 +64,15 @@ export function registerTerminalHandlers(terminalService: TerminalService) {
       terminalService.create(id, projectPath)
       ensurePowerSaveBlocker()
 
-      // Wire up PTY output → renderer, but only once per session.
-      // React Strict Mode may call terminal:create twice for the same ID;
-      // create() kills the old PTY first, so markListenersRegistered resets.
+      // Capture the generation of the PTY we just created.  React StrictMode
+      // (dev mode) mount→unmount→remount causes terminal:create to be called
+      // twice for the same ID.  The first PTY gets killed, but its onExit
+      // callback fires asynchronously with exit code -1073741510 (Windows
+      // ConPTY kill).  Without this guard, that stale exit event reaches the
+      // renderer and makes the terminal appear "crashed" even though the
+      // second PTY is alive and working.
+      const createdGeneration = terminalService.getSession(id)?.generation ?? 0
+
       if (terminalService.markListenersRegistered(id)) {
         // Store the webContents ID instead of capturing the BrowserWindow ref.
         // This allows dynamic lookup on each event, which is more resilient
@@ -74,6 +80,9 @@ export function registerTerminalHandlers(terminalService: TerminalService) {
         const senderWebContentsId = _event.sender.id
 
         terminalService.onData(id, (data) => {
+          // Drop data from a stale (killed) PTY generation
+          const current = terminalService.getSession(id)
+          if (!current || current.generation !== createdGeneration) return
           const win = getWindowByWebContentsId(senderWebContentsId)
           if (win && !win.isDestroyed()) {
             win.webContents.send('terminal:data', id, data)
@@ -81,14 +90,17 @@ export function registerTerminalHandlers(terminalService: TerminalService) {
         })
 
         terminalService.onExit(id, (exitCode, signal) => {
+          // Drop exit events from a stale (killed) PTY generation.
+          // When create() kills an old PTY, the exit callback fires later
+          // with -1073741510 on Windows — this must be silently ignored.
+          const current = terminalService.getSession(id)
+          if (current && current.generation !== createdGeneration) return
           console.error(`[TERMINAL] PTY exited: id=${id} exitCode=${exitCode} signal=${signal ?? 'none'}`)
           const win = getWindowByWebContentsId(senderWebContentsId)
           if (win && !win.isDestroyed()) {
             win.webContents.send('terminal:exit', id, exitCode, signal)
           }
           NotificationService.getInstance().notifyClaudeDone(id)
-          // Don't delete session here — renderer will call terminal:create to restart
-          // or terminal:kill to clean up. This prevents stale-exit race conditions.
           if (terminalService.getActiveIds().length === 0) {
             releasePowerSaveBlocker()
           }

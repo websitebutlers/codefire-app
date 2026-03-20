@@ -232,9 +232,11 @@ export default function TerminalTab({ terminalId, isActive, projectPath, initial
         const now = Date.now()
         if (now - lastExitTime > RAPID_WINDOW_MS) rapidExitCount = 0
 
-        // Auto-restart on clean exit (code 0) — macOS App Nap, SIGHUP, or
-        // React Strict Mode can cause unexpected clean exits.
-        if (exitCode === 0 && rapidExitCount < MAX_RAPID_EXITS) {
+        // Auto-restart on clean exit (code 0) or Windows ConPTY kill
+        // (-1073741510 / STATUS_CONTROL_C_EXIT).  ConPTY always returns this
+        // code when a PTY is killed, which is normal lifecycle behavior.
+        const isCleanExit = exitCode === 0 || exitCode === -1073741510
+        if (isCleanExit && rapidExitCount < MAX_RAPID_EXITS) {
           rapidExitCount++
           lastExitTime = now
           ptyExitedRef.current = false
@@ -277,6 +279,12 @@ export default function TerminalTab({ terminalId, isActive, projectPath, initial
 
     // ─── Cleanup ──────────────────────────────────────────────────────────
     return () => {
+      // Do NOT kill the PTY on unmount — React StrictMode (dev mode) does
+      // mount→unmount→remount.  Killing here would delete the session from
+      // the map, resetting the generation counter and breaking stale-event
+      // filtering.  The PTY survives and gets reused on remount; if the
+      // component is truly destroyed (tab closed), the next create() for
+      // the same ID will kill the old one with correct generation tracking.
       onDataDisposable.dispose()
       onResizeDisposable.dispose()
       removeDataListener()

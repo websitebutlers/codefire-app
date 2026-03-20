@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { Users, UserPlus, Shield, Crown, LogOut, AlertCircle, Loader2, Trash2, CreditCard, Zap, Mail } from 'lucide-react'
-import type { AppConfig } from '@shared/models'
+import { useState, useEffect, useCallback } from 'react'
+import { Users, UserPlus, Shield, Crown, LogOut, AlertCircle, Loader2, Trash2, CreditCard, Zap, Mail, FolderSync, Check, CloudOff, GitBranch, RefreshCw } from 'lucide-react'
+import type { AppConfig, Project } from '@shared/models'
 import { Section, Toggle, TextInput } from './SettingsField'
 import { usePremium } from '../../hooks/usePremium'
 import { api } from '../../lib/api'
@@ -32,6 +32,49 @@ export default function SettingsTabTeam({ config, onChange }: Props) {
   const [extraSeats, setExtraSeats] = useState(0)
   const [billingLoading, setBillingLoading] = useState(false)
   const [confirmationSent, setConfirmationSent] = useState(false)
+
+  // Team Projects state
+  const [localProjects, setLocalProjects] = useState<Project[]>([])
+  const [syncedProjectIds, setSyncedProjectIds] = useState<Set<string>>(new Set())
+  const [syncedRepoUrls, setSyncedRepoUrls] = useState<Set<string>>(new Set())
+  const [invitingProjectId, setInvitingProjectId] = useState<string | null>(null)
+  const [projectInviteSuccess, setProjectInviteSuccess] = useState<string | null>(null)
+  const [projectInviteError, setProjectInviteError] = useState<string | null>(null)
+  const [unlinkedProjects, setUnlinkedProjects] = useState<{ id: string; name: string; repoUrl: string | null; createdBy: string }[]>([])
+  const [syncStatus, setSyncStatus] = useState<{ lastSyncAt: string | null; dirtyCount: number; isSyncing: boolean } | null>(null)
+
+  const loadProjects = useCallback(async () => {
+    if (!status?.team) return
+    try {
+      const [projects, synced, syncState] = await Promise.all([
+        api.projects.list(),
+        api.premium.listSyncedProjects(status.team.id),
+        api.premium.getSyncStatus().catch(() => null),
+      ])
+      const filteredProjects = projects.filter((p) => p.id !== '__global__')
+      setLocalProjects(filteredProjects)
+      setSyncedProjectIds(new Set(synced.map((s) => s.id)))
+      setSyncedRepoUrls(new Set(synced.filter((s) => s.repoUrl).map((s) => s.repoUrl!)))
+
+      // Find remote synced projects that don't match any local project
+      const localIds = new Set(filteredProjects.map((p) => p.id))
+      const localRepoUrls = new Set(filteredProjects.filter((p) => p.repoUrl).map((p) => p.repoUrl!))
+      const unlinked = synced.filter((s) => {
+        if (localIds.has(s.id)) return false
+        if (s.repoUrl && localRepoUrls.has(s.repoUrl)) return false
+        return true
+      })
+      setUnlinkedProjects(unlinked)
+
+      if (syncState) setSyncStatus(syncState)
+    } catch {
+      // Non-fatal
+    }
+  }, [status?.team])
+
+  useEffect(() => {
+    loadProjects()
+  }, [loadProjects])
 
   if (loading) {
     return (
@@ -579,6 +622,142 @@ export default function SettingsTabTeam({ config, onChange }: Props) {
               value={config.autoShareSessions}
               onChange={(v) => onChange({ autoShareSessions: v })}
             />
+            {syncStatus && (
+              <div className="flex items-center gap-2 mt-2 px-2.5 py-1.5 rounded-lg bg-neutral-800/50 border border-neutral-800">
+                <RefreshCw className={`w-3 h-3 shrink-0 ${syncStatus.isSyncing ? 'animate-spin text-codefire-orange' : 'text-neutral-500'}`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] text-neutral-400">
+                    {syncStatus.isSyncing ? 'Syncing...' : syncStatus.lastSyncAt
+                      ? `Last synced ${new Date(syncStatus.lastSyncAt).toLocaleTimeString()}`
+                      : 'Not yet synced'}
+                  </p>
+                </div>
+                {syncStatus.dirtyCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-amber-500/15 text-amber-400">
+                    {syncStatus.dirtyCount} pending
+                  </span>
+                )}
+              </div>
+            )}
+          </Section>
+
+          <Section title="Team Projects">
+            <p className="text-[10px] text-neutral-500 leading-relaxed mb-2">
+              Share projects with your team to sync tasks and notes. Invite team members to collaborate on any project.
+            </p>
+            {projectInviteSuccess && (
+              <div className="flex items-center gap-1.5 text-xs text-green-400 mb-2">
+                <Check className="w-3.5 h-3.5 shrink-0" />
+                {projectInviteSuccess}
+              </div>
+            )}
+            {projectInviteError && (
+              <div className="flex items-center gap-1.5 text-xs text-red-400 mb-2">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {projectInviteError}
+              </div>
+            )}
+            {unlinkedProjects.length > 0 && (
+              <div className="mb-3 space-y-1.5">
+                <p className="text-[10px] font-medium text-amber-400 flex items-center gap-1">
+                  <GitBranch className="w-3 h-3" />
+                  {unlinkedProjects.length} shared project{unlinkedProjects.length !== 1 ? 's' : ''} not found locally
+                </p>
+                {unlinkedProjects.map((proj) => (
+                  <div
+                    key={proj.id}
+                    className="px-2.5 py-2 rounded-lg border border-amber-500/20 bg-amber-500/5"
+                  >
+                    <p className="text-xs text-neutral-200 font-medium">{proj.name}</p>
+                    {proj.repoUrl ? (
+                      <div className="mt-1">
+                        <p className="text-[10px] text-neutral-500 mb-1">Clone this repo so CodeFire can sync:</p>
+                        <code className="block text-[10px] text-amber-300 bg-neutral-900 px-2 py-1 rounded font-mono select-all break-all">
+                          git clone {proj.repoUrl}
+                        </code>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-neutral-500 mt-0.5">
+                        Create a project named &quot;{proj.name}&quot; to link automatically.
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="space-y-1">
+              {localProjects.length === 0 ? (
+                <p className="text-[10px] text-neutral-600 italic">No projects discovered yet.</p>
+              ) : (
+                localProjects.map((project) => {
+                  const isSynced = syncedProjectIds.has(project.id) || (!!project.repoUrl && syncedRepoUrls.has(project.repoUrl))
+                  const isInviting = invitingProjectId === project.id
+                  return (
+                    <div
+                      key={project.id}
+                      className="flex items-center justify-between py-2 px-2.5 rounded-lg border border-neutral-800 hover:border-neutral-700 transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {isSynced ? (
+                          <FolderSync className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                        ) : (
+                          <CloudOff className="w-3.5 h-3.5 text-neutral-600 shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-xs text-neutral-200 truncate">{project.name}</p>
+                          {isSynced && (
+                            <p className="text-[9px] text-green-400/70">Synced with team</p>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!status?.team) return
+                          setInvitingProjectId(project.id)
+                          setProjectInviteSuccess(null)
+                          setProjectInviteError(null)
+                          try {
+                            const otherMembers = members
+                              .filter((m) => m.userId !== status.user?.id)
+                              .map((m) => m.userId)
+                            await api.premium.inviteToProject(
+                              status.team.id,
+                              project.id,
+                              project.name,
+                              project.repoUrl,
+                              otherMembers
+                            )
+                            setSyncedProjectIds((prev) => new Set([...prev, project.id]))
+                            if (project.repoUrl) setSyncedRepoUrls((prev) => new Set([...prev, project.repoUrl!]))
+                            setProjectInviteSuccess(
+                              `Invited ${otherMembers.length} team member${otherMembers.length !== 1 ? 's' : ''} to "${project.name}"`
+                            )
+                          } catch (err) {
+                            setProjectInviteError(
+                              `Failed to invite: ${err instanceof Error ? err.message : String(err)}`
+                            )
+                          } finally {
+                            setInvitingProjectId(null)
+                          }
+                        }}
+                        disabled={isInviting || isSynced}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-medium shrink-0 transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+                                   ${isSynced ? 'bg-green-500/10 text-green-400' : 'bg-codefire-orange/15 text-codefire-orange hover:bg-codefire-orange/25'}`}
+                      >
+                        {isInviting ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : isSynced ? (
+                          <FolderSync className="w-3 h-3" />
+                        ) : (
+                          <UserPlus className="w-3 h-3" />
+                        )}
+                        {isSynced ? 'Already Synced' : 'Invite Team Members'}
+                      </button>
+                    </div>
+                  )
+                })
+              )}
+            </div>
           </Section>
         </>
       )}

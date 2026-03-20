@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { MessageSquare, GripVertical, Bot, User, Mail, Cpu, FolderOpen, Play, Trash2, ArrowRight, Users } from 'lucide-react'
+import { MessageSquare, GripVertical, Play, Trash2, ArrowRight, Users, AlertTriangle } from 'lucide-react'
 import type { TaskItem } from '@shared/models'
 
 interface TaskCardProps {
@@ -9,10 +9,14 @@ interface TaskCardProps {
   onClick: () => void
   noteCount?: number
   projectName?: string
+  projectColor?: string | null
+  groupColor?: string | null
   isDragOverlay?: boolean
   onMoveTask?: (taskId: number, newStatus: string) => void
   onLaunchSession?: (task: TaskItem) => void
   onDeleteTask?: (taskId: number) => void
+  memberAvatars?: Record<string, string>
+  localUserName?: string
 }
 
 const PRIORITY_BORDER_COLORS: Record<number, string> = {
@@ -21,6 +25,20 @@ const PRIORITY_BORDER_COLORS: Record<number, string> = {
   2: 'border-l-yellow-500',
   3: 'border-l-orange-500',
   4: 'border-l-red-500',
+}
+
+const PRIORITY_COLORS: Record<number, string> = {
+  1: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  2: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  3: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  4: 'bg-red-500/20 text-red-400 border-red-500/30',
+}
+
+const PRIORITY_LABELS: Record<number, string> = {
+  1: 'Low',
+  2: 'Med',
+  3: 'High',
+  4: 'Urgent',
 }
 
 const SOURCE_BADGES: Record<string, { label: string; color: string; bg: string }> = {
@@ -63,13 +81,40 @@ function parseLabels(labels: string | null): string[] {
   }
 }
 
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase()
+  }
+  return name.slice(0, 2).toUpperCase()
+}
+
+const AVATAR_COLORS = [
+  'bg-blue-600',
+  'bg-emerald-600',
+  'bg-violet-600',
+  'bg-amber-600',
+  'bg-rose-600',
+  'bg-cyan-600',
+  'bg-pink-600',
+  'bg-teal-600',
+]
+
+function colorForUser(name: string): string {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}
+
 const MOVE_TARGETS: { status: string; label: string }[] = [
   { status: 'todo', label: 'Todo' },
   { status: 'in_progress', label: 'In Progress' },
   { status: 'done', label: 'Done' },
 ]
 
-export default function TaskCard({ task, onClick, noteCount = 0, projectName, isDragOverlay, onMoveTask, onLaunchSession, onDeleteTask }: TaskCardProps) {
+export default function TaskCard({ task, onClick, noteCount = 0, projectName, projectColor, groupColor, isDragOverlay, onMoveTask, onLaunchSession, onDeleteTask, memberAvatars, localUserName }: TaskCardProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -116,7 +161,7 @@ export default function TaskCard({ task, onClick, noteCount = 0, projectName, is
       ref={setNodeRef}
       style={style}
       className={`bg-neutral-800 border border-neutral-700/50 border-l-2 ${PRIORITY_BORDER_COLORS[task.priority] || 'border-neutral-700/50'} rounded-cf p-2.5
-        hover:border-neutral-600 hover:shadow-[0_2px_8px_rgba(0,0,0,0.15)] transition-all duration-150 cursor-pointer group
+        hover:border-neutral-600 hover:shadow-[0_2px_8px_rgba(0,0,0,0.15)] transition-all duration-150 cursor-pointer group relative overflow-hidden
         ${isDragging ? 'shadow-lg ring-1 ring-codefire-orange/30' : ''}`}
       onClick={onClick}
       onContextMenu={handleContextMenu}
@@ -135,6 +180,27 @@ export default function TaskCard({ task, onClick, noteCount = 0, projectName, is
         <div className="flex-1 min-w-0">
           <div className="text-sm text-neutral-200 leading-snug line-clamp-2">{task.title}</div>
 
+          {/* Meta row: project group (left) + date (right) */}
+          <div className="flex items-center gap-1.5 mt-1 text-[10px] text-neutral-500">
+            {projectName && (
+              <span
+                className={`px-1.5 py-0.5 rounded font-medium truncate max-w-[100px] border ${
+                  !groupColor && !projectColor ? 'bg-codefire-orange/12 text-codefire-orange border-codefire-orange/20' : ''
+                }`}
+                style={groupColor || projectColor ? {
+                  backgroundColor: groupColor ? `${groupColor}1F` : undefined,
+                  borderColor: groupColor ? `${groupColor}33` : undefined,
+                  color: projectColor || undefined,
+                } : undefined}
+              >
+                {projectName}
+              </span>
+            )}
+            <span>
+              {new Date(task.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            </span>
+          </div>
+
           {/* Description snippet */}
           {task.description && (
             <div className="text-xs text-neutral-500 mt-1 line-clamp-2 leading-relaxed">
@@ -142,8 +208,16 @@ export default function TaskCard({ task, onClick, noteCount = 0, projectName, is
             </div>
           )}
 
-          {/* Labels + Source row */}
+          {/* Priority + Labels + Source + Notes row */}
           <div className="flex items-center flex-wrap gap-1 mt-1.5">
+            {task.priority > 0 && (
+              <span
+                className={`text-xs px-1.5 py-0.5 rounded border flex items-center gap-1 ${PRIORITY_COLORS[task.priority] || ''}`}
+              >
+                {task.priority >= 3 && <AlertTriangle size={10} />}
+                {PRIORITY_LABELS[task.priority] || `P${task.priority}`}
+              </span>
+            )}
             {task.remoteOwnerName && (
               <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 flex items-center gap-1">
                 <Users size={10} />
@@ -169,35 +243,92 @@ export default function TaskCard({ task, onClick, noteCount = 0, projectName, is
             {labels.length > 3 && (
               <span className="text-[10px] text-neutral-500">+{labels.length - 3}</span>
             )}
-          </div>
-
-          {/* Footer: avatar + project badge + note count + date */}
-          <div className="flex items-center gap-2 mt-1.5 text-[10px] text-neutral-500">
-            {task.remoteOwnerName && (
-              <span
-                className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-500/25 text-indigo-300 text-[9px] font-bold shrink-0 ring-1 ring-indigo-500/40"
-                title={task.remoteOwnerName}
-              >
-                {task.remoteOwnerName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-              </span>
-            )}
-            {projectName && (
-              <span className="px-1.5 py-0.5 rounded bg-codefire-orange/12 text-codefire-orange border border-codefire-orange/20 font-medium truncate max-w-[100px]">
-                {projectName}
-              </span>
-            )}
             {noteCount > 0 && (
-              <div className="flex items-center gap-1">
+              <span className="flex items-center gap-1 text-[10px] text-neutral-500 ml-auto">
                 <MessageSquare size={10} />
-                <span>{noteCount}</span>
-              </div>
+                {noteCount}
+              </span>
             )}
-            <span>
-              {new Date(task.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            </span>
           </div>
         </div>
       </div>
+
+      {/* Right watermark — progress: who is working on / completed the task */}
+      {(() => {
+        if (task.status === 'todo') return null
+        // For done tasks: if remoteOwnerName is set and completedBy is the local user,
+        // the completedBy was likely backfilled — prefer remoteOwnerName (the actual completer)
+        const rightName =
+          task.status === 'done'
+            ? (task.remoteOwnerName && task.completedBy === localUserName
+                ? task.remoteOwnerName
+                : task.completedBy || localUserName)
+            : (task.remoteOwnerName || localUserName)
+        if (!rightName) return null
+        const avatarUrl = memberAvatars?.[rightName]
+        const tooltip =
+          task.status === 'done'
+            ? `Completed by ${rightName}${task.completedAt ? ` on ${new Date(task.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}`
+            : `In progress: ${rightName}`
+        return (
+          <div
+            className="absolute pointer-events-none"
+            style={{ bottom: -12, right: -12, opacity: 0.25 }}
+            title={tooltip}
+          >
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={rightName}
+                className="w-[50px] h-[50px] rounded-full object-cover"
+              />
+            ) : (
+              <div
+                className={`w-[50px] h-[50px] rounded-full flex items-center justify-center text-sm font-semibold text-white ${colorForUser(rightName)}`}
+              >
+                {getInitials(rightName)}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* Left watermark — creator: who created the task (skip if same as right) */}
+      {(() => {
+        const creatorName = task.createdBy
+        if (!creatorName) return null
+        // Determine the right-side name to check for duplication (must match right watermark logic)
+        const rightName =
+          task.status === 'todo' ? null :
+          task.status === 'done'
+            ? (task.remoteOwnerName && task.completedBy === localUserName
+                ? task.remoteOwnerName
+                : task.completedBy || localUserName)
+            : (task.remoteOwnerName || localUserName)
+        if (rightName && rightName === creatorName) return null
+        const avatarUrl = memberAvatars?.[creatorName]
+        return (
+          <div
+            className="absolute pointer-events-none"
+            style={{ bottom: -12, left: -12, opacity: 0.25 }}
+            title={`Created by ${creatorName}`}
+          >
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={creatorName}
+                className="w-[50px] h-[50px] rounded-full object-cover"
+              />
+            ) : (
+              <div
+                className={`w-[50px] h-[50px] rounded-full flex items-center justify-center text-sm font-semibold text-white ${colorForUser(creatorName)}`}
+              >
+                {getInitials(creatorName)}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Context menu */}
       {contextMenu && (

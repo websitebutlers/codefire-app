@@ -217,4 +217,77 @@ export class TeamService {
 
     await client.from('synced_projects').delete().eq('id', projectId)
   }
+
+  async listSyncedProjects(teamId: string): Promise<{ id: string; name: string; repoUrl: string | null; createdBy: string }[]> {
+    const client = getSupabaseClient()
+    if (!client) throw new Error('Supabase not configured')
+
+    const { data, error } = await client.from('synced_projects')
+      .select('id, name, repo_url, created_by')
+      .eq('team_id', teamId)
+
+    if (error) throw new Error(error.message)
+
+    return (data || []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      repoUrl: p.repo_url,
+      createdBy: p.created_by,
+    }))
+  }
+
+  async inviteToProject(
+    teamId: string,
+    projectId: string,
+    projectName: string,
+    repoUrl: string | null,
+    memberUserIds: string[]
+  ): Promise<void> {
+    const client = getSupabaseClient()
+    if (!client) throw new Error('Supabase not configured')
+
+    const { data: { user } } = await client.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    // Ensure the project is registered as a synced project
+    await client.from('synced_projects').upsert({
+      id: projectId,
+      team_id: teamId,
+      name: projectName,
+      repo_url: repoUrl,
+      created_by: user.id,
+    })
+
+    // Add the sender as project lead
+    await client.from('project_members').upsert({
+      project_id: projectId,
+      user_id: user.id,
+      role: 'lead',
+    })
+
+    // Get sender display name for the notification
+    const { data: profile } = await client.from('users')
+      .select('display_name')
+      .eq('id', user.id)
+      .single()
+    const senderName = profile?.display_name || user.email || 'A team member'
+
+    // Send a notification to each invited member
+    const notifications = memberUserIds
+      .filter((uid) => uid !== user.id)
+      .map((uid) => ({
+        user_id: uid,
+        project_id: projectId,
+        type: 'project_invite' as const,
+        title: `Project invite: ${projectName}`,
+        body: `${senderName} invited you to collaborate on "${projectName}"`,
+        entity_type: 'project',
+        entity_id: projectId,
+        is_read: false,
+      }))
+
+    if (notifications.length > 0) {
+      await client.from('notifications').insert(notifications)
+    }
+  }
 }

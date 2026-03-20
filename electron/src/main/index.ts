@@ -69,8 +69,9 @@ MCPServerManager.syncMcpServer()
 // Initialize MCP server manager (polls for active MCP connections)
 const mcpManager = new MCPServerManager()
 
-// Initialize agent process watcher (detects running Claude Code agents)
+// Initialize agent process watcher (detects Claude Code CLI + MCP activity)
 const agentWatcher = new AgentProcessWatcher()
+agentWatcher.setDatabase(db)
 
 // Deferred services — initialized after window shows for faster startup
 let gmailService: GmailService | undefined

@@ -54,7 +54,7 @@ module.exports = async function (context) {
   if (fs.existsSync(path.join(mcpDir, 'package.json'))) {
     console.log('[afterPack] Installing MCP server dependencies in', mcpDir)
     try {
-      execFileSync('npm', ['install', '--omit=dev'], { cwd: mcpDir, stdio: 'inherit' })
+      execFileSync('npm', ['install', '--omit=dev'], { cwd: mcpDir, stdio: 'inherit', shell: true })
       console.log('[afterPack] MCP server dependencies installed successfully')
     } catch (err) {
       console.error('[afterPack] Failed to install MCP server dependencies:', err.message)

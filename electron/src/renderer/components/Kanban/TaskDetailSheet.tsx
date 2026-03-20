@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   X, Calendar, Tag, MessageSquare, Send, FolderOpen,
   Sparkles, Play, ExternalLink, Bot, User, Mail, Cpu,
@@ -166,10 +166,8 @@ export default function TaskDetailSheet({
   }
 
   const handleAssignProject = async (projectId: string) => {
-    await window.api.invoke('tasks:update', task.id, { projectId })
-    if (projectId !== '__global__') {
-      await window.api.invoke('tasks:update', task.id, { isGlobal: false })
-    }
+    const isGlobal = projectId === '__global__'
+    await window.api.invoke('tasks:update', task.id, { projectId, isGlobal })
   }
 
   const handleAddLabel = () => {
@@ -277,9 +275,27 @@ export default function TaskDetailSheet({
     } finally { setLaunching(false) }
   }
 
+  const backdropRef = useRef<HTMLDivElement>(null)
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
   return (
-    <div className="w-96 bg-neutral-950 rounded-cf border border-neutral-800 flex flex-col h-full shrink-0">
-      {/* Header — matches Kanban column headers */}
+    <div
+      ref={backdropRef}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === backdropRef.current) onClose()
+      }}
+    >
+    <div className="w-[480px] max-h-[85vh] bg-neutral-950 rounded-cf border border-neutral-800 flex flex-col shadow-2xl">
+      {/* Header */}
       <div className="shrink-0">
         <div className="flex items-center gap-2 px-3 h-9">
           <h3 className="text-sm text-neutral-300 font-medium truncate">Task Details</h3>
@@ -812,6 +828,7 @@ export default function TaskDetailSheet({
           Delete Task
         </button>
       </div>
+    </div>
     </div>
   )
 }

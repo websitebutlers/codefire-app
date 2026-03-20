@@ -65,6 +65,8 @@ export function registerTaskHandlers(db: Database.Database) {
         status?: string
         priority?: number
         labels?: string[]
+        projectId?: string
+        isGlobal?: boolean
       }
     ) => {
       const task = taskDAO.update(id, data)

@@ -60,7 +60,7 @@ export interface Notification {
   id: string
   userId: string
   projectId: string | null
-  type: 'mention' | 'assignment' | 'review_request' | 'review_resolved' | 'message'
+  type: 'mention' | 'assignment' | 'review_request' | 'review_resolved' | 'message' | 'project_invite'
   title: string
   body: string | null
   entityType: string

@@ -57,6 +57,7 @@ export const api = {
         clientId?: string | null
         tags?: string | null
         sortOrder?: number
+        color?: string | null
       }
     ) => invoke('projects:update', id, data) as Promise<Project | undefined>,
     updateLastOpened: (id: string) =>
@@ -576,6 +577,12 @@ export const api = {
       invoke('premium:syncProject', teamId, projectId, name, repoUrl) as Promise<void>,
     unsyncProject: (projectId: string) =>
       invoke('premium:unsyncProject', projectId) as Promise<void>,
+    listSyncedProjects: (teamId: string) =>
+      invoke('premium:listSyncedProjects', teamId) as Promise<{ id: string; name: string; repoUrl: string | null; createdBy: string }[]>,
+    inviteToProject: (teamId: string, projectId: string, projectName: string, repoUrl: string | null, memberUserIds: string[]) =>
+      invoke('premium:inviteToProject', teamId, projectId, projectName, repoUrl, memberUserIds) as Promise<void>,
+    getSyncStatus: () =>
+      invoke('premium:getSyncStatus') as Promise<{ lastSyncAt: string | null; dirtyCount: number; isSyncing: boolean }>,
     createCheckout: (teamIdOrNull: string | null, plan: 'starter' | 'agency', extraSeats?: number) =>
       invoke('premium:createCheckout', teamIdOrNull, plan, extraSeats) as Promise<{ url: string }>,
     getBillingPortal: (teamId: string) =>

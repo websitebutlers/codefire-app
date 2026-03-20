@@ -158,7 +158,7 @@ export default function ProjectTaskSummary() {
                   className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-neutral-800/60 transition-colors text-left group"
                 >
                   {/* Folder icon */}
-                  <Folder size={12} className="text-neutral-500 shrink-0" />
+                  <Folder size={12} className={`shrink-0 ${summary.project.color ? '' : 'text-neutral-500'}`} style={summary.project.color ? { color: summary.project.color } : undefined} />
 
                   {/* Project name */}
                   <span className="text-xs font-medium text-neutral-300 truncate">

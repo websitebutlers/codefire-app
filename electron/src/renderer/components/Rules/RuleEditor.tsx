@@ -85,6 +85,7 @@ export default function RuleEditor({
       history(),
       keymap.of([...defaultKeymap, ...historyKeymap]),
       EditorView.editable.of(true),
+      EditorView.lineWrapping,
       markdown(),
       oneDark,
       EditorView.theme({

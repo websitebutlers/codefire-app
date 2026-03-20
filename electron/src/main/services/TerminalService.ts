@@ -43,8 +43,11 @@ export class TerminalService {
       throw new Error('Terminal is not available — node-pty failed to load. Install system build tools and reinstall.')
     }
 
-    // If a session already exists for this ID (e.g. restart after exit),
-    // kill the old PTY before creating a fresh one
+    // If a session already exists for this ID (e.g. restart after exit or
+    // React StrictMode double-mount), save its generation before killing so
+    // the counter keeps incrementing.  kill() deletes the session from the
+    // map, so we must read the generation first.
+    const prevGeneration = this.sessions.get(id)?.generation ?? 0
     if (this.sessions.has(id)) {
       this.kill(id)
     }
@@ -103,8 +106,7 @@ export class TerminalService {
       env: cleanEnv,
     })
 
-    const prev = this.sessions.get(id)
-    const generation = (prev?.generation ?? 0) + 1
+    const generation = prevGeneration + 1
     this.sessions.set(id, { id, pty: term, projectPath, listenersRegistered: false, generation })
   }
 

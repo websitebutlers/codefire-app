@@ -247,7 +247,7 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
           <span className="text-sm font-semibold text-neutral-200 tracking-tight">CodeFire</span>
           <ProjectDropdown />
           <div className="w-px h-4 bg-neutral-700" />
-          <ProjectHeaderLeft projectName={project?.name ?? '...'} projectPath={project?.path ?? ''} />
+          <ProjectHeaderLeft projectName={project?.name ?? '...'} projectPath={project?.path ?? ''} projectColor={project?.color} />
           <div className="flex-1" />
           {premiumStatus?.enabled && premiumStatus.authenticated && (
             <Suspense fallback={null}>
@@ -313,7 +313,9 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
               </Panel>
               <Separator className="w-[2px] bg-neutral-800 hover:bg-codefire-orange active:bg-codefire-orange transition-colors duration-150" style={{ order: terminalOnLeft ? 2 : 2 }} />
               <Panel id="terminal-chat" defaultSize="40%" minSize="20%" style={{ order: terminalOnLeft ? 1 : 3 }}>
-                {renderTerminalChat()}
+                <div className={`h-full ${terminalOnLeft ? 'border-r' : 'border-l'} border-neutral-800`}>
+                  {renderTerminalChat()}
+                </div>
               </Panel>
             </Group>
           ) : (
