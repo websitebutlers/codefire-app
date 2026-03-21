@@ -43,13 +43,14 @@ private class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
 
 // MARK: - Browser Tab
 
-class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandler {
+class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandler, WKNavigationDelegate {
     let id = UUID()
     let webView: WKWebView
 
     @Published var title: String = "New Tab"
     @Published var currentURL: String = ""
     @Published var isLoading: Bool = false
+    @Published var navigationError: String?
     @Published var canGoBack: Bool = false
     @Published var canGoForward: Bool = false
     @Published var consoleLogs: [ConsoleLogEntry] = []
@@ -72,6 +73,8 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
 
     /// The last known URL before this tab was unloaded, used to reload on demand.
     private(set) var lastKnownURL: URL?
+    /// The URL that was being loaded when a navigation error occurred.
+    private(set) var lastAttemptedURL: URL?
     /// Whether this tab's web content has been unloaded to save memory.
     @Published var isUnloaded: Bool = false
 
@@ -102,7 +105,9 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     /// The WKWebView instance stays alive (cookies/session intact), but the heavy DOM is released.
     func unloadWebView() {
         guard !isUnloaded else { return }
-        lastKnownURL = webView.url
+        // Prefer the original attempted URL over the error page's URL
+        lastKnownURL = lastAttemptedURL ?? webView.url
+        lastAttemptedURL = nil
         webView.loadHTMLString("", baseURL: nil)
         isUnloaded = true
     }
@@ -110,8 +115,8 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
     /// Reload the previously loaded page after it was unloaded.
     func reloadIfNeeded() {
         guard isUnloaded, let url = lastKnownURL else { return }
+        isUnloaded = false  // Clear BEFORE load so KVO fires correctly
         webView.load(URLRequest(url: url))
-        isUnloaded = false
     }
 
     override init() {
@@ -174,6 +179,8 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
         self.webView = WKWebView(frame: .zero, configuration: config)
         super.init()
 
+        webView.navigationDelegate = self
+
         // Register message handlers via weak proxy
         config.userContentController.add(WeakScriptMessageHandler(delegate: self), name: "consoleLog")
         config.userContentController.add(WeakScriptMessageHandler(delegate: self), name: "devtools")
@@ -181,19 +188,34 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
 
         observations = [
             webView.observe(\.title) { [weak self] wv, _ in
-                DispatchQueue.main.async { self?.title = wv.title ?? "New Tab" }
+                DispatchQueue.main.async {
+                    guard let self, !self.isUnloaded else { return }
+                    self.title = wv.title ?? "New Tab"
+                }
             },
             webView.observe(\.url) { [weak self] wv, _ in
-                DispatchQueue.main.async { self?.currentURL = wv.url?.absoluteString ?? "" }
+                DispatchQueue.main.async {
+                    guard let self, !self.isUnloaded else { return }
+                    self.currentURL = wv.url?.absoluteString ?? ""
+                }
             },
             webView.observe(\.isLoading) { [weak self] wv, _ in
-                DispatchQueue.main.async { self?.isLoading = wv.isLoading }
+                DispatchQueue.main.async {
+                    guard let self, !self.isUnloaded else { return }
+                    self.isLoading = wv.isLoading
+                }
             },
             webView.observe(\.canGoBack) { [weak self] wv, _ in
-                DispatchQueue.main.async { self?.canGoBack = wv.canGoBack }
+                DispatchQueue.main.async {
+                    guard let self, !self.isUnloaded else { return }
+                    self.canGoBack = wv.canGoBack
+                }
             },
             webView.observe(\.canGoForward) { [weak self] wv, _ in
-                DispatchQueue.main.async { self?.canGoForward = wv.canGoForward }
+                DispatchQueue.main.async {
+                    guard let self, !self.isUnloaded else { return }
+                    self.canGoForward = wv.canGoForward
+                }
             },
         ]
     }
@@ -204,7 +226,110 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "networkMonitor")
     }
 
+    // MARK: - WKNavigationDelegate
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        guard !isUnloaded else { return }
+        isLoading = true
+        navigationError = nil
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard !isUnloaded else { return }
+        isLoading = false
+        navigationError = nil
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        guard !isUnloaded else { return }
+        isLoading = false
+        if (error as NSError).code == NSURLErrorCancelled { return }
+        navigationError = error.localizedDescription
+        addConsoleLog(level: "error", message: "Navigation failed: \(error.localizedDescription)")
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        guard !isUnloaded else { return }
+        isLoading = false
+        if (error as NSError).code == NSURLErrorCancelled { return }
+        navigationError = error.localizedDescription
+        loadErrorPage(error: error)
+        addConsoleLog(level: "error", message: "Failed to load: \(error.localizedDescription)")
+    }
+
+    func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
+                 completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        let host = challenge.protectionSpace.host
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           let trust = challenge.protectionSpace.serverTrust,
+           (host == "localhost" || host == "127.0.0.1") {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
+
+    // MARK: - Error Page
+
+    func loadErrorPage(error: Error) {
+        lastAttemptedURL = lastKnownURL ?? webView.url
+
+        let nsError = error as NSError
+        let title: String
+        let detail: String
+
+        switch nsError.code {
+        case NSURLErrorNotConnectedToInternet:
+            title = "No Internet Connection"
+            detail = "Check your network connection and try again."
+        case NSURLErrorCannotFindHost:
+            let host = (nsError.userInfo[NSURLErrorFailingURLStringErrorKey] as? String)
+                .flatMap { URL(string: $0)?.host } ?? "this address"
+            title = "Server Not Found"
+            detail = "The server at \(host) could not be found."
+        case NSURLErrorTimedOut:
+            title = "Connection Timed Out"
+            detail = "The server took too long to respond."
+        case NSURLErrorSecureConnectionFailed, NSURLErrorServerCertificateUntrusted:
+            title = "Connection Not Secure"
+            detail = "The certificate for this site is not trusted."
+        default:
+            title = "Page Failed to Load"
+            detail = error.localizedDescription
+        }
+
+        let html = """
+        <!DOCTYPE html>
+        <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { background: #1a1a1a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                 display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+          .container { text-align: center; max-width: 420px; padding: 40px 24px; }
+          .icon { font-size: 48px; margin-bottom: 20px; opacity: 0.5; }
+          h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; color: #fff; }
+          p { font-size: 14px; color: #888; line-height: 1.5; margin-bottom: 24px; }
+          button { background: #f97316; color: #fff; border: none; padding: 10px 24px;
+                  border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
+          button:hover { background: #ea580c; }
+        </style></head><body>
+        <div class="container">
+          <div class="icon">⚠</div>
+          <h1>\(title)</h1>
+          <p>\(detail)</p>
+          <button onclick="window.location.reload()">Retry</button>
+        </div>
+        </body></html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    // MARK: - Navigation
+
     func navigate(to urlString: String) {
+        isUnloaded = false  // Ensure KVO fires for this navigation
+        navigationError = nil
+        lastAttemptedURL = nil
         var input = urlString.trimmingCharacters(in: .whitespaces)
         if !input.contains("://") {
             if input.hasPrefix("localhost") || input.hasPrefix("127.0.0.1") {
@@ -1220,6 +1345,22 @@ class BrowserTab: NSObject, Identifiable, ObservableObject, WKScriptMessageHandl
               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return ["count": 0, "items": [:], "totalSize": 0] }
         return parsed
+    }
+
+    /// Get page HTML source, optionally filtered by CSS selector.
+    func getPageSource(selector: String? = nil) async -> String {
+        let js: String
+        if let sel = selector {
+            let escaped = sel.replacingOccurrences(of: "'", with: "\\'")
+            js = "return document.querySelector('\(escaped)')?.outerHTML ?? '';"
+        } else {
+            js = "return document.documentElement.outerHTML;"
+        }
+        let scopedJS = scopeJS(js)
+        guard let result = try? await webView.callAsyncJavaScript(
+            scopedJS, contentWorld: .defaultClient
+        ) as? String else { return "" }
+        return result
     }
 
     /// Set a cookie via document.cookie.

@@ -1075,7 +1075,7 @@ class MCPServer {
             // Storage Inspection
             [
                 "name": "browser_get_cookies",
-                "description": "Get cookies for the current page, including httpOnly cookies not visible to JavaScript. Useful for debugging authentication, session management, and tracking. Requires CodeFire browser.",
+                "description": "Get cookies for the current page. Returns non-httpOnly cookies visible to the application. Useful for debugging authentication, session management, and tracking. Requires CodeFire browser.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -1219,6 +1219,40 @@ class MCPServer {
             [
                 "name": "clear_network_log",
                 "description": "Clear all captured network requests from the browser's network monitor.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ],
+                    "required": [] as [String]
+                ]
+            ],
+            [
+                "name": "browser_get_source",
+                "description": "Get the HTML source of the current page or a specific element. Returns outerHTML. Requires CodeFire browser.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "selector": ["type": "string", "description": "CSS selector to get specific element's HTML. Omit for full page source."],
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ],
+                    "required": [] as [String]
+                ]
+            ],
+            [
+                "name": "browser_network_start",
+                "description": "Start the network monitor to capture HTTP requests. Must be started before requests you want to capture. Use get_network_requests to read captured data.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "tab_id": ["type": "string", "description": "Tab ID (defaults to active tab)"]
+                    ],
+                    "required": [] as [String]
+                ]
+            ],
+            [
+                "name": "browser_network_stop",
+                "description": "Stop the network monitor. Captured requests remain available via get_network_requests until cleared.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
@@ -1404,6 +1438,9 @@ class MCPServer {
             case "get_network_requests": result = try getNetworkRequests(args)
             case "get_request_detail":   result = try getRequestDetail(args)
             case "clear_network_log":    result = try clearNetworkLog(args)
+            case "browser_get_source":    result = try browserGetSource(args)
+            case "browser_network_start": result = try browserNetworkStart(args)
+            case "browser_network_stop":  result = try browserNetworkStop(args)
             // Environment tools
             case "detect_services":    result = try detectServices(args)
             case "list_env_files":     result = try listEnvFiles(args)
@@ -2405,6 +2442,25 @@ class MCPServer {
         var cmdArgs: [String: Any] = [:]
         if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
         return try executeBrowserCommand(tool: "clear_network_log", args: cmdArgs)
+    }
+
+    func browserGetSource(_ args: [String: Any]) throws -> String {
+        var cmdArgs: [String: Any] = [:]
+        if let selector = args["selector"] as? String { cmdArgs["selector"] = selector }
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        return try executeBrowserCommand(tool: "browser_get_source", args: cmdArgs)
+    }
+
+    func browserNetworkStart(_ args: [String: Any]) throws -> String {
+        var cmdArgs: [String: Any] = [:]
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        return try executeBrowserCommand(tool: "browser_network_start", args: cmdArgs)
+    }
+
+    func browserNetworkStop(_ args: [String: Any]) throws -> String {
+        var cmdArgs: [String: Any] = [:]
+        if let tabId = args["tab_id"] as? String { cmdArgs["tab_id"] = tabId }
+        return try executeBrowserCommand(tool: "browser_network_stop", args: cmdArgs)
     }
 
     // MARK: - Environment Tool Implementations

@@ -151,6 +151,13 @@ class BrowserCommandExecutor: ObservableObject {
             return try await handleGetRequestDetail(args)
         case "clear_network_log":
             return try await handleClearNetworkLog(args)
+        // Page source and network monitor activation
+        case "browser_get_source":
+            return try await handleGetSource(args)
+        case "browser_network_start":
+            return try await handleNetworkStart(args)
+        case "browser_network_stop":
+            return try await handleNetworkStop(args)
         default:
             throw BrowserCommandError.unknownTool(command.tool)
         }
@@ -178,7 +185,16 @@ class BrowserCommandExecutor: ObservableObject {
         // Wait for navigation to finish (poll isLoading)
         let start = Date()
         while tab.isLoading && Date().timeIntervalSince(start) < 14.0 {
+            if tab.isUnloaded { break }
+            if tab.navigationError != nil { break }
             try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        }
+
+        if tab.isUnloaded {
+            return toJSON(["error": "Tab was unloaded during navigation"])
+        }
+        if let error = tab.navigationError {
+            return toJSON(["error": error, "url": tab.currentURL, "title": tab.title])
         }
 
         return toJSON([
@@ -268,15 +284,21 @@ class BrowserCommandExecutor: ObservableObject {
         if url != nil {
             let start = Date()
             while tab.isLoading && Date().timeIntervalSince(start) < 14.0 {
+                if tab.isUnloaded { break }
+                if tab.navigationError != nil { break }
                 try await Task.sleep(nanoseconds: 100_000_000)
             }
         }
 
-        return toJSON([
+        var result: [String: Any] = [
             "tab_id": tab.id.uuidString,
             "title": tab.title,
             "url": tab.currentURL
-        ])
+        ]
+        if let error = tab.navigationError {
+            result["error"] = error
+        }
+        return toJSON(result)
     }
 
     private func handleTabClose(_ args: [String: Any]) throws -> String {
@@ -515,7 +537,9 @@ class BrowserCommandExecutor: ObservableObject {
         let tab = try resolveTab(args)
         let domain = args["domain"] as? String
         let cookies = await tab.getCookies(domain: domain)
-        return toJSON(["cookies": cookies, "count": cookies.count])
+        // Filter out httpOnly cookies to prevent session credential exposure via MCP
+        let safeCookies = cookies.filter { !($0["httpOnly"] as? Bool ?? false) }
+        return toJSON(["cookies": safeCookies, "count": safeCookies.count])
     }
 
     private func handleGetStorage(_ args: [String: Any]) async throws -> String {
@@ -639,6 +663,25 @@ class BrowserCommandExecutor: ObservableObject {
         let tab = try resolveTab(args)
         tab.networkRequests.removeAll()
         return toJSON(["cleared": true])
+    }
+
+    private func handleGetSource(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        let selector = args["selector"] as? String
+        let source = await tab.getPageSource(selector: selector)
+        return toJSON(["source": source, "length": source.count])
+    }
+
+    private func handleNetworkStart(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        tab.startNetworkMonitor()
+        return toJSON(["status": "started"])
+    }
+
+    private func handleNetworkStop(_ args: [String: Any]) async throws -> String {
+        let tab = try resolveTab(args)
+        tab.stopNetworkMonitor()
+        return toJSON(["status": "stopped"])
     }
 
     /// Map file extension to MIME type for uploads.
