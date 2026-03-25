@@ -250,7 +250,15 @@ struct CodeFireApp: App {
                         }
                     }
                 }
-                .onChange(of: appState.currentProject) { _, project in
+                .onChange(of: appState.currentProject) { oldProject, project in
+                    // Stop previous project's services before starting new ones
+                    if oldProject != nil && oldProject?.id != project?.id {
+                        sessionWatcher.stopWatching()
+                        devEnvironment.stop()
+                        liveMonitor.stopMonitoring()
+                        githubService.stopMonitoring()
+                        contextEngine.stopWatching()
+                    }
                     if let project = project {
                         sessionWatcher.watchProject(project)
                         devEnvironment.scan(projectPath: project.path)

@@ -113,7 +113,7 @@ class LiveSessionMonitor: ObservableObject {
 
         findActiveSession()
 
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.poll()
             }
@@ -139,7 +139,7 @@ class LiveSessionMonitor: ObservableObject {
     func resumeMonitoring() {
         guard pollTimer == nil, claudeProjectPath != nil else { return }
         poll()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.poll()
             }

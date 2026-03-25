@@ -32,10 +32,26 @@ final class FocusableTerminalView: LocalProcessTerminalView {
 
     override func getWindowSize() -> winsize {
         let f = self.frame
-        let w = max(1, min(f.width, 65535))
-        let h = max(1, min(f.height, 65535))
-        let cols = max(1, min(terminal.cols, Int(UInt16.max)))
-        let rows = max(1, min(terminal.rows, Int(UInt16.max)))
+        // When the frame is .zero (view not yet laid out by SwiftUI), return
+        // reasonable defaults so the PTY starts with usable dimensions.
+        // A 1×1 winsize breaks TUI apps like Claude Code that do layout math
+        // on startup. Once SwiftUI assigns the real frame, setFrameSize
+        // triggers SwiftTerm's internal resize which updates the PTY.
+        let cols: Int
+        let rows: Int
+        let w: CGFloat
+        let h: CGFloat
+        if f.width > 10 && f.height > 10 {
+            cols = max(1, min(terminal.cols, Int(UInt16.max)))
+            rows = max(1, min(terminal.rows, Int(UInt16.max)))
+            w = min(f.width, 65535)
+            h = min(f.height, 65535)
+        } else {
+            cols = 120
+            rows = 40
+            w = 800
+            h = 600
+        }
         return winsize(
             ws_row: UInt16(rows),
             ws_col: UInt16(cols),

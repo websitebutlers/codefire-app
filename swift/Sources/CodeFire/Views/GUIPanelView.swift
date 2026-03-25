@@ -26,7 +26,7 @@ class MCPConnectionMonitor: ObservableObject {
 
     func startPolling() {
         poll()
-        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.poll()
         }
     }
@@ -139,51 +139,46 @@ struct GUIPanelView: View {
 
                 Divider()
 
-                // Tab content — browser persists via ZStack, others switch normally
-                ZStack {
-                    // Browser always exists in the ZStack (hidden when not selected)
-                    BrowserView(viewModel: browserViewModel)
-                        .opacity(appState.selectedTab == .browser ? 1 : 0)
-                        .allowsHitTesting(appState.selectedTab == .browser)
-
-                    // Other tabs render on demand
-                    if appState.selectedTab != .browser {
-                        Group {
-                            switch appState.selectedTab {
-                            case .dashboard:
-                                DashboardView()
-                            case .sessions:
-                                SessionListView()
-                            case .tasks:
-                                KanbanBoard()
-                            case .notes:
-                                NoteListView()
-                            case .files:
-                                FileBrowserView()
-                            case .memory:
-                                MemoryEditorView()
-                            case .rules:
-                                ClaudeMdEditorView()
-                            case .services:
-                                ProjectServicesView()
-                            case .git:
-                                GitChangesView()
-                            case .images:
-                                ImageStudioView()
-                            case .visualize:
-                                VisualizerView()
-                            case .recordings:
-                                RecordingsView()
-                            case .activity:
-                                ActivityFeedView()
-                            case .docs:
-                                ProjectDocsView()
-                            case .reviews:
-                                ReviewRequestsView()
-                            case .browser:
-                                EmptyView() // Handled above in ZStack
-                            }
-                        }
+                // Tab content — browser is lazy-loaded only when selected.
+                // Previous approach kept a WKWebView permanently in a ZStack
+                // (hidden via opacity:0). WKWebView aggressively steals first
+                // responder when inserted, causing a race condition in the
+                // project window where the terminal loses focus and keyboard
+                // input renders at (0,0) instead of Claude Code's input field.
+                Group {
+                    switch appState.selectedTab {
+                    case .browser:
+                        BrowserView(viewModel: browserViewModel)
+                    case .dashboard:
+                        DashboardView()
+                    case .sessions:
+                        SessionListView()
+                    case .tasks:
+                        KanbanBoard()
+                    case .notes:
+                        NoteListView()
+                    case .files:
+                        FileBrowserView()
+                    case .memory:
+                        MemoryEditorView()
+                    case .rules:
+                        ClaudeMdEditorView()
+                    case .services:
+                        ProjectServicesView()
+                    case .git:
+                        GitChangesView()
+                    case .images:
+                        ImageStudioView()
+                    case .visualize:
+                        VisualizerView()
+                    case .recordings:
+                        RecordingsView()
+                    case .activity:
+                        ActivityFeedView()
+                    case .docs:
+                        ProjectDocsView()
+                    case .reviews:
+                        ReviewRequestsView()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -97,7 +97,7 @@ class ContextEngine: ObservableObject {
 
     /// Start polling for index requests from MCP processes.
     func startPollingForRequests() {
-        indexRequestPoller = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+        indexRequestPoller = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in
                 await self.checkForIndexRequests()

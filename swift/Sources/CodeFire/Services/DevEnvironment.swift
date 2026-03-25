@@ -352,7 +352,7 @@ class DevEnvironment: ObservableObject {
 
     private func startPortPolling() {
         portTimer?.invalidate()
-        portTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        portTimer = Timer.scheduledTimer(withTimeInterval: 300.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.scanPorts()
             }
@@ -370,12 +370,15 @@ class DevEnvironment: ObservableObject {
 
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
             return []
         }
 
+        // Read pipe data BEFORE waitUntilExit() — if the 64KB kernel pipe buffer
+        // fills, the child blocks on write and waitUntilExit() deadlocks both.
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
         guard let output = String(data: data, encoding: .utf8) else {
             return []
         }

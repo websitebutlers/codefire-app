@@ -132,7 +132,7 @@ class GitHubService: ObservableObject {
             await refresh()
         }
 
-        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.refresh()
             }
@@ -161,7 +161,7 @@ class GitHubService: ObservableObject {
     /// Resume polling after a pause. Re-creates the timer if we have a project path.
     func resumeMonitoring() {
         guard timer == nil, projectPath != nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.refresh()
             }
@@ -321,14 +321,16 @@ class GitHubService: ObservableObject {
 
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
             return nil
         }
 
-        guard process.terminationStatus == 0 else { return nil }
-
+        // Read pipe data BEFORE waitUntilExit() — if the 64KB kernel pipe buffer
+        // fills, the child blocks on write and waitUntilExit() deadlocks both.
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else { return nil }
         guard !data.isEmpty else { return nil }
 
         return data

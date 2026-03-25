@@ -81,13 +81,22 @@ class AppState: ObservableObject {
                 updated.lastOpened = Date()
                 try updated.update(db)
             }
-            let discovery = ProjectDiscovery()
-            try discovery.importSessions(for: project)
-
-            // Notify views that session data is available.
-            NotificationCenter.default.post(name: .sessionsDidChange, object: nil)
         } catch {
             print("Failed to update project: \(error)")
+        }
+
+        // Import sessions off the main thread — parsing JSONL files can take
+        // seconds for large projects and blocks the UI (window load, terminal).
+        Task.detached {
+            do {
+                let discovery = ProjectDiscovery()
+                try discovery.importSessions(for: project)
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .sessionsDidChange, object: nil)
+                }
+            } catch {
+                print("Failed to import sessions: \(error)")
+            }
         }
 
         // Generate project profile asynchronously
