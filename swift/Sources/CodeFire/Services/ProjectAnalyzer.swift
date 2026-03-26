@@ -503,12 +503,13 @@ class ProjectAnalyzer: ObservableObject {
 
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
             return []
         }
 
+        // Read pipe data BEFORE waitUntilExit() to avoid deadlock when output exceeds 64KB.
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
         guard let output = String(data: data, encoding: .utf8) else { return [] }
 
         let formatter = ISO8601DateFormatter()

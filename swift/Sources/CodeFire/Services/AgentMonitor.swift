@@ -54,7 +54,7 @@ class AgentMonitor: ObservableObject {
         self.shellPid = shellPid
         isMonitoring = true
         poll()
-        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             self?.poll()
         }
     }
@@ -66,7 +66,7 @@ class AgentMonitor: ObservableObject {
         self.shellPid = 0
         isMonitoring = true
         pollGlobal()
-        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             self?.pollGlobal()
         }
     }
@@ -271,41 +271,91 @@ class AgentMonitor: ObservableObject {
 
         let actualCount = size / MemoryLayout<kinfo_proc>.stride
         let now = Date()
-        var records: [ProcRecord] = []
+
+        // Two-pass approach to avoid expensive KERN_PROCARGS2 calls for unrelated processes:
+        // Pass 1: Build basic records with just p_comm (cheap)
+        // Pass 2: Only fetch full args for processes that are descendants of our shell
+        //         (or all "claude"/"node" if in global mode)
+
+        struct BasicRecord {
+            let pid: Int
+            let ppid: Int
+            let elapsed: Int
+            let comm: String
+        }
+
+        var basics: [BasicRecord] = []
+        basics.reserveCapacity(actualCount)
 
         for i in 0..<actualCount {
             let info = procs[i]
             let pid = Int(info.kp_proc.p_pid)
             let ppid = Int(info.kp_eproc.e_ppid)
-
-            // Calculate elapsed time from start time
             let startSec = info.kp_proc.p_starttime.tv_sec
             let startDate = Date(timeIntervalSince1970: TimeInterval(startSec))
             let elapsed = Int(now.timeIntervalSince(startDate))
-            let etime = formatEtime(elapsed)
 
-            // p_comm is only 16 chars (e.g. "node"). For node processes that might
-            // be Claude Code, we need the full command-line args via KERN_PROCARGS2
-            // to check for "@anthropic", "claude-code", etc.
             let comm = withUnsafePointer(to: info.kp_proc.p_comm) { ptr in
                 ptr.withMemoryRebound(to: CChar.self, capacity: 16) { cStr in
                     String(cString: cStr)
                 }
             }
 
-            // Fetch full args for processes that might be Claude Code:
-            // - "node" (older Node-based Claude Code)
-            // - "claude" (native binary accessed via symlink)
-            // - version-like names e.g. "2.1.69" (actual binary filename at ~/.local/share/claude/versions/X.Y.Z)
-            let needsFullArgs = comm == "node" || comm == "claude" || Self.looksLikeVersion(comm)
-            let fullCommand: String
-            if needsFullArgs {
-                fullCommand = Self.getProcessArgs(pid: Int32(pid)) ?? comm
-            } else {
-                fullCommand = comm
-            }
+            basics.append(BasicRecord(pid: pid, ppid: ppid, elapsed: elapsed, comm: comm))
+        }
 
-            records.append(ProcRecord(pid: pid, ppid: ppid, etime: etime, command: fullCommand))
+        // Build parent→children map to find descendants of shell
+        var childrenOf: [Int: [Int]] = [:]
+        var basicByPid: [Int: BasicRecord] = [:]
+        for b in basics {
+            basicByPid[b.pid] = b
+            childrenOf[b.ppid, default: []].append(b.pid)
+        }
+
+        // Determine which PIDs need full args lookup (expensive KERN_PROCARGS2)
+        var pidsNeedingFullArgs: Set<Int> = []
+
+        if shellPid > 0 {
+            // Shell-scoped: only check descendants of our shell that could be Claude
+            var queue: [Int] = [Int(shellPid)]
+            var visited: Set<Int> = []
+            while !queue.isEmpty {
+                let current = queue.removeFirst()
+                for child in childrenOf[current] ?? [] {
+                    guard !visited.contains(child) else { continue }
+                    visited.insert(child)
+                    if let b = basicByPid[child] {
+                        let needsArgs = b.comm == "node" || b.comm == "claude" || Self.looksLikeVersion(b.comm)
+                        if needsArgs {
+                            pidsNeedingFullArgs.insert(child)
+                        }
+                    }
+                    queue.append(child)
+                }
+            }
+        } else {
+            // Global mode: check all potential Claude processes
+            for b in basics {
+                let needsArgs = b.comm == "node" || b.comm == "claude" || Self.looksLikeVersion(b.comm)
+                if needsArgs {
+                    pidsNeedingFullArgs.insert(b.pid)
+                }
+            }
+        }
+
+        // Pass 2: Build final records, only fetching full args where needed
+        var records: [ProcRecord] = []
+        records.reserveCapacity(basics.count)
+
+        for b in basics {
+            let etime = formatEtime(b.elapsed)
+            let fullCommand: String
+            if pidsNeedingFullArgs.contains(b.pid) {
+                fullCommand = Self.getProcessArgs(pid: Int32(b.pid)) ?? b.comm
+            } else {
+                fullCommand = b.comm
+            }
+            records.append(ProcRecord(pid: b.pid, ppid: b.ppid, etime: etime, command: fullCommand))
         }
 
         return records
