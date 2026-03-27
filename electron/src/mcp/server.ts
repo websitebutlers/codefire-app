@@ -74,7 +74,7 @@ function openDatabase(): Database.Database {
   }
   const db = new Database(dbPath, { readonly: false })
   db.pragma('journal_mode = WAL')
-  db.pragma('busy_timeout = 5000')
+  db.pragma('busy_timeout = 30000')
   db.pragma('foreign_keys = ON')
 
   // Ensure browserCommands.authToken column exists (migration 27 may not have run yet)

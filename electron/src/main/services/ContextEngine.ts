@@ -32,6 +32,9 @@ const SKIP_DIRECTORIES = new Set([
   '__pycache__',
   '.next',
   'dist',
+  'dist-electron',
+  'release',
+  'out',
   '.git',
   '.gradle',
   'Pods',
@@ -46,28 +49,24 @@ const SKIP_DIRECTORIES = new Set([
 ])
 
 const SKIP_EXTENSIONS = new Set([
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'svg',
-  'ico',
-  'webp',
-  'woff',
-  'woff2',
-  'ttf',
-  'eot',
-  'zip',
-  'tar',
-  'gz',
-  'dmg',
-  'mp3',
-  'mp4',
-  'wav',
-  'mov',
+  // Images
+  'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'webp', 'bmp', 'tiff',
+  // Fonts
+  'woff', 'woff2', 'ttf', 'eot', 'otf',
+  // Archives
+  'zip', 'tar', 'gz', 'dmg', 'rar', '7z', 'bz2', 'xz',
+  // Audio/Video
+  'mp3', 'mp4', 'wav', 'mov', 'avi', 'mkv', 'flac', 'ogg', 'aac',
+  // Documents
   'pdf',
-  'lock',
-  'sum',
+  // Package locks
+  'lock', 'sum',
+  // Binaries / native
+  'exe', 'dll', 'so', 'dylib', 'node', 'o', 'obj', 'lib', 'a',
+  // Electron / Chromium artifacts
+  'asar', 'pak', 'dat', 'bin',
+  // Maps and generated
+  'map',
 ])
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -80,9 +79,12 @@ function shouldSkipDir(dirName: string): boolean {
   return SKIP_DIRECTORIES.has(dirName)
 }
 
+/** Max file size to index (512 KB). Larger files are likely generated/vendored. */
+const MAX_FILE_SIZE = 512 * 1024
+
 function shouldSkipFile(filePath: string): boolean {
   const dotIdx = filePath.lastIndexOf('.')
-  if (dotIdx < 0) return false
+  if (dotIdx < 0) return true // no extension — likely a binary
   const ext = filePath.slice(dotIdx + 1).toLowerCase()
   return SKIP_EXTENSIONS.has(ext)
 }
@@ -177,6 +179,8 @@ export class ContextEngine {
           for (const { absPath, relPath } of batch) {
             let content: string
             try {
+              const stat = fs.statSync(absPath)
+              if (stat.size > MAX_FILE_SIZE) continue // Skip oversized files
               // Use synchronous read inside transaction for consistency
               content = fs.readFileSync(absPath, 'utf-8')
             } catch {
@@ -275,6 +279,8 @@ export class ContextEngine {
 
     let content: string
     try {
+      const stat = await fsPromises.stat(absPath)
+      if (stat.size > MAX_FILE_SIZE) return // Skip oversized files
       content = await fsPromises.readFile(absPath, 'utf-8')
     } catch {
       // File can't be read — remove it from the index
