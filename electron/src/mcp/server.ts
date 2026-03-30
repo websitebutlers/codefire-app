@@ -177,7 +177,7 @@ const TOOL_CATEGORIES: Record<string, string> = {
   get_project_environment: 'read', detect_project_stack: 'read', detect_services: 'read',
   detect_dev_environment: 'read', detect_coding_agents: 'read', detect_ai_agents: 'read',
   list_tasks: 'read', get_task: 'read', create_task: 'write', update_task: 'write',
-  list_task_notes: 'read', create_task_note: 'write',
+  list_task_notes: 'read', add_task_note: 'write', create_task_note: 'write',
   list_notes: 'read', get_note: 'read', create_note: 'write', update_note: 'write', delete_note: 'write',
   search_notes: 'read', search_code: 'read', context_search: 'read',
   list_sessions: 'read', search_sessions: 'read',
@@ -305,19 +305,22 @@ server.registerTool(
     title: 'List Tasks',
     description: 'List tasks for a project or globally. Filter by status, date range, or both.',
     inputSchema: z.object({
-      projectId: z.string().optional().describe('Project ID. If omitted, lists global tasks.'),
+      projectId: z.string().optional().describe('Project ID (auto-detected if omitted)'),
       status: z.enum(['todo', 'in_progress', 'done']).optional().describe('Filter by task status'),
+      global: z.boolean().optional().describe('Set true to list global planner tasks instead of project tasks'),
       createdAfter: z.string().optional().describe('ISO 8601 datetime — only tasks created after this time'),
       createdBefore: z.string().optional().describe('ISO 8601 datetime — only tasks created before this time'),
       updatedAfter: z.string().optional().describe('ISO 8601 datetime — only tasks updated after this time'),
       updatedBefore: z.string().optional().describe('ISO 8601 datetime — only tasks updated before this time'),
     }),
   },
-  async ({ projectId, status, createdAfter, createdBefore, updatedAfter, updatedBefore }) => {
+  async ({ projectId, status, global: isGlobalQuery, createdAfter, createdBefore, updatedAfter, updatedBefore }) => {
     const conditions: string[] = []
     const params: unknown[] = []
 
-    if (projectId) {
+    if (isGlobalQuery) {
+      conditions.push('isGlobal = 1')
+    } else if (projectId) {
       conditions.push('projectId = ?')
       params.push(projectId)
     } else {
@@ -363,11 +366,12 @@ server.registerTool(
       projectId: z.string().describe('Project ID'),
       title: z.string().describe('Task title'),
       description: z.string().optional().describe('Task description'),
-      priority: z.number().min(0).max(4).optional().describe('Priority 0-4 (4 = highest)'),
-      isGlobal: z.boolean().optional().describe('Whether this is a global task'),
+      priority: z.number().min(0).max(4).optional().describe('Priority: 0=none, 1=low, 2=medium, 3=high, 4=urgent'),
+      labels: z.array(z.string()).optional().describe('Labels (e.g. bug, feature, refactor)'),
+      isGlobal: z.boolean().optional().describe('Set true to create a global planner task (visible on home board)'),
     }),
   },
-  async ({ projectId, title, description, priority, isGlobal }) => {
+  async ({ projectId, title, description, priority, labels, isGlobal }) => {
     // Deduplicate: if an active (non-done) task with the same title exists, return it
     // instead of creating a duplicate. Done tasks are allowed to be recreated.
     const existing = db.prepare(
@@ -379,12 +383,13 @@ server.registerTool(
 
     const now = new Date().toISOString()
     const createdBy = getProfileName() || 'You'
+    const labelsJson = labels && labels.length > 0 ? JSON.stringify(labels) : null
     const result = db
       .prepare(
-        `INSERT INTO taskItems (projectId, title, description, status, priority, source, isGlobal, createdBy, createdAt, updatedAt)
-         VALUES (?, ?, ?, 'todo', ?, 'mcp', ?, ?, ?, ?)`
+        `INSERT INTO taskItems (projectId, title, description, status, priority, labels, source, isGlobal, createdBy, createdAt, updatedAt)
+         VALUES (?, ?, ?, 'todo', ?, ?, 'mcp', ?, ?, ?, ?)`
       )
-      .run(projectId, title, description ?? null, Math.min(4, Math.max(0, priority ?? 0)), isGlobal ? 1 : 0, createdBy, now, now)
+      .run(projectId, title, description ?? null, Math.min(4, Math.max(0, priority ?? 0)), labelsJson, isGlobal ? 1 : 0, createdBy, now, now)
     const task = db.prepare('SELECT * FROM taskItems WHERE id = ?').get(result.lastInsertRowid)
     return { content: [{ type: 'text' as const, text: JSON.stringify(task, null, 2) }] }
   }
@@ -394,20 +399,21 @@ server.registerTool(
   'update_task',
   {
     title: 'Update Task',
-    description: 'Update a task (title, description, status, priority)',
+    description: 'Update a task (title, description, status, priority, labels)',
     inputSchema: z.object({
       taskId: z.number().describe('Task ID'),
       title: z.string().optional().describe('New title'),
       description: z.string().optional().describe('New description'),
       status: z.enum(['todo', 'in_progress', 'done']).optional().describe('New status'),
-      priority: z.number().min(0).max(4).optional().describe('New priority 0-4'),
+      priority: z.number().min(0).max(4).optional().describe('New priority (0-4)'),
+      labels: z.array(z.string()).optional().describe('New labels array (e.g. ["bug", "feature"])'),
       completedBy: z.string().optional().describe('Override who completed the task'),
       createdBy: z.string().optional().describe('Override who created the task'),
       projectId: z.string().optional().describe('Reassign task to a different project'),
       isGlobal: z.boolean().optional().describe('Whether this is a global task'),
     }),
   },
-  async ({ taskId, title, description, status, priority, completedBy: completedByOverride, createdBy: createdByOverride, projectId, isGlobal }) => {
+  async ({ taskId, title, description, status, priority, labels, completedBy: completedByOverride, createdBy: createdByOverride, projectId, isGlobal }) => {
     const existing = db.prepare('SELECT * FROM taskItems WHERE id = ?').get(taskId) as Record<string, unknown> | undefined
     if (!existing) {
       return { content: [{ type: 'text' as const, text: `Task ${taskId} not found.` }] }
@@ -428,17 +434,20 @@ server.registerTool(
           ? null
           : existing.completedBy
     const createdBy = createdByOverride ?? existing.createdBy
+    const labelsJson = labels !== undefined ? (labels.length > 0 ? JSON.stringify(labels) : null) : existing.labels
     const hasChanges = (status && status !== existing.status) || completedByOverride || createdByOverride ||
       (projectId !== undefined && projectId !== existing.projectId) ||
-      (isGlobal !== undefined && isGlobal !== !!existing.isGlobal)
+      (isGlobal !== undefined && isGlobal !== !!existing.isGlobal) ||
+      labels !== undefined
     const updatedAt = hasChanges ? now : (existing.updatedAt ?? now)
     db.prepare(
-      `UPDATE taskItems SET title = ?, description = ?, status = ?, priority = ?, completedAt = ?, completedBy = ?, createdBy = ?, projectId = ?, isGlobal = ?, updatedAt = ? WHERE id = ?`
+      `UPDATE taskItems SET title = ?, description = ?, status = ?, priority = ?, labels = ?, completedAt = ?, completedBy = ?, createdBy = ?, projectId = ?, isGlobal = ?, updatedAt = ? WHERE id = ?`
     ).run(
       title ?? existing.title,
       description ?? existing.description,
       status ?? existing.status,
       priority ?? existing.priority,
+      labelsJson,
       completedAt,
       completedBy,
       createdBy,
@@ -478,25 +487,28 @@ server.registerTool(
   }
 )
 
-server.registerTool(
-  'create_task_note',
-  {
-    title: 'Create Task Note',
-    description: 'Add a note to a task',
-    inputSchema: z.object({
-      taskId: z.number().describe('Task ID'),
-      content: z.string().describe('Note content'),
-    }),
-  },
-  async ({ taskId, content }) => {
-    const now = new Date().toISOString()
-    const result = db
-      .prepare('INSERT INTO taskNotes (taskId, content, source, createdAt) VALUES (?, ?, ?, ?)')
-      .run(taskId, content, 'mcp', now)
-    const note = db.prepare('SELECT * FROM taskNotes WHERE id = ?').get(result.lastInsertRowid)
-    return { content: [{ type: 'text' as const, text: JSON.stringify(note, null, 2) }] }
-  }
-)
+// Registered as add_task_note (matching Swift) with create_task_note kept as alias
+const addTaskNoteHandler = async ({ taskId, content, sessionId }: { taskId: number; content: string; sessionId?: string }) => {
+  const now = new Date().toISOString()
+  const result = db
+    .prepare('INSERT INTO taskNotes (taskId, content, source, sessionId, createdAt) VALUES (?, ?, ?, ?, ?)')
+    .run(taskId, content, 'mcp', sessionId ?? null, now)
+  const note = db.prepare('SELECT * FROM taskNotes WHERE id = ?').get(result.lastInsertRowid)
+  return { content: [{ type: 'text' as const, text: JSON.stringify(note, null, 2) }] }
+}
+
+const addTaskNoteSchema = {
+  title: 'Add Task Note',
+  description: 'Add a note/comment to a task. Use this to log progress, decisions, or context.',
+  inputSchema: z.object({
+    taskId: z.number().describe('Task ID'),
+    content: z.string().describe('Note content'),
+    sessionId: z.string().optional().describe('Session ID (auto-detected if omitted)'),
+  }),
+}
+
+server.registerTool('add_task_note', addTaskNoteSchema, addTaskNoteHandler)
+server.registerTool('create_task_note', { ...addTaskNoteSchema, title: 'Create Task Note' }, addTaskNoteHandler)
 
 // ── Notes ────────────────────────────────────────────────────────────────────
 
@@ -506,19 +518,22 @@ server.registerTool(
     title: 'List Notes',
     description: 'List notes for a project or globally. Supports date-range filtering.',
     inputSchema: z.object({
-      projectId: z.string().optional().describe('Project ID. If omitted, lists global notes.'),
-      pinnedOnly: z.boolean().optional().describe('Only return pinned notes'),
+      projectId: z.string().optional().describe('Project ID (auto-detected if omitted)'),
+      pinnedOnly: z.boolean().optional().describe('If true, only return pinned notes'),
+      global: z.boolean().optional().describe('Set true to list global planner notes instead of project notes'),
       createdAfter: z.string().optional().describe('ISO 8601 datetime — only notes created after this time'),
       createdBefore: z.string().optional().describe('ISO 8601 datetime — only notes created before this time'),
       updatedAfter: z.string().optional().describe('ISO 8601 datetime — only notes updated after this time'),
       updatedBefore: z.string().optional().describe('ISO 8601 datetime — only notes updated before this time'),
     }),
   },
-  async ({ projectId, pinnedOnly, createdAfter, createdBefore, updatedAfter, updatedBefore }) => {
+  async ({ projectId, pinnedOnly, global: isGlobalQuery, createdAfter, createdBefore, updatedAfter, updatedBefore }) => {
     const conditions: string[] = []
     const params: unknown[] = []
 
-    if (projectId) {
+    if (isGlobalQuery) {
+      conditions.push('isGlobal = 1')
+    } else if (projectId) {
       conditions.push('projectId = ?')
       params.push(projectId)
     } else {
@@ -558,21 +573,23 @@ server.registerTool(
   'create_note',
   {
     title: 'Create Note',
-    description: 'Create a new note',
+    description: 'Create a new project-level note. Use for capturing architectural decisions, discovered patterns, session learnings, or any context that should persist.',
     inputSchema: z.object({
       projectId: z.string().describe('Project ID'),
       title: z.string().describe('Note title'),
-      content: z.string().optional().describe('Note content (markdown)'),
-      isGlobal: z.boolean().optional().describe('Whether this is a global note'),
+      content: z.string().optional().describe('Note content (supports markdown)'),
+      pinned: z.boolean().optional().describe('Pin this note to the top (default: false)'),
+      sessionId: z.string().optional().describe('Session ID that created this note (optional)'),
+      isGlobal: z.boolean().optional().describe('Set true to create a global planner note'),
     }),
   },
-  async ({ projectId, title, content, isGlobal }) => {
+  async ({ projectId, title, content, pinned, sessionId, isGlobal }) => {
     const now = new Date().toISOString()
     const result = db
       .prepare(
-        'INSERT INTO notes (projectId, title, content, pinned, isGlobal, createdAt, updatedAt) VALUES (?, ?, ?, 0, ?, ?, ?)'
+        'INSERT INTO notes (projectId, title, content, pinned, sessionId, isGlobal, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       )
-      .run(projectId, title, content ?? '', isGlobal ? 1 : 0, now, now)
+      .run(projectId, title, content ?? '', pinned ? 1 : 0, sessionId ?? null, isGlobal ? 1 : 0, now, now)
     const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(result.lastInsertRowid)
     return { content: [{ type: 'text' as const, text: JSON.stringify(note, null, 2) }] }
   }
@@ -582,22 +599,24 @@ server.registerTool(
   'update_note',
   {
     title: 'Update Note',
-    description: 'Update a note',
+    description: "Update a project note's title, content, or pinned status.",
     inputSchema: z.object({
       noteId: z.number().describe('Note ID'),
       title: z.string().optional().describe('New title'),
       content: z.string().optional().describe('New content'),
+      pinned: z.boolean().optional().describe('Pin/unpin the note'),
     }),
   },
-  async ({ noteId, title, content }) => {
+  async ({ noteId, title, content, pinned }) => {
     const existing = db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId) as Record<string, unknown> | undefined
     if (!existing) {
       return { content: [{ type: 'text' as const, text: `Note ${noteId} not found.` }] }
     }
     const now = new Date().toISOString()
-    db.prepare('UPDATE notes SET title = ?, content = ?, updatedAt = ? WHERE id = ?').run(
+    db.prepare('UPDATE notes SET title = ?, content = ?, pinned = ?, updatedAt = ? WHERE id = ?').run(
       title ?? existing.title,
       content ?? existing.content,
+      pinned !== undefined ? (pinned ? 1 : 0) : existing.pinned,
       now,
       noteId
     )
@@ -614,17 +633,19 @@ server.registerTool(
     inputSchema: z.object({
       query: z.string().describe('Search query'),
       projectId: z.string().optional().describe('Limit search to a project'),
+      global: z.boolean().optional().describe('Set true to search global notes instead of project notes'),
       createdAfter: z.string().optional().describe('ISO 8601 datetime — only notes created after this time'),
       createdBefore: z.string().optional().describe('ISO 8601 datetime — only notes created before this time'),
       updatedAfter: z.string().optional().describe('ISO 8601 datetime — only notes updated after this time'),
       updatedBefore: z.string().optional().describe('ISO 8601 datetime — only notes updated before this time'),
     }),
   },
-  async ({ query, projectId, createdAfter, createdBefore, updatedAfter, updatedBefore }) => {
+  async ({ query, projectId, global: isGlobalQuery, createdAfter, createdBefore, updatedAfter, updatedBefore }) => {
     const conditions = ['notesFts MATCH ?']
     const params: unknown[] = [query]
 
-    if (projectId) { conditions.push('notes.projectId = ?'); params.push(projectId) }
+    if (isGlobalQuery) { conditions.push('notes.isGlobal = 1') }
+    else if (projectId) { conditions.push('notes.projectId = ?'); params.push(projectId) }
     if (createdAfter) { conditions.push('notes.createdAt >= ?'); params.push(createdAfter) }
     if (createdBefore) { conditions.push('notes.createdAt <= ?'); params.push(createdBefore) }
     if (updatedAfter) { conditions.push('notes.updatedAt >= ?'); params.push(updatedAfter) }

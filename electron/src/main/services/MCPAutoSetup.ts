@@ -1,5 +1,5 @@
-import { dialog, BrowserWindow } from 'electron'
-import { execFileSync } from 'child_process'
+import { dialog, BrowserWindow, Notification } from 'electron'
+import { execFile, execFileSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -26,7 +26,7 @@ export class MCPAutoSetup {
     const config = readConfig()
     if (config.mcpAutoSetupDismissed) return
 
-    // Update any stale paths in existing registrations (silent, no prompt)
+    // Update any stale or broken paths in existing registrations (silent, no prompt)
     this.updateStalePaths()
 
     // Detect which CLIs need registration
@@ -45,34 +45,92 @@ export class MCPAutoSetup {
     })
 
     if (result.response === 2) {
-      // "Don't ask again"
       writeConfig({ mcpAutoSetupDismissed: true })
       return
     }
 
     if (result.response === 1) {
-      // "Not now" — will check again next launch
       return
     }
 
     // "Yes" — register with all detected CLIs
     const deepLink = new DeepLinkService()
     const serverPath = MCPServerManager.getMcpServerPath()
+    const failures: string[] = []
 
     for (const cli of unregistered) {
       try {
-        if (cli.binary === 'claude') {
-          deepLink.installMCPWithPath('claude', serverPath)
-        } else if (cli.binary === 'gemini') {
-          deepLink.installMCPWithPath('gemini', serverPath)
-        } else if (cli.binary === 'codex') {
-          deepLink.installMCPWithPath('codex', serverPath)
+        const cliType = cli.binary as 'claude' | 'gemini' | 'codex' | 'opencode'
+        const installResult = deepLink.installMCPWithPath(cliType, serverPath)
+        if (!installResult.success) {
+          failures.push(`${cli.name}: ${installResult.error}`)
+          console.error(`[MCPAutoSetup] Failed to register with ${cli.name}:`, installResult.error)
+        } else {
+          console.log(`[MCPAutoSetup] Registered with ${cli.name}`)
         }
-        console.log(`[MCPAutoSetup] Registered with ${cli.name}`)
       } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        failures.push(`${cli.name}: ${msg}`)
         console.error(`[MCPAutoSetup] Failed to register with ${cli.name}:`, err)
       }
     }
+
+    if (failures.length > 0) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: 'MCP Setup Issue',
+        message: 'Some CLI tools could not be configured:\n\n' + failures.join('\n') +
+          '\n\nYou can retry from Settings > MCP.',
+      })
+    } else {
+      // Run health check on the first registered CLI to verify MCP works
+      this.verifyMCPServer(serverPath)
+    }
+  }
+
+  /**
+   * Spawn the MCP server and verify it starts and responds to initialize.
+   * Logs result but does not block — this is a best-effort diagnostic.
+   */
+  private static verifyMCPServer(serverPath: string): void {
+    let nodePath: string
+    try {
+      nodePath = DeepLinkService.resolveNodePath()
+    } catch {
+      console.warn('[MCPAutoSetup] Health check skipped — node not found')
+      return
+    }
+
+    const child = execFile(nodePath, [serverPath], {
+      timeout: 10000,
+      env: { ...process.env, CODEFIRE_MCP_HEALTHCHECK: '1' },
+    }, (err) => {
+      if (err) {
+        console.warn('[MCPAutoSetup] MCP health check failed:', err.message)
+      }
+    })
+
+    // Send a minimal JSON-RPC initialize request via stdin
+    const initRequest = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'codefire-healthcheck', version: '1.0.0' } },
+    }) + '\n'
+
+    child.stdin?.write(initRequest)
+    child.stdin?.end()
+
+    let output = ''
+    child.stdout?.on('data', (data: Buffer) => { output += data.toString() })
+
+    child.on('close', () => {
+      if (output.includes('"result"')) {
+        console.log('[MCPAutoSetup] MCP health check passed')
+      } else {
+        console.warn('[MCPAutoSetup] MCP health check: no valid response. Output:', output.slice(0, 200))
+      }
+    })
   }
 
   /**
@@ -108,98 +166,80 @@ export class MCPAutoSetup {
       }
     }
 
+    // OpenCode
+    if (this.isBinaryInPath('opencode')) {
+      const configPath = path.join(os.homedir(), '.config', 'opencode', 'config.json')
+      const registered = this.isRegisteredInJSON(configPath, 'mcp')
+      if (!registered) {
+        clis.push({ name: 'OpenCode', binary: 'opencode', configPath, isRegistered: false })
+      }
+    }
+
     return clis
   }
 
   /**
-   * If CodeFire is registered but points to an old path, update it silently.
+   * If CodeFire is registered but points to an old or broken path, update it silently.
+   * Also fixes bare "node" commands and validates that the command binary exists on disk.
    */
   private static updateStalePaths(): void {
     const currentPath = MCPServerManager.getMcpServerPath()
-    const nodePath = DeepLinkService.resolveNodePath()
-
-    // Check Claude Code config
-    const claudeConfig = path.join(os.homedir(), '.claude.json')
+    let nodePath: string | null = null
     try {
-      if (fs.existsSync(claudeConfig)) {
-        const config = JSON.parse(fs.readFileSync(claudeConfig, 'utf-8'))
-        const entry = config?.mcpServers?.codefire
-        if (entry) {
-          let changed = false
-          // Update stale server path
-          if (entry.args?.[0] && entry.args[0] !== currentPath) {
-            if (entry.args[0].includes('dist-electron')) return
-            entry.args[0] = currentPath
-            changed = true
-          }
-          // Update bare "node" to absolute path
-          if (entry.command === 'node') {
-            entry.command = nodePath
-            changed = true
-          }
-          if (changed) {
-            fs.copyFileSync(claudeConfig, claudeConfig + '.bak')
-            fs.writeFileSync(claudeConfig, JSON.stringify(config, null, 2) + '\n', 'utf-8')
-            console.log('[MCPAutoSetup] Updated Claude Code MCP config')
-          }
-        }
-      }
-    } catch (err) {
-      console.error('[MCPAutoSetup] Failed to update Claude Code config:', err)
+      nodePath = DeepLinkService.resolveNodePath()
+    } catch {
+      // Can't resolve node — we'll still fix stale server paths but can't fix command
     }
 
-    // Check Gemini CLI config
-    const geminiConfig = path.join(os.homedir(), '.gemini', 'settings.json')
-    try {
-      if (fs.existsSync(geminiConfig)) {
-        const config = JSON.parse(fs.readFileSync(geminiConfig, 'utf-8'))
-        const entry = config?.mcpServers?.codefire
-        if (entry) {
-          let changed = false
-          if (entry.args?.[0] && entry.args[0] !== currentPath) {
-            if (entry.args[0].includes('dist-electron')) return
-            entry.args[0] = currentPath
-            changed = true
-          }
-          if (entry.command === 'node') {
-            entry.command = nodePath
-            changed = true
-          }
-          if (changed) {
-            fs.writeFileSync(geminiConfig, JSON.stringify(config, null, 2) + '\n', 'utf-8')
-            console.log('[MCPAutoSetup] Updated Gemini CLI MCP config')
-          }
-        }
-      }
-    } catch (err) {
-      console.error('[MCPAutoSetup] Failed to update Gemini config:', err)
-    }
+    const configs: Array<{ path: string; topKey: string; backup: boolean }> = [
+      { path: path.join(os.homedir(), '.claude.json'), topKey: 'mcpServers', backup: true },
+      { path: path.join(os.homedir(), '.gemini', 'settings.json'), topKey: 'mcpServers', backup: false },
+      { path: path.join(os.homedir(), '.mcp.json'), topKey: 'mcpServers', backup: false },
+      { path: path.join(os.homedir(), '.config', 'opencode', 'config.json'), topKey: 'mcp', backup: false },
+    ]
 
-    // Check project-level .mcp.json in home directory
-    const homeMcpJson = path.join(os.homedir(), '.mcp.json')
-    try {
-      if (fs.existsSync(homeMcpJson)) {
-        const config = JSON.parse(fs.readFileSync(homeMcpJson, 'utf-8'))
-        const entry = config?.mcpServers?.codefire
-        if (entry) {
-          let changed = false
-          if (entry.args?.[0] && entry.args[0] !== currentPath) {
-            if (entry.args[0].includes('dist-electron')) return
-            entry.args[0] = currentPath
-            changed = true
-          }
-          if (entry.command === 'node') {
+    for (const cfg of configs) {
+      try {
+        if (!fs.existsSync(cfg.path)) continue
+        const config = JSON.parse(fs.readFileSync(cfg.path, 'utf-8'))
+        const entry = config?.[cfg.topKey]?.codefire
+        if (!entry) continue
+
+        let changed = false
+
+        // Update stale server path (skip dev paths)
+        if (entry.args?.[0] && entry.args[0] !== currentPath) {
+          if (entry.args[0].includes('dist-electron')) continue
+          entry.args[0] = currentPath
+          changed = true
+        }
+
+        // Fix bare "node" or non-absolute command path
+        if (nodePath && entry.command && !path.isAbsolute(entry.command)) {
+          entry.command = nodePath
+          changed = true
+        }
+
+        // Validate command binary exists on disk
+        if (entry.command && path.isAbsolute(entry.command) && !fs.existsSync(entry.command)) {
+          if (nodePath) {
             entry.command = nodePath
             changed = true
-          }
-          if (changed) {
-            fs.writeFileSync(homeMcpJson, JSON.stringify(config, null, 2) + '\n', 'utf-8')
-            console.log('[MCPAutoSetup] Updated ~/.mcp.json MCP config')
+          } else {
+            console.warn(`[MCPAutoSetup] Config ${cfg.path} has broken command: ${entry.command}`)
           }
         }
+
+        if (changed) {
+          if (cfg.backup) {
+            fs.copyFileSync(cfg.path, cfg.path + '.bak')
+          }
+          fs.writeFileSync(cfg.path, JSON.stringify(config, null, 2) + '\n', 'utf-8')
+          console.log(`[MCPAutoSetup] Updated MCP config: ${cfg.path}`)
+        }
+      } catch (err) {
+        console.error(`[MCPAutoSetup] Failed to update config ${cfg.path}:`, err)
       }
-    } catch (err) {
-      console.error('[MCPAutoSetup] Failed to update ~/.mcp.json:', err)
     }
   }
 
