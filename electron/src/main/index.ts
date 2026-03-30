@@ -94,16 +94,24 @@ let deferredServicesInitialized = false
 function initDeferredServices() {
   if (deferredServicesInitialized) return
   deferredServicesInitialized = true
+
+  // Re-read config now that safeStorage is available (initial read at module top
+  // level happens before app.whenReady(), so encrypted values can't be decrypted)
+  const deferredConfig = readConfig()
+
+  // Also re-write MCP secrets now that we can decrypt properly
+  writeMCPSecrets()
+
   // Gmail
-  const googleClientId = config.googleClientId || process.env.GOOGLE_CLIENT_ID
-  const googleClientSecret = config.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET
+  const googleClientId = deferredConfig.googleClientId || process.env.GOOGLE_CLIENT_ID
+  const googleClientSecret = deferredConfig.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET
   if (googleClientId && googleClientSecret) {
     const oauth = new GoogleOAuth(googleClientId, googleClientSecret)
     gmailService = new GmailService(db, oauth)
   }
 
   // Search and context engines
-  const embeddingClient = new EmbeddingClient(config.openRouterKey || undefined)
+  const embeddingClient = new EmbeddingClient(deferredConfig.openRouterKey || undefined)
   searchEngine = new SearchEngine(db, embeddingClient)
   contextEngine = new ContextEngine(db)
 

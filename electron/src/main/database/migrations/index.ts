@@ -823,4 +823,15 @@ export const migrations: Migration[] = [
       db.prepare(`UPDATE taskItems SET createdBy = 'Nick Norris' WHERE id = 3 AND createdBy != 'Nick Norris'`).run()
     },
   },
+  {
+    version: 38,
+    name: 'v38_gmailTokenColumns',
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE gmailAccounts ADD COLUMN accessToken TEXT;
+        ALTER TABLE gmailAccounts ADD COLUMN refreshToken TEXT;
+        ALTER TABLE gmailAccounts ADD COLUMN tokenExpiresAt DATETIME;
+      `)
+    },
+  },
 ]
