@@ -154,9 +154,22 @@ export default function SettingsTabGmail({ config, onChange }: Props) {
       </Section>
 
       <Section title="Whitelist Rules">
-        <p className="text-[10px] text-neutral-600">
-          Only emails matching these patterns will be imported. Assign a client and priority to auto-categorize tasks.
+        <p className="text-[10px] text-neutral-600 leading-relaxed">
+          Whitelist rules control which emails get imported and analyzed.
+          Without any rules, <span className="text-amber-400 font-medium">all incoming emails will be processed</span>, which
+          can consume API tokens quickly on high-volume inboxes. Add rules to filter by sender
+          (e.g. <span className="font-mono text-neutral-500">*@client.com</span>) or subject
+          (e.g. <span className="font-mono text-neutral-500">subject:invoice</span>). You can also assign a client and
+          priority to auto-categorize the resulting tasks.
         </p>
+
+        {rules.length === 0 && accounts.length > 0 && (
+          <div className="flex items-start gap-2 px-2.5 py-2 rounded bg-amber-500/10 border border-amber-500/20">
+            <span className="text-amber-400 text-xs leading-relaxed">
+              No whitelist rules set — every email in your connected account will be imported and analyzed. Add at least one rule to limit which emails are processed.
+            </span>
+          </div>
+        )}
 
         {/* Add rule form */}
         <div className="space-y-1.5">

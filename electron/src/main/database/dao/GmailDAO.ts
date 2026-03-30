@@ -35,11 +35,19 @@ export class GmailDAO {
     const now = new Date().toISOString()
     this.db
       .prepare(
-        `INSERT INTO gmailAccounts (id, email, isActive, createdAt)
-         VALUES (?, ?, 1, ?)`
+        `INSERT INTO gmailAccounts (id, email, isActive, createdAt, accessToken, refreshToken, tokenExpiresAt)
+         VALUES (?, ?, 1, ?, ?, ?, ?)`
       )
-      .run(id, data.email, now)
+      .run(id, data.email, now, data.accessToken, data.refreshToken, data.expiresAt)
     return this.getById(id)!
+  }
+
+  updateTokens(id: string, accessToken: string, refreshToken: string, expiresAt: string): void {
+    this.db
+      .prepare(
+        `UPDATE gmailAccounts SET accessToken = ?, refreshToken = ?, tokenExpiresAt = ? WHERE id = ?`
+      )
+      .run(accessToken, refreshToken, expiresAt, id)
   }
 
   update(

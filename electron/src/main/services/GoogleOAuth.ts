@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import http from 'node:http'
 import { URL, URLSearchParams } from 'node:url'
-import { BrowserWindow } from 'electron'
+import { shell } from 'electron'
 
 export interface OAuthTokens {
   accessToken: string
@@ -12,8 +12,9 @@ export interface OAuthTokens {
 /**
  * Handles Google OAuth 2.0 authorization code flow.
  *
- * Opens a BrowserWindow for the user to sign in, runs a local HTTP server
- * to receive the callback, then exchanges the authorization code for tokens.
+ * Opens the user's default system browser for sign-in (Google blocks embedded
+ * browsers like Electron's BrowserWindow), then receives the callback on a
+ * local HTTP server and exchanges the authorization code for tokens.
  */
 export class GoogleOAuth {
   private redirectUri = 'http://localhost:8912/oauth/callback'
@@ -28,22 +29,24 @@ export class GoogleOAuth {
   ) {}
 
   /**
-   * Start the OAuth flow: open a browser window for Google login, receive
+   * Start the OAuth flow: open the system browser for Google login, receive
    * the callback on a local HTTP server, exchange the code for tokens.
    */
   async authenticate(): Promise<OAuthTokens> {
     return new Promise<OAuthTokens>((resolve, reject) => {
       let server: http.Server | null = null
-      let authWindow: BrowserWindow | null = null
 
       // Generate a random state parameter for CSRF protection
       const oauthState = crypto.randomBytes(32).toString('hex')
 
+      // Timeout after 5 minutes — user may have closed the browser tab
+      const timeout = setTimeout(() => {
+        cleanup()
+        reject(new Error('OAuth timed out — no response received within 5 minutes'))
+      }, 5 * 60 * 1000)
+
       const cleanup = () => {
-        if (authWindow && !authWindow.isDestroyed()) {
-          authWindow.close()
-          authWindow = null
-        }
+        clearTimeout(timeout)
         if (server) {
           server.close()
           server = null
@@ -79,7 +82,7 @@ export class GoogleOAuth {
           if (error) {
             res.writeHead(200, { 'Content-Type': 'text/html' })
             res.end(
-              '<html><body><h2>Authorization denied.</h2><p>You can close this window.</p></body></html>'
+              '<html><body><h2>Authorization denied.</h2><p>You can close this tab.</p></body></html>'
             )
             cleanup()
             reject(new Error(`OAuth error: ${error}`))
@@ -101,7 +104,8 @@ export class GoogleOAuth {
 
           res.writeHead(200, { 'Content-Type': 'text/html' })
           res.end(
-            '<html><body><h2>Authorization successful!</h2><p>You can close this window.</p></body></html>'
+            '<html><body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#111;color:#fff">' +
+            '<div style="text-align:center"><h2>Authorization successful!</h2><p>You can close this tab and return to CodeFire.</p></div></body></html>'
           )
 
           cleanup()
@@ -131,36 +135,8 @@ export class GoogleOAuth {
 
         const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
 
-        // 3. Open BrowserWindow for user login
-        authWindow = new BrowserWindow({
-          width: 600,
-          height: 700,
-          show: true,
-          webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-          },
-        })
-
-        // Restrict navigation to Google OAuth domains
-        authWindow.webContents.on('will-navigate', (event, url) => {
-          const parsed = new URL(url)
-          const allowed = ['accounts.google.com', 'accounts.youtube.com', 'myaccount.google.com', 'localhost']
-          if (!allowed.includes(parsed.hostname)) {
-            event.preventDefault()
-          }
-        })
-
-        authWindow.loadURL(authUrl)
-
-        authWindow.on('closed', () => {
-          authWindow = null
-          // If the window is closed before callback, reject
-          if (server) {
-            cleanup()
-            reject(new Error('Authentication window was closed'))
-          }
-        })
+        // 3. Open in the user's default system browser
+        shell.openExternal(authUrl)
       })
 
       server.on('error', (err) => {

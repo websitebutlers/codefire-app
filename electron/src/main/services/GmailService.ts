@@ -42,6 +42,22 @@ export class GmailService {
   ) {
     this.gmailDAO = new GmailDAO(db)
     this.taskDAO = new TaskDAO(db)
+    this.loadTokensFromDB()
+  }
+
+  /** Load persisted tokens from the database into the in-memory Map */
+  private loadTokensFromDB(): void {
+    const accounts = this.gmailDAO.list()
+    for (const account of accounts) {
+      const row = account as any
+      if (row.accessToken && row.refreshToken) {
+        this.tokens.set(account.id, {
+          accessToken: row.accessToken,
+          refreshToken: row.refreshToken,
+          expiresAt: row.tokenExpiresAt ? new Date(row.tokenExpiresAt).getTime() : 0,
+        })
+      }
+    }
   }
 
   // ─── Account Management ──────────────────────────────────────────────────────
@@ -67,6 +83,7 @@ export class GmailService {
     if (existing) {
       // Reactivate and update tokens
       this.gmailDAO.update(existing.id, { isActive: 1 })
+      this.gmailDAO.updateTokens(existing.id, tokens.accessToken, tokens.refreshToken, new Date(tokens.expiresAt).toISOString())
       this.tokens.set(existing.id, tokens)
       return this.gmailDAO.getById(existing.id)!
     }
@@ -145,10 +162,6 @@ export class GmailService {
     const accessToken = await this.getValidToken(accountId)
     const rules = this.gmailDAO.listRules()
 
-    if (rules.length === 0) {
-      return [] // No whitelist rules, nothing to match
-    }
-
     // Fetch unread message IDs
     const messageIds = await this.fetchUnreadMessageIds(accessToken)
     if (messageIds.length === 0) {
@@ -167,8 +180,9 @@ export class GmailService {
       const metadata = await this.fetchMessageMetadata(accessToken, msgId)
       if (!metadata) continue
 
-      // Check against whitelist rules
-      if (!this.matchesWhitelist(metadata, rules)) {
+      // If whitelist rules exist, only process matching emails.
+      // If no rules are configured, process all emails.
+      if (rules.length > 0 && !this.matchesWhitelist(metadata, rules)) {
         continue
       }
 
@@ -315,6 +329,7 @@ export class GmailService {
 
       const refreshed = await this.oauth.refreshToken(tokens.refreshToken)
       this.tokens.set(accountId, refreshed)
+      this.gmailDAO.updateTokens(accountId, refreshed.accessToken, refreshed.refreshToken, new Date(refreshed.expiresAt).toISOString())
       return refreshed.accessToken
     }
 
@@ -427,6 +442,22 @@ export class GmailService {
       if (!rule.isActive) continue
 
       const pattern = rule.pattern.trim().toLowerCase()
+
+      // Wildcard match: "*" matches all senders
+      if (pattern === '*') {
+        return true
+      }
+
+      // Glob-style wildcard match: "*@domain.com" or "user@*"
+      if (pattern.includes('*')) {
+        const regex = new RegExp(
+          '^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$'
+        )
+        if (regex.test(senderEmail.toLowerCase())) {
+          return true
+        }
+        continue
+      }
 
       // Subject match: "subject:keyword"
       if (pattern.startsWith('subject:')) {
