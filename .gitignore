@@ -50,3 +50,6 @@ electron/dev.log
 
 # Security audit
 security-audit.md
+
+# MCP launcher deps (installed via npm install)
+mcp-node-modules/node_modules/
