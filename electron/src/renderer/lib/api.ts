@@ -215,6 +215,7 @@ export const api = {
 
   dialog: {
     selectFolder: () => invoke('dialog:selectFolder') as Promise<string | null>,
+    selectFiles: () => invoke('dialog:selectFiles') as Promise<string[] | null>,
   },
 
   files: {
@@ -331,6 +332,15 @@ export const api = {
       aspectRatio?: string
       imageSize?: string
       parentImageId?: number
+      mediaType?: string
+      negativePrompt?: string
+      seed?: number
+      durationSeconds?: number
+      audioEnabled?: number
+      resolution?: string
+      referenceImages?: string
+      status?: string
+      generationId?: string
     }) => invoke('images:create', data) as Promise<GeneratedImage>,
     delete: (id: number) =>
       invoke('images:delete', id) as Promise<boolean>,
@@ -338,8 +348,11 @@ export const api = {
       projectId: string
       prompt: string
       apiKey: string
+      model?: string
       aspectRatio?: string
       imageSize?: string
+      seed?: number
+      referenceImages?: string[]
     }) =>
       invoke('images:generate', data) as Promise<{
         error: string | null
@@ -349,6 +362,7 @@ export const api = {
       imageId: number
       prompt: string
       apiKey: string
+      model?: string
       aspectRatio?: string
       imageSize?: string
     }) =>
@@ -356,6 +370,8 @@ export const api = {
         error: string | null
         image: GeneratedImage | null
       }>,
+    resetConversation: () =>
+      invoke('images:resetConversation') as Promise<boolean>,
     readFile: (filePath: string) =>
       invoke('images:readFile', filePath) as Promise<string | null>,
   },

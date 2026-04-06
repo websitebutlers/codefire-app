@@ -8,7 +8,7 @@ import {
   ScrollText,
   Cloud,
   GitBranch,
-  Image,
+  Clapperboard,
   Clock,
   LayoutDashboard,
   AudioLines,
@@ -38,7 +38,7 @@ const tabs = [
   { id: 'Git', icon: GitBranch },
   { id: 'Docs', icon: BookOpen },
   { id: 'Browser', icon: Globe },
-  { id: 'Images', icon: Image },
+  { id: 'Media', icon: Clapperboard },
   { id: 'Transcribe', icon: AudioLines },
   { id: 'Reviews', icon: GitPullRequest },
 ] as const
