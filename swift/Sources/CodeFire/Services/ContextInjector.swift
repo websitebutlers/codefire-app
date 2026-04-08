@@ -246,6 +246,57 @@ class ContextInjector {
         }
     }
 
+    // MARK: - MCP Config Detection
+
+    /// Check if the codefire MCP server is configured for a given CLI.
+    func isMCPConfigured(for cli: CLIProvider, projectPath: String) -> Bool {
+        let configPath: String
+        switch cli.mcpConfigScope {
+        case .projectRoot(let filename):
+            guard !projectPath.isEmpty else { return false }
+            configPath = (projectPath as NSString).appendingPathComponent(filename)
+        case .userHome(let relativePath):
+            configPath = (NSHomeDirectory() as NSString).appendingPathComponent(relativePath)
+        }
+
+        switch cli {
+        case .claude, .gemini:
+            let dict = readJSONDict(at: configPath)
+            let servers = dict["mcpServers"] as? [String: Any] ?? [:]
+            return servers["codefire"] != nil
+        case .opencode:
+            let dict = readJSONDict(at: configPath)
+            let servers = dict["mcp"] as? [String: Any] ?? [:]
+            return servers["codefire"] != nil
+        case .codex:
+            guard fileManager.fileExists(atPath: configPath),
+                  let content = try? String(contentsOfFile: configPath, encoding: .utf8)
+            else { return false }
+            return content.contains("[mcp_servers.codefire]")
+        }
+    }
+
+    /// Returns the best CLI to suggest for MCP setup, or nil if all installed CLIs are already configured.
+    /// Priority: preferred CLI (if set & installed) → first installed unconfigured CLI.
+    func suggestedCLIForSetup(projectPath: String, preferred: CLIProvider) -> CLIProvider? {
+        // Check preferred CLI first
+        if preferred.isInstalled && !isMCPConfigured(for: preferred, projectPath: projectPath) {
+            return preferred
+        }
+        // Fall back to first installed but unconfigured CLI
+        let priority: [CLIProvider] = [.claude, .gemini, .codex, .opencode]
+        return priority.first { cli in
+            cli.isInstalled && !isMCPConfigured(for: cli, projectPath: projectPath)
+        }
+    }
+
+    /// Returns all installed CLIs that don't have codefire configured.
+    func unconfiguredCLIs(projectPath: String) -> [CLIProvider] {
+        CLIProvider.allCases.filter { cli in
+            cli.isInstalled && !isMCPConfigured(for: cli, projectPath: projectPath)
+        }
+    }
+
     // MARK: - JSON Helpers
 
     private func readJSONDict(at path: String) -> [String: Any] {

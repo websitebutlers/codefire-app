@@ -52,11 +52,11 @@ struct ChatMessageView: View {
                 .padding(.vertical, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color(nsColor: .windowBackgroundColor))
+                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.6))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 0.5)
+                        .stroke(Color(nsColor: .separatorColor).opacity(0.25), lineWidth: 0.5)
                 )
 
             // Action buttons — show on hover
@@ -144,6 +144,7 @@ private struct MarkdownContentView: View {
         case numberedItem(number: String, text: String)
         case blockquote(text: String)
         case codeBlock(code: String, language: String?)
+        case table(headers: [String], rows: [[String]])
         case divider
     }
 
@@ -229,6 +230,30 @@ private struct MarkdownContentView: View {
                 let text = String(trimmed[match.upperBound...])
                 blocks.append(.numberedItem(number: number, text: text))
                 i += 1
+                continue
+            }
+
+            // Table (pipes with separator row)
+            if trimmed.hasPrefix("|") && trimmed.hasSuffix("|") {
+                var tableLines: [String] = []
+                while i < lines.count {
+                    let l = lines[i].trimmingCharacters(in: .whitespaces)
+                    guard l.hasPrefix("|") else { break }
+                    tableLines.append(l)
+                    i += 1
+                }
+                if tableLines.count >= 2 {
+                    let parseCells: (String) -> [String] = { line in
+                        line.split(separator: "|", omittingEmptySubsequences: false)
+                            .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                    }
+                    let headers = parseCells(tableLines[0])
+                    // Skip separator row (row of dashes)
+                    let startRow = tableLines.count > 1 && tableLines[1].contains("---") ? 2 : 1
+                    let rows = tableLines[startRow...].map { parseCells($0) }
+                    blocks.append(.table(headers: headers, rows: Array(rows)))
+                }
                 continue
             }
 
@@ -323,6 +348,42 @@ private struct MarkdownContentView: View {
                         .stroke(Color(nsColor: .separatorColor).opacity(0.3), lineWidth: 0.5)
                 )
                 .textSelection(.enabled)
+
+        case .table(let headers, let rows):
+            VStack(alignment: .leading, spacing: 0) {
+                // Header row
+                HStack(spacing: 0) {
+                    ForEach(Array(headers.enumerated()), id: \.offset) { _, header in
+                        inlineText(header)
+                            .font(.system(size: 11, weight: .semibold))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                    }
+                }
+                .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+
+                Divider()
+
+                // Data rows
+                ForEach(Array(rows.enumerated()), id: \.offset) { rowIdx, row in
+                    HStack(spacing: 0) {
+                        ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                            inlineText(cell)
+                                .font(.system(size: 11))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                        }
+                    }
+                    .background(rowIdx % 2 == 1 ? Color(nsColor: .controlBackgroundColor).opacity(0.2) : Color.clear)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(nsColor: .separatorColor).opacity(0.3), lineWidth: 0.5)
+            )
 
         case .divider:
             Divider()

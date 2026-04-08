@@ -251,6 +251,7 @@ struct ProjectSidebarView: View {
         }
         .padding(.leading, 20)
         .padding(.trailing, 8)
+        .help(project.path)
         .popover(isPresented: Binding(
             get: { editingTagProjectId == project.id },
             set: { if !$0 { editingTagProjectId = nil } }
