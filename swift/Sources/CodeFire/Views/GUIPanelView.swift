@@ -84,8 +84,10 @@ struct GUIPanelView: View {
     @StateObject private var mcpMonitor = MCPConnectionMonitor()
     @StateObject private var browserViewModel = BrowserViewModel()
     @StateObject private var browserCommandExecutor = BrowserCommandExecutor()
-    @State private var showChatDrawer = false
-    @State private var showBriefingDrawer = false
+    @EnvironmentObject var appSettings: AppSettings
+    @State private var mcpBannerDismissed = false
+    @State private var mcpSetupResult: String?
+    @State private var showMCPSetupAlert = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -112,7 +114,6 @@ struct GUIPanelView: View {
                                 .foregroundColor(.secondary)
                         }
                         Spacer()
-                        chatButton
                         MCPIndicator(connections: mcpMonitor.connections, currentProjectId: nil)
                     }
                     .padding(.horizontal, 16)
@@ -131,6 +132,9 @@ struct GUIPanelView: View {
                     .padding(.vertical, 10)
 
                 Divider()
+
+                // MCP setup banner
+                mcpSetupBanner
 
                 // Tab bar
                 tabBar
@@ -190,31 +194,17 @@ struct GUIPanelView: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .overlay(alignment: .trailing) {
-            if showChatDrawer {
-                HStack(spacing: 0) {
-                    // Backdrop
-                    Color.black.opacity(0.15)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showChatDrawer = false
-                            }
-                        }
-
-                    // Drawer
-                    ChatDrawerView(isOpen: $showChatDrawer)
-                        .transition(.move(edge: .trailing))
-                }
-            }
-        }
         .onAppear {
             mcpMonitor.startPolling()
             browserCommandExecutor.start(browserViewModel: browserViewModel)
+            Task { await CLIProvider.refreshInstallationStatus() }
         }
         .onDisappear {
             mcpMonitor.stopPolling()
             browserCommandExecutor.stop()
+        }
+        .onChange(of: appState.currentProject) { _, _ in
+            mcpBannerDismissed = false  // Reset banner on project change
         }
         .onChange(of: premiumService.status.authenticated) { _, _ in
             // If user signed out while viewing a team tab, fall back to Tasks
@@ -222,6 +212,11 @@ struct GUIPanelView: View {
                !(premiumService.status.authenticated && premiumService.status.user != nil) {
                 appState.selectedTab = .tasks
             }
+        }
+        .alert("MCP Setup", isPresented: $showMCPSetupAlert) {
+            Button("OK") {}
+        } message: {
+            Text(mcpSetupResult ?? "")
         }
     }
 
@@ -253,9 +248,8 @@ struct GUIPanelView: View {
             Spacer()
 
             PresenceAvatarsView(projectId: appState.currentProject?.id)
-            terminalToggle
+            openInMenu
             NotificationBellView()
-            chatButton
             IndexIndicator(
                 isIndexing: contextEngine.isIndexing,
                 indexStatus: contextEngine.indexStatus,
@@ -277,28 +271,6 @@ struct GUIPanelView: View {
             )
             MCPIndicator(connections: mcpMonitor.connections, currentProjectId: appState.currentProject?.id, projectPath: appState.currentProject?.path)
         }
-    }
-
-    // MARK: - Chat Button
-
-    private var chatButton: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                showChatDrawer.toggle()
-            }
-        } label: {
-            Image(systemName: showChatDrawer ? "bubble.right.fill" : "bubble.right")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(showChatDrawer ? .accentColor : .secondary)
-                .frame(width: 28, height: 28)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(showChatDrawer ? Color.accentColor.opacity(0.12) : Color.clear)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Chat")
     }
 
     // MARK: - Terminal Toggle
@@ -327,6 +299,219 @@ struct GUIPanelView: View {
         }
         .buttonStyle(.plain)
         .help(appState.showTerminal ? "Hide Terminal" : "Show Terminal")
+    }
+
+    // MARK: - MCP Setup Banner
+
+    @ViewBuilder
+    private var mcpSetupBanner: some View {
+        if !mcpBannerDismissed,
+           let project = appState.currentProject {
+            let injector = ContextInjector()
+            let suggested = injector.suggestedCLIForSetup(
+                projectPath: project.path,
+                preferred: appSettings.preferredCLI
+            )
+            if let cli = suggested {
+                let unconfigured = injector.unconfiguredCLIs(projectPath: project.path)
+
+                HStack(spacing: 10) {
+                    Image(systemName: "antenna.radiowaves.left.and.right")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.accentColor)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("CodeFire MCP not configured")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Connect your AI coding agent to this project's tasks, sessions, and codebase context.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer()
+
+                    // Primary: set up for the suggested CLI
+                    if unconfigured.count > 1 {
+                        // Multiple unconfigured CLIs — use a menu
+                        Menu {
+                            ForEach(unconfigured, id: \.self) { c in
+                                Button {
+                                    performMCPSetup(cli: c, projectPath: project.path)
+                                } label: {
+                                    Label(c.displayName, systemImage: c.iconName)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("Set up for \(cli.shortName)")
+                                    .font(.system(size: 11, weight: .semibold))
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 8, weight: .bold))
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.accentColor)
+                            .foregroundColor(.white)
+                            .cornerRadius(6)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                    } else {
+                        // Single CLI — direct button
+                        Button {
+                            performMCPSetup(cli: cli, projectPath: project.path)
+                        } label: {
+                            Text("Set up for \(cli.shortName)")
+                                .font(.system(size: 11, weight: .semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.accentColor)
+                                .foregroundColor(.white)
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            mcpBannerDismissed = true
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Dismiss")
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color.accentColor.opacity(0.06))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private func performMCPSetup(cli: CLIProvider, projectPath: String) {
+        let injector = ContextInjector()
+        do {
+            let configPath = try injector.installMCP(for: cli, projectPath: projectPath)
+            mcpSetupResult = "MCP configured for \(cli.displayName) at \(configPath). Restart your CLI session to activate."
+            showMCPSetupAlert = true
+            withAnimation(.easeOut(duration: 0.2)) {
+                mcpBannerDismissed = true
+            }
+        } catch {
+            mcpSetupResult = "Failed to configure MCP: \(error.localizedDescription)"
+            showMCPSetupAlert = true
+        }
+    }
+
+    // MARK: - Open In Menu
+
+    /// Apps that can open a project directory, detected at render time.
+    private struct ExternalApp: Identifiable {
+        let id: String // bundle identifier
+        let name: String
+        let icon: String // SF Symbol
+        let category: String // "IDE" or "Terminal"
+
+        static let catalog: [ExternalApp] = [
+            // IDEs / Editors
+            ExternalApp(id: "com.microsoft.VSCode", name: "VS Code", icon: "chevron.left.forwardslash.chevron.right", category: "IDE"),
+            ExternalApp(id: "com.todesktop.230313mzl4w4u92", name: "Cursor", icon: "cursorarrow.rays", category: "IDE"),
+            ExternalApp(id: "dev.zed.Zed", name: "Zed", icon: "bolt.fill", category: "IDE"),
+            ExternalApp(id: "com.codeium.windsurf", name: "Windsurf", icon: "wind", category: "IDE"),
+            ExternalApp(id: "com.apple.dt.Xcode", name: "Xcode", icon: "hammer.fill", category: "IDE"),
+            ExternalApp(id: "com.sublimetext.4", name: "Sublime Text", icon: "text.cursor", category: "IDE"),
+            ExternalApp(id: "com.jetbrains.intellij", name: "IntelliJ IDEA", icon: "brain", category: "IDE"),
+            ExternalApp(id: "com.jetbrains.WebStorm", name: "WebStorm", icon: "globe", category: "IDE"),
+            ExternalApp(id: "com.jetbrains.pycharm", name: "PyCharm", icon: "cube.fill", category: "IDE"),
+            // Terminals
+            ExternalApp(id: "com.apple.Terminal", name: "Terminal", icon: "terminal", category: "Terminal"),
+            ExternalApp(id: "com.googlecode.iterm2", name: "iTerm", icon: "terminal.fill", category: "Terminal"),
+            ExternalApp(id: "dev.warp.Warp-Stable", name: "Warp", icon: "bolt.horizontal.fill", category: "Terminal"),
+            ExternalApp(id: "net.kovidgoyal.kitty", name: "Kitty", icon: "cat.fill", category: "Terminal"),
+            ExternalApp(id: "io.alacritty", name: "Alacritty", icon: "rectangle.on.rectangle", category: "Terminal"),
+            ExternalApp(id: "com.mitchellh.ghostty", name: "Ghostty", icon: "ghost", category: "Terminal"),
+        ]
+
+        /// Returns only apps that are currently installed.
+        static var installed: [ExternalApp] {
+            catalog.filter { app in
+                NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.id) != nil
+            }
+        }
+    }
+
+    private var openInMenu: some View {
+        Menu {
+            let apps = ExternalApp.installed
+            let ides = apps.filter { $0.category == "IDE" }
+            let terminals = apps.filter { $0.category == "Terminal" }
+
+            if !ides.isEmpty {
+                Section("Editors") {
+                    ForEach(ides) { app in
+                        Button {
+                            openProjectIn(app)
+                        } label: {
+                            Label(app.name, systemImage: app.icon)
+                        }
+                    }
+                }
+            }
+            if !terminals.isEmpty {
+                Section("Terminals") {
+                    ForEach(terminals) { app in
+                        Button {
+                            openProjectIn(app)
+                        } label: {
+                            Label(app.name, systemImage: app.icon)
+                        }
+                    }
+                }
+            }
+
+            if let path = appState.currentProject?.path {
+                Divider()
+                Button {
+                    NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
+                } label: {
+                    Label("Reveal in Finder", systemImage: "folder")
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.up.forward.app")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                Text("Open In")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Open project in an external editor or terminal")
+    }
+
+    private func openProjectIn(_ app: ExternalApp) {
+        guard let path = appState.currentProject?.path,
+              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.id)
+        else { return }
+
+        let projectURL = URL(fileURLWithPath: path)
+        let config = NSWorkspace.OpenConfiguration()
+        NSWorkspace.shared.open([projectURL], withApplicationAt: appURL, configuration: config)
     }
 
     // MARK: - Tab Bar
