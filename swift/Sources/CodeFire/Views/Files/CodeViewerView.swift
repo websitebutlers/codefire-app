@@ -6,6 +6,9 @@ import AppKit
 struct CodeViewerView: NSViewRepresentable {
     let content: String
     let language: String?
+    var onCreateTask: ((String) -> Void)? = nil
+    var onAddToNotes: ((String) -> Void)? = nil
+    var onInsertIntoTerminal: ((String) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -19,7 +22,7 @@ struct CodeViewerView: NSViewRepresentable {
         scrollView.drawsBackground = true
         scrollView.backgroundColor = NSColor.textBackgroundColor
 
-        let textView = NSTextView()
+        let textView = FileTextView()
         textView.isEditable = false
         textView.isSelectable = true
         textView.isRichText = false
@@ -32,6 +35,12 @@ struct CodeViewerView: NSViewRepresentable {
         textView.textContainer?.widthTracksTextView = false
         textView.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
+
+        textView.onCreateTask = onCreateTask
+        textView.onAddToNotes = onAddToNotes
+        textView.onInsertIntoTerminal = onInsertIntoTerminal
 
         scrollView.documentView = textView
 
@@ -51,6 +60,11 @@ struct CodeViewerView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: NSViewRepresentableContext<CodeViewerView>) {
         let coord = context.coordinator
+        if let fileTV = coord.textView as? FileTextView {
+            fileTV.onCreateTask = onCreateTask
+            fileTV.onAddToNotes = onAddToNotes
+            fileTV.onInsertIntoTerminal = onInsertIntoTerminal
+        }
         if coord.lastContent != content || coord.lastLanguage != language {
             if let textView = coord.textView {
                 applyHighlighting(to: textView, coordinator: coord)

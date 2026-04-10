@@ -185,21 +185,25 @@ struct TeamSettingsTab: View {
                                 .foregroundColor(.secondary)
                         }
                     } else {
-                        HStack {
-                            Text("Session expired or failed to load profile.")
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Could not load profile. Check your connection and retry.")
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
-                            Spacer()
-                            Button("Retry") {
-                                Task { await premiumService.ensureProfileLoaded() }
+                            HStack {
+                                Button {
+                                    Task { await premiumService.ensureProfileLoaded() }
+                                } label: {
+                                    Label("Retry", systemImage: "arrow.clockwise")
+                                }
+                                .font(.system(size: 11))
+                                .foregroundColor(.accentColor)
+                                Spacer()
+                                Button("Sign Out") {
+                                    premiumService.signOut()
+                                }
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
                             }
-                            .font(.system(size: 11))
-                            .foregroundColor(.accentColor)
-                            Button("Sign Out") {
-                                premiumService.signOut()
-                            }
-                            .font(.system(size: 11))
-                            .foregroundColor(.red)
                         }
                     }
                 }

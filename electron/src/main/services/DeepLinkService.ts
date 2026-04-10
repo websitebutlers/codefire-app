@@ -8,6 +8,10 @@ import { MCPServerManager } from './MCPServerManager'
  * Resolve the absolute path of a binary by checking common locations and `which`.
  * GUI-spawned processes on macOS don't inherit the user's shell PATH (nvm, Homebrew,
  * Volta, etc.), so bare command names like "node" or "claude" fail with ENOENT.
+ *
+ * Returns the absolute path if found, or the bare name as a last resort for
+ * non-critical binaries (like CLI tools). Use resolveNodePath() for node — it
+ * will throw if resolution fails.
  */
 function resolveAbsoluteBinary(name: string, extraPaths: string[] = []): string {
   // 1. Check well-known locations first (no shell needed)
@@ -17,17 +21,19 @@ function resolveAbsoluteBinary(name: string, extraPaths: string[] = []): string 
 
   // 2. Try `which` inside a login shell to pick up nvm/Homebrew/Volta PATH.
   //    Uses execFileSync with explicit shell args to avoid shell injection.
-  try {
-    const shell = process.env.SHELL || '/bin/zsh'
-    const result = execFileSync(shell, ['-lc', `which ${name}`], {
-      timeout: 5000,
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim()
-    if (result && fs.existsSync(result)) return result
-  } catch { /* not found via shell */ }
+  const shell = process.env.SHELL || '/bin/zsh'
+  for (const flag of ['-lc', '-ic']) {
+    try {
+      const result = execFileSync(shell, [flag, `which ${name}`], {
+        timeout: 5000,
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim()
+      if (result && fs.existsSync(result)) return result
+    } catch { /* not found via this shell mode */ }
+  }
 
-  // 3. Fallback: return bare name (will work if PATH happens to be correct)
+  // 3. Fallback: return bare name (caller should validate for critical binaries)
   return name
 }
 
@@ -110,7 +116,12 @@ export class DeepLinkService {
           )
           break
         case 'opencode':
-          return { success: false, cli, displayName, error: 'OpenCode requires a project context to configure MCP.' }
+          this.installJSONMCP(
+            path.join(os.homedir(), '.config', 'opencode', 'config.json'),
+            'mcp',
+            { type: 'local', command: [nodePath, serverPath] }
+          )
+          break
       }
       return { success: true, cli, displayName }
     } catch (err: unknown) {
@@ -183,15 +194,38 @@ export class DeepLinkService {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8')
   }
 
-  /** Resolve the absolute path to the node binary. */
+  /**
+   * Resolve the absolute path to the node binary.
+   * Throws if node cannot be found — callers must handle the error and show
+   * a diagnostic message rather than writing broken MCP config.
+   */
   static resolveNodePath(): string {
-    return resolveAbsoluteBinary('node', [
-      '/usr/local/bin/node',
+    const resolved = resolveAbsoluteBinary('node', [
+      // macOS — Homebrew (Apple Silicon first, then Intel)
       '/opt/homebrew/bin/node',
+      '/usr/local/bin/node',
+      // macOS/Linux — version managers
       path.join(os.homedir(), '.nvm/current/bin/node'),
       path.join(os.homedir(), '.volta/bin/node'),
+      path.join(os.homedir(), '.fnm/aliases/default/bin/node'),
+      path.join(os.homedir(), '.local/share/fnm/aliases/default/bin/node'),
+      path.join(os.homedir(), '.asdf/shims/node'),
+      path.join(os.homedir(), '.mise/shims/node'),
+      path.join(os.homedir(), '.proto/shims/node'),
+      path.join(os.homedir(), '.local/bin/node'),
+      // Linux — system packages
+      '/usr/bin/node',
+      // Windows
       'C:\\Program Files\\nodejs\\node.exe',
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'nodejs', 'node.exe'),
     ])
+    if (resolved === 'node' || !path.isAbsolute(resolved)) {
+      throw new Error(
+        'Could not find Node.js. CodeFire needs Node.js to run its MCP server. ' +
+        'Please install Node.js (https://nodejs.org) and restart CodeFire.'
+      )
+    }
+    return resolved
   }
 
   /**

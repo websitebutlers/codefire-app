@@ -35,20 +35,31 @@ enum KeychainHelper {
     // MARK: - File I/O
 
     private static func load() -> [String: String] {
-        guard let data = try? Data(contentsOf: storeURL),
-              let dict = try? JSONDecoder().decode([String: String].self, from: data)
-        else { return [:] }
-        return dict
+        do {
+            let data = try Data(contentsOf: storeURL)
+            let dict = try JSONDecoder().decode([String: String].self, from: data)
+            print("KeychainHelper: loaded \(dict.count) credential(s) from \(storeURL.path)")
+            return dict
+        } catch {
+            // File not existing on first launch is expected — only log if file exists but can't be read
+            if FileManager.default.fileExists(atPath: storeURL.path) {
+                print("KeychainHelper: WARNING — credentials file exists but failed to load: \(error)")
+            }
+            return [:]
+        }
     }
 
     private static func persist() {
-        guard let data = try? JSONEncoder().encode(store) else { return }
-        try? data.write(to: storeURL, options: [.atomic])
-        // Restrict file permissions to owner-only (600)
-        try? FileManager.default.setAttributes(
-            [.posixPermissions: 0o600],
-            ofItemAtPath: storeURL.path
-        )
+        do {
+            let data = try JSONEncoder().encode(store)
+            try data.write(to: storeURL, options: [.atomic])
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: storeURL.path
+            )
+        } catch {
+            print("KeychainHelper: FAILED to persist credentials: \(error)")
+        }
     }
 
     enum KeychainError: Error {

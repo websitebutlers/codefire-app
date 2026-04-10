@@ -132,6 +132,7 @@ struct TerminalWrapper: NSViewRepresentable {
     let initialCommand: String?
     let isActive: Bool
     @Binding var sendCommand: String?
+    @Binding var pasteRawText: String?
     var onShellStarted: ((pid_t) -> Void)?
 
     // MARK: - Coordinator
@@ -304,6 +305,13 @@ struct TerminalWrapper: NSViewRepresentable {
             context.coordinator.sendText(command + "\n")
             DispatchQueue.main.async {
                 sendCommand = nil
+            }
+        }
+
+        if let text = pasteRawText {
+            context.coordinator.sendText(text)
+            DispatchQueue.main.async {
+                pasteRawText = nil
             }
         }
     }

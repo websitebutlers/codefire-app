@@ -198,7 +198,9 @@ export default function TaskDetailSheet({
     setDragOver(false)
     const files = Array.from(e.dataTransfer.files)
     for (const file of files) {
-      const updated = await api.tasks.addAttachment(task.id, file.path)
+      const path = window.api.getPathForFile(file)
+      if (!path) continue
+      const updated = await api.tasks.addAttachment(task.id, path)
       if (updated) setAttachments(updated.attachments ? JSON.parse(updated.attachments) : [])
     }
   }

@@ -56,7 +56,7 @@ class PremiumService: ObservableObject {
         if accessToken != nil {
             status.authenticated = true
             status.enabled = true
-            // Restore user profile from token
+            isRestoringSession = true  // Set before Task so UI shows spinner immediately
             Task { await restoreUserProfile() }
         }
     }
@@ -110,14 +110,22 @@ class PremiumService: ObservableObject {
                         await loadTeamMembership()
                         autoStartSyncIfNeeded()
                     } else {
-                        print("PremiumService: retry after refresh still failed, signing out")
+                        // Retry after refresh returned non-200 — this is a permanent auth failure
+                        print("PremiumService: retry after refresh still failed (\((retryResponse as? HTTPURLResponse)?.statusCode ?? 0)), signing out")
                         clearTokens()
                         status.authenticated = false
                     }
-                } catch {
-                    print("PremiumService: refresh failed: \(error), signing out")
+                } catch let error as PremiumError {
+                    // PremiumError from refresh means the server explicitly rejected the token
+                    // (e.g., invalid_grant, 400) — this is a permanent failure, clear tokens
+                    print("PremiumService: refresh permanently failed: \(error), signing out")
                     clearTokens()
                     status.authenticated = false
+                } catch {
+                    // Network/transient error (URLError, timeout, DNS, etc.)
+                    // Keep the refresh token so the user can retry — don't sign out
+                    print("PremiumService: refresh failed with transient error: \(error) — keeping tokens for retry")
+                    // Leave status.authenticated = true so UI shows Retry instead of sign-in form
                 }
                 return
             }
@@ -132,7 +140,8 @@ class PremiumService: ObservableObject {
             print("PremiumService: team=\(status.team?.name ?? "none"), subscriptionActive=\(status.subscriptionActive)")
             autoStartSyncIfNeeded()
         } catch {
-            print("PremiumService: failed to restore user profile: \(error)")
+            // Network error on the initial /auth/v1/user call — transient, keep tokens
+            print("PremiumService: failed to restore user profile (transient): \(error) — keeping tokens for retry")
         }
     }
 

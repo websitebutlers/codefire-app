@@ -6,6 +6,9 @@ import AppKit
 struct CodeEditorView: NSViewRepresentable {
     @Binding var content: String
     let language: String?
+    var onCreateTask: ((String) -> Void)? = nil
+    var onAddToNotes: ((String) -> Void)? = nil
+    var onInsertIntoTerminal: ((String) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -19,7 +22,7 @@ struct CodeEditorView: NSViewRepresentable {
         scrollView.drawsBackground = true
         scrollView.backgroundColor = NSColor.textBackgroundColor
 
-        let textView = NSTextView()
+        let textView = FileTextView()
         textView.isEditable = true
         textView.isSelectable = true
         textView.isRichText = false
@@ -38,6 +41,8 @@ struct CodeEditorView: NSViewRepresentable {
             width: CGFloat.greatestFiniteMagnitude,
             height: CGFloat.greatestFiniteMagnitude
         )
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
 
         // Editing settings
         textView.allowsUndo = true
@@ -53,6 +58,10 @@ struct CodeEditorView: NSViewRepresentable {
 
         // Insertion point
         textView.insertionPointColor = NSColor.labelColor
+
+        textView.onCreateTask = onCreateTask
+        textView.onAddToNotes = onAddToNotes
+        textView.onInsertIntoTerminal = onInsertIntoTerminal
 
         scrollView.documentView = textView
 
@@ -74,6 +83,12 @@ struct CodeEditorView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: NSViewRepresentableContext<CodeEditorView>) {
         let coord = context.coordinator
+
+        if let fileTV = coord.textView as? FileTextView {
+            fileTV.onCreateTask = onCreateTask
+            fileTV.onAddToNotes = onAddToNotes
+            fileTV.onInsertIntoTerminal = onInsertIntoTerminal
+        }
 
         // Don't update if the user is actively editing (avoid fighting the user)
         guard !coord.isEditing else { return }

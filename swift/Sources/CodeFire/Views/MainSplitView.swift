@@ -3,15 +3,14 @@ import AppKit
 
 struct MainSplitView: View {
     @EnvironmentObject var appState: AppState
-    @State private var projectPath: String = ""
 
     var body: some View {
         HSplitView {
             ProjectSidebarView()
                 .frame(minWidth: 160, maxWidth: 240)
 
-            TerminalTabView(projectPath: $projectPath, projectId: appState.currentProject?.id ?? "")
-                .frame(minWidth: 300, idealWidth: 450, maxWidth: 550)
+            ChatPanelView()
+                .frame(minWidth: 280, idealWidth: 400, maxWidth: 550)
 
             GUIPanelView()
                 .frame(minWidth: 420, idealWidth: 720)
@@ -19,11 +18,6 @@ struct MainSplitView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .ignoresSafeArea()
         .background(WindowConfigurator())
-        .onChange(of: appState.currentProject) { _, project in
-            if let project = project {
-                projectPath = project.path
-            }
-        }
     }
 }
 

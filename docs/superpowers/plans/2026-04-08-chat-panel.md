@@ -1,10 +1,54 @@
+# Chat Panel Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Replace the terminal panel in the main window with a context-aware AI chat panel that uses OpenRouter and has access to the user's tasks, notes, sessions, and indexed codebase.
+
+**Architecture:** Extract the chat logic from the existing `ChatDrawerView` (drawer overlay) into a new `ChatPanelView` (resizable HSplitView column). Swap `TerminalTabView` for `ChatPanelView` in `MainSplitView`. Remove the chat drawer overlay from `GUIPanelView` since the chat is now always visible.
+
+**Tech Stack:** SwiftUI, GRDB, OpenRouter API (via ClaudeService), ContextAssembler (RAG)
+
+---
+
+## File Structure
+
+| File | Action | Responsibility |
+|------|--------|----------------|
+| `Views/Chat/ChatPanelView.swift` | Create | Main chat panel adapted for HSplitView column |
+| `Views/MainSplitView.swift` | Modify | Swap TerminalTabView → ChatPanelView |
+| `Views/GUIPanelView.swift` | Modify | Remove drawer overlay and chat button |
+
+Unchanged files (reused as-is):
+- `Views/Chat/ChatMessageView.swift` — bubble UI + action buttons + markdown
+- `Views/Chat/ChatDrawerView.swift` — kept for project windows
+- `Services/ClaudeService.swift` — OpenRouter API
+- `Services/ContextAssembler.swift` — RAG pipeline
+- `Models/ChatMessage.swift`, `Models/ChatConversation.swift` — GRDB models
+
+---
+
+### Task 1: Create ChatPanelView
+
+**Files:**
+- Create: `swift/Sources/CodeFire/Views/Chat/ChatPanelView.swift`
+
+- [ ] **Step 1: Create the ChatPanelView file**
+
+This is adapted from `ChatDrawerView` with these differences:
+- No `@Binding var isOpen` (always visible)
+- No fixed width (uses HSplitView frame constraints)
+- No shadow/overlay/separator (HSplitView handles dividers)
+- No close button in header
+- Header title says "CodeFire Chat" with green dot instead of just "Chat"
+
+```swift
 import SwiftUI
 import GRDB
 
-struct ChatDrawerView: View {
+struct ChatPanelView: View {
     @EnvironmentObject var appState: AppState
+
     @StateObject private var claudeService = ClaudeService()
-    @Binding var isOpen: Bool
 
     @State private var conversations: [ChatConversation] = []
     @State private var currentConversation: ChatConversation?
@@ -23,11 +67,9 @@ struct ChatDrawerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             header
             Divider()
 
-            // Messages
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
@@ -59,26 +101,16 @@ struct ChatDrawerView: View {
                 }
                 .onChange(of: claudeService.isGenerating) { _, isGenerating in
                     if isGenerating {
-                        withAnimation {
-                            proxy.scrollTo("loading", anchor: .bottom)
-                        }
+                        withAnimation { proxy.scrollTo("loading", anchor: .bottom) }
                     }
                 }
             }
 
             Divider()
 
-            // Input bar
             inputBar
         }
-        .frame(width: 380)
         .background(Color(nsColor: .controlBackgroundColor))
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(Color(nsColor: .separatorColor).opacity(0.5))
-                .frame(width: 1)
-        }
-        .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
         .onAppear { loadConversations() }
         .onChange(of: appState.currentProject?.id) { _, _ in
             loadConversations()
@@ -89,8 +121,12 @@ struct ChatDrawerView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
+            Circle()
+                .fill(Color.green)
+                .frame(width: 7, height: 7)
+
             VStack(alignment: .leading, spacing: 1) {
-                Text("Chat")
+                Text("CodeFire Chat")
                     .font(.system(size: 13, weight: .semibold))
                 Text(contextLabel)
                     .font(.system(size: 10))
@@ -99,7 +135,6 @@ struct ChatDrawerView: View {
 
             Spacer()
 
-            // Conversation picker
             if conversations.count > 1 {
                 Menu {
                     ForEach(conversations) { conv in
@@ -146,17 +181,6 @@ struct ChatDrawerView: View {
             .popover(isPresented: $showSettings) {
                 ChatSettingsPopover()
             }
-
-            Button {
-                isOpen = false
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .medium))
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundColor(.secondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -240,7 +264,7 @@ struct ChatDrawerView: View {
                 messages = []
             }
         } catch {
-            print("ChatDrawer: failed to load conversations: \(error)")
+            print("ChatPanel: failed to load conversations: \(error)")
         }
     }
 
@@ -254,7 +278,7 @@ struct ChatDrawerView: View {
                     .fetchAll(db)
             }
         } catch {
-            print("ChatDrawer: failed to load messages: \(error)")
+            print("ChatPanel: failed to load messages: \(error)")
         }
     }
 
@@ -271,7 +295,6 @@ struct ChatDrawerView: View {
         inputText = ""
 
         Task {
-            // Create conversation if needed
             if currentConversation == nil {
                 let title = String(text.prefix(60)) + (text.count > 60 ? "..." : "")
                 var conv = ChatConversation(
@@ -287,14 +310,13 @@ struct ChatDrawerView: View {
                     currentConversation = conv
                     conversations.insert(conv, at: 0)
                 } catch {
-                    print("ChatDrawer: failed to create conversation: \(error)")
+                    print("ChatPanel: failed to create conversation: \(error)")
                     return
                 }
             }
 
             guard let convId = currentConversation?.id else { return }
 
-            // Save user message
             var userMsg = ChatMessage(
                 conversationId: convId,
                 role: "user",
@@ -307,11 +329,10 @@ struct ChatDrawerView: View {
                 }
                 messages.append(userMsg)
             } catch {
-                print("ChatDrawer: failed to save user message: \(error)")
+                print("ChatPanel: failed to save user message: \(error)")
                 return
             }
 
-            // Assemble context (with RAG codebase search for project chats)
             let context: String
             if let project = appState.currentProject {
                 context = await ContextAssembler.projectContextWithRAG(
@@ -325,13 +346,10 @@ struct ChatDrawerView: View {
                 context = ContextAssembler.globalContext()
             }
 
-            // Build message history for Claude
             let history = messages.map { (role: $0.role, content: $0.content) }
 
-            // Call Claude
             guard let response = await claudeService.chat(messages: history, context: context) else {
-                // Save error as assistant message
-                let errorText = claudeService.lastError ?? "Failed to get response from Claude."
+                let errorText = claudeService.lastError ?? "Failed to get response."
                 var errorMsg = ChatMessage(
                     conversationId: convId,
                     role: "assistant",
@@ -345,7 +363,6 @@ struct ChatDrawerView: View {
                 return
             }
 
-            // Save assistant message
             var assistantMsg = ChatMessage(
                 conversationId: convId,
                 role: "assistant",
@@ -358,7 +375,6 @@ struct ChatDrawerView: View {
                 }
                 messages.append(assistantMsg)
 
-                // Update conversation timestamp
                 try await DatabaseService.shared.dbQueue.write { db in
                     try db.execute(
                         sql: "UPDATE chatConversations SET updatedAt = ? WHERE id = ?",
@@ -366,7 +382,7 @@ struct ChatDrawerView: View {
                     )
                 }
             } catch {
-                print("ChatDrawer: failed to save assistant message: \(error)")
+                print("ChatPanel: failed to save assistant message: \(error)")
             }
         }
     }
@@ -396,7 +412,7 @@ struct ChatDrawerView: View {
             }
             NotificationCenter.default.post(name: .tasksDidChange, object: nil)
         } catch {
-            print("ChatDrawer: failed to create task: \(error)")
+            print("ChatPanel: failed to create task: \(error)")
         }
     }
 
@@ -418,7 +434,7 @@ struct ChatDrawerView: View {
                 try note.insert(db)
             }
         } catch {
-            print("ChatDrawer: failed to create note: \(error)")
+            print("ChatPanel: failed to create note: \(error)")
         }
     }
 
@@ -430,102 +446,234 @@ struct ChatDrawerView: View {
         )
     }
 }
+```
 
-// MARK: - Chat Settings Popover
+Note: `ChatSettingsPopover` and `ThinkingIndicator` are `private` in `ChatDrawerView.swift`. They need to be accessible from `ChatPanelView` too. The simplest approach: make them `internal` (remove `private`).
 
+- [ ] **Step 2: Make ChatSettingsPopover and ThinkingIndicator accessible**
+
+In `swift/Sources/CodeFire/Views/Chat/ChatDrawerView.swift`, change the visibility of `ChatSettingsPopover` and `ThinkingIndicator` from `private` to `internal` (the default).
+
+Change line 436:
+```swift
+// Before:
+private struct ChatSettingsPopover: View {
+// After:
 struct ChatSettingsPopover: View {
-    private let modelsService = OpenRouterModelsService.shared
+```
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Chat Settings")
-                .font(.system(size: 13, weight: .semibold))
-
-            GroupBox("Model") {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(modelsService.displayName(for: ClaudeService.openRouterModel))
-                        .font(.system(size: 12, weight: .medium))
-                    Text(ClaudeService.openRouterModel)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                    Text("Configure in Settings \u{2192} CodeFire Engine")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(4)
-            }
-
-            GroupBox("API Key") {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Circle()
-                            .fill(ClaudeService.openRouterAPIKey?.isEmpty == false ? Color.green : Color.red)
-                            .frame(width: 8, height: 8)
-                        Text(ClaudeService.openRouterAPIKey?.isEmpty == false ? "API key configured" : "No API key set")
-                            .font(.system(size: 11))
-                    }
-                    Text("Configure in Settings \u{2192} CodeFire Engine")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(4)
-            }
-        }
-        .padding(12)
-        .frame(width: 260)
-    }
-}
-
-// MARK: - Thinking Indicator
-
+Change line 487:
+```swift
+// Before:
+private struct ThinkingIndicator: View {
+// After:
 struct ThinkingIndicator: View {
-    private static let phrases = [
-        "Thinking...",
-        "Searching the codebase...",
-        "Digging through files...",
-        "Scouring memories...",
-        "Connecting the dots...",
-        "Reading the source...",
-        "Pulling context together...",
-        "Checking notes and tasks...",
-        "Almost there...",
-    ]
+```
 
-    @State private var currentIndex = 0
-    @State private var opacity: Double = 1.0
+- [ ] **Step 3: Build to verify ChatPanelView compiles**
 
-    var body: some View {
-        HStack(spacing: 6) {
-            ProgressView()
-                .controlSize(.small)
-                .scaleEffect(0.7)
-            Text(Self.phrases[currentIndex])
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-                .opacity(opacity)
-        }
-        .onAppear {
-            startCycling()
-        }
+Run: `cd swift && swift build`
+Expected: Build succeeds. ChatPanelView compiles but isn't used yet.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add swift/Sources/CodeFire/Views/Chat/ChatPanelView.swift swift/Sources/CodeFire/Views/Chat/ChatDrawerView.swift
+git commit -m "feat: add ChatPanelView extracted from ChatDrawerView"
+```
+
+---
+
+### Task 2: Wire ChatPanelView into MainSplitView
+
+**Files:**
+- Modify: `swift/Sources/CodeFire/Views/MainSplitView.swift`
+
+- [ ] **Step 1: Replace TerminalTabView with ChatPanelView**
+
+In `MainSplitView.swift`, replace the terminal section with the chat panel. The full body becomes:
+
+```swift
+var body: some View {
+    HSplitView {
+        ProjectSidebarView()
+            .frame(minWidth: 160, maxWidth: 240)
+
+        ChatPanelView()
+            .frame(minWidth: 280, idealWidth: 400, maxWidth: 550)
+
+        GUIPanelView()
+            .frame(minWidth: 420, idealWidth: 720)
     }
+    .background(Color(nsColor: .windowBackgroundColor))
+    .ignoresSafeArea()
+    .background(WindowConfigurator())
+}
+```
 
-    private func startCycling() {
-        // Advance every 2.5s with a fade transition
-        Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { timer in
-            withAnimation(.easeOut(duration: 0.3)) {
-                opacity = 0
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                currentIndex = (currentIndex + 1) % Self.phrases.count
-                withAnimation(.easeIn(duration: 0.3)) {
-                    opacity = 1
+This removes:
+- The `@State private var projectPath` property (no longer needed)
+- The `if appState.showTerminal` conditional
+- The `TerminalTabView` reference
+- The `.onChange(of: appState.currentProject)` that set `projectPath`
+
+- [ ] **Step 2: Build to verify**
+
+Run: `cd swift && swift build`
+Expected: Build succeeds. MainSplitView now renders Sidebar | Chat | Tabs.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add swift/Sources/CodeFire/Views/MainSplitView.swift
+git commit -m "feat: replace terminal with chat panel in main window"
+```
+
+---
+
+### Task 3: Remove chat drawer overlay from GUIPanelView
+
+**Files:**
+- Modify: `swift/Sources/CodeFire/Views/GUIPanelView.swift`
+
+- [ ] **Step 1: Remove showChatDrawer state**
+
+Remove this line from the state declarations:
+```swift
+@State private var showChatDrawer = false
+```
+
+- [ ] **Step 2: Remove the chat button from the home view header**
+
+In the home view header HStack (around line 115), remove `chatButton`:
+```swift
+// Before:
+Spacer()
+chatButton
+MCPIndicator(connections: mcpMonitor.connections, currentProjectId: nil)
+
+// After:
+Spacer()
+MCPIndicator(connections: mcpMonitor.connections, currentProjectId: nil)
+```
+
+- [ ] **Step 3: Remove the chat button from the project header**
+
+In the `projectHeader` computed property, remove `chatButton` from the HStack (around line 258):
+```swift
+// Before:
+NotificationBellView()
+chatButton
+IndexIndicator(
+
+// After:
+NotificationBellView()
+IndexIndicator(
+```
+
+- [ ] **Step 4: Remove the drawer overlay**
+
+Remove the entire `.overlay(alignment: .trailing)` block:
+```swift
+// Remove this entire block:
+.overlay(alignment: .trailing) {
+    if showChatDrawer {
+        HStack(spacing: 0) {
+            Color.black.opacity(0.15)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showChatDrawer = false
+                    }
                 }
-            }
+            ChatDrawerView(isOpen: $showChatDrawer)
+                .transition(.move(edge: .trailing))
         }
     }
 }
+```
 
-extension Notification.Name {
-    static let pasteToTerminal = Notification.Name("pasteToTerminal")
-    static let insertIntoTerminal = Notification.Name("insertIntoTerminal")
-}
+- [ ] **Step 5: Remove the chatButton computed property**
+
+Remove the entire `// MARK: - Chat Button` section (the `chatButton` computed property and its body).
+
+- [ ] **Step 6: Remove the showBriefingDrawer state if unused**
+
+Check if `showBriefingDrawer` is still referenced. If not, remove:
+```swift
+@State private var showBriefingDrawer = false
+```
+
+- [ ] **Step 7: Build to verify**
+
+Run: `cd swift && swift build`
+Expected: Build succeeds with no errors. No references to `showChatDrawer` or `chatButton` remain.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add swift/Sources/CodeFire/Views/GUIPanelView.swift
+git commit -m "feat: remove chat drawer overlay from main window (chat is now a panel)"
+```
+
+---
+
+### Task 4: Clean up terminal toggle for main window
+
+**Files:**
+- Modify: `swift/Sources/CodeFire/Views/GUIPanelView.swift`
+- Modify: `swift/Sources/CodeFire/ViewModels/AppState.swift`
+
+The terminal toggle in the project header no longer makes sense in the main window since the terminal has been replaced. However, `ProjectWindowView` still uses `showTerminal` for its terminal. We should remove the toggle from the main window header only.
+
+- [ ] **Step 1: Remove terminalToggle from the project header**
+
+In the `projectHeader` computed property, remove `terminalToggle`:
+```swift
+// Before:
+PresenceAvatarsView(projectId: appState.currentProject?.id)
+terminalToggle
+openInMenu
+
+// After:
+PresenceAvatarsView(projectId: appState.currentProject?.id)
+openInMenu
+```
+
+Note: Keep the `terminalToggle` computed property and `AppState.showTerminal` — they're still used by `ProjectWindowView`.
+
+- [ ] **Step 2: Build to verify**
+
+Run: `cd swift && swift build`
+Expected: Build succeeds.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add swift/Sources/CodeFire/Views/GUIPanelView.swift
+git commit -m "chore: remove terminal toggle from main window header"
+```
+
+---
+
+### Task 5: Final verification
+
+- [ ] **Step 1: Full build**
+
+Run: `cd swift && swift build`
+Expected: Clean build, no new warnings from our changes.
+
+- [ ] **Step 2: Verify no dead code**
+
+Check that `ChatDrawerView` is still referenced by `ProjectWindowView`:
+```bash
+grep -rn "ChatDrawerView" swift/Sources/CodeFire/Views/
+```
+Expected: At least one reference in `ProjectWindowView.swift` (drawer still used there) and the definition in `ChatDrawerView.swift`.
+
+- [ ] **Step 3: Verify ChatPanelView is referenced**
+
+```bash
+grep -rn "ChatPanelView" swift/Sources/CodeFire/Views/
+```
+Expected: Referenced in `MainSplitView.swift` and defined in `ChatPanelView.swift`.
