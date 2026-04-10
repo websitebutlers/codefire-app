@@ -43,6 +43,9 @@ Two platform implementations share the same SQLite database schema and MCP proto
 - **Task tracking** — Drag-and-drop Kanban board with priorities, labels, and task notes
 - **Live session monitoring** — Real-time token usage, cost tracking, and tool call stats
 - **Semantic code search** — Vector + keyword hybrid search across your indexed codebase
+- **Multi-tab file editor** — Browse and edit project files in tabs, with syntax highlighting, line numbers, Cmd+F find, unsaved-change protection, and a right-click context menu to turn any selection into a task, note, or terminal command
+- **Rendered markdown** — Notes and Claude Code memory files render as styled markdown (tables, headings, code blocks) with a one-click Edit/Preview toggle
+- **Claude Code memory editor** — Edit the memory files Claude Code auto-loads every session, straight from the app
 - **Built-in terminal** — Tabbed terminal sessions alongside your project views, with show/hide toggle
 - **Browser automation** — 40+ MCP tools for navigating, clicking, typing, screenshotting (Electron)
 - **Git integration** — Commits, staged changes, diffs, and branch management
