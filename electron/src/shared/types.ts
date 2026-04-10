@@ -272,6 +272,12 @@ export interface ElectronAPI {
   on: (channel: string, callback: (...args: unknown[]) => void) => () => void
   send: (channel: string, ...args: unknown[]) => void
   homePath: string
+  /**
+   * Returns the absolute filesystem path for an HTML `File` object.
+   * Replaces the deprecated `File.path` monkey-patch that Electron
+   * removed in v32. Call on files from drag-drop events or file inputs.
+   */
+  getPathForFile: (file: File) => string
 }
 
 declare global {

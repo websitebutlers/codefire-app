@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { IpcChannel } from '@shared/types'
 
 /**
@@ -59,4 +59,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.send(channel, ...args)
   },
   homePath: process.env.USERPROFILE || process.env.HOME || '',
+  // Electron 32+ removed the File.path monkey-patch. Callers that used
+  // to read `file.path` on drag-drop File objects now go through this
+  // explicit helper, which maps to webUtils.getPathForFile() under
+  // the hood.
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
 })
