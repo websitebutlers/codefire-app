@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Memory File Model
 
@@ -10,6 +11,11 @@ struct MemoryFile: Identifiable, Hashable {
     var displayName: String {
         isPrimary ? "MEMORY" : url.deletingPathExtension().lastPathComponent
     }
+}
+
+enum MemoryViewMode: String, CaseIterable {
+    case edit
+    case preview
 }
 
 // MARK: - Main View
@@ -28,15 +34,45 @@ struct MemoryEditorView: View {
     @State private var showingNewFile = false
     @State private var showingDeleteConfirm = false
     @State private var fileToDelete: MemoryFile?
+    @State private var viewMode: MemoryViewMode = .preview
+    @State private var errorMessage: String?
 
     private var hasUnsavedChanges: Bool {
         editorContent != savedContent
     }
 
+    /// Directory containing the project's memory files.
+    ///
+    /// Prefers `project.claudeProject` (set when the project has been
+    /// scanned from `~/.claude/projects/`), and falls back to deriving
+    /// the path from `project.path` using Claude Code's forward-direction
+    /// encoding so the tab still works for projects that haven't been
+    /// opened in Claude Code from this machine yet.
     private var memoryDir: URL? {
-        guard let claudeProject = appState.currentProject?.claudeProject else { return nil }
-        return URL(fileURLWithPath: claudeProject)
+        guard let project = appState.currentProject else { return nil }
+
+        if let claudeProject = project.claudeProject {
+            return URL(fileURLWithPath: claudeProject)
+                .appendingPathComponent("memory", isDirectory: true)
+        }
+
+        guard !project.path.isEmpty else { return nil }
+        let encoded = Self.encodeProjectPath(project.path)
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude", isDirectory: true)
+            .appendingPathComponent("projects", isDirectory: true)
+            .appendingPathComponent(encoded, isDirectory: true)
             .appendingPathComponent("memory", isDirectory: true)
+    }
+
+    /// Forward-direction project path encoding, matching Claude Code.
+    /// Slashes, spaces, and dots all become `-`. Hyphens stay as-is,
+    /// making the transform ambiguous in reverse but trivial forward.
+    private static func encodeProjectPath(_ path: String) -> String {
+        path
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: ".", with: "-")
     }
 
     var body: some View {
@@ -76,14 +112,43 @@ struct MemoryEditorView: View {
 
             Divider()
 
+            if let error = errorMessage {
+                errorBanner(message: error)
+            }
+
             HSplitView {
                 fileListPanel
                     .frame(minWidth: 140, idealWidth: 170, maxWidth: 220)
 
                 editorPanel
-                    .frame(minWidth: 300)
+                    .frame(minWidth: 400, idealWidth: 700)
             }
         }
+    }
+
+    private func errorBanner(message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11))
+                .foregroundColor(.red)
+            Text(message)
+                .font(.system(size: 11))
+                .foregroundColor(.red)
+                .lineLimit(2)
+            Spacer()
+            Button {
+                errorMessage = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .frame(width: 16, height: 16)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.red.opacity(0.08))
     }
 
     // MARK: - Index Status Card
@@ -253,6 +318,25 @@ struct MemoryEditorView: View {
 
                     Spacer()
 
+                    // Edit / Preview toggle
+                    Picker("", selection: $viewMode) {
+                        Text("Edit").tag(MemoryViewMode.edit)
+                        Text("Preview").tag(MemoryViewMode.preview)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 140)
+                    .help("Toggle between raw markdown and rendered preview")
+
+                    // Open in Finder
+                    Button(action: openMemoryFolderInFinder) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Show memory folder in Finder")
+
                     if hasUnsavedChanges {
                         Text("Unsaved")
                             .font(.system(size: 10, weight: .medium))
@@ -291,17 +375,46 @@ struct MemoryEditorView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(!hasUnsavedChanges)
+                    .keyboardShortcut("s", modifiers: .command)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
 
                 Divider()
 
-                // Text editor
-                TextEditor(text: $editorContent)
-                    .font(.system(size: 13, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .padding(8)
+                // Content area
+                switch viewMode {
+                case .edit:
+                    CodeEditorView(
+                        content: $editorContent,
+                        language: "markdown",
+                        onCreateTask: { createTask(from: $0) },
+                        onAddToNotes: { addToNotes($0) },
+                        onInsertIntoTerminal: { insertIntoTerminal($0) }
+                    )
+                case .preview:
+                    ScrollView {
+                        if editorContent.isEmpty {
+                            VStack(spacing: 6) {
+                                Image(systemName: "doc.text")
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(.tertiary)
+                                Text("Nothing to preview")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                Text("Switch to Edit to add content")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                        } else {
+                            MarkdownContentView(content: editorContent)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(14)
+                        }
+                    }
+                }
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "doc.text")
@@ -435,6 +548,9 @@ struct MemoryEditorView: View {
         // (the user can always revert). Auto-save would be better long-term.
         selectedFile = file
         loadFileContent(file)
+        // Empty files open in edit so the cursor is ready to type;
+        // anything with content opens in rendered preview.
+        viewMode = editorContent.isEmpty ? .edit : .preview
     }
 
     private func loadFileContent(_ file: MemoryFile) {
@@ -442,9 +558,11 @@ struct MemoryEditorView: View {
             let content = try String(contentsOf: file.url, encoding: .utf8)
             editorContent = content
             savedContent = content
+            errorMessage = nil
         } catch {
             editorContent = ""
             savedContent = ""
+            errorMessage = "Could not read \(file.id): \(error.localizedDescription)"
             print("MemoryEditor: failed to read \(file.id): \(error)")
         }
     }
@@ -454,33 +572,47 @@ struct MemoryEditorView: View {
         do {
             try editorContent.write(to: file.url, atomically: true, encoding: .utf8)
             savedContent = editorContent
+            errorMessage = nil
         } catch {
+            errorMessage = "Failed to save \(file.id): \(error.localizedDescription)"
             print("MemoryEditor: failed to save \(file.id): \(error)")
         }
     }
 
     private func createFile(name: String, content: String) {
-        guard let dir = memoryDir else { return }
+        guard let dir = memoryDir else {
+            errorMessage = "No memory folder: select a project first."
+            return
+        }
 
         let fm = FileManager.default
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        do {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            errorMessage = "Could not create memory folder: \(error.localizedDescription)"
+            print("MemoryEditor: failed to create directory: \(error)")
+            return
+        }
 
         let filename = name.hasSuffix(".md") ? name : "\(name).md"
         let fileURL = dir.appendingPathComponent(filename)
 
         guard !fm.fileExists(atPath: fileURL.path) else {
+            errorMessage = "\(filename) already exists."
             print("MemoryEditor: file already exists: \(filename)")
             return
         }
 
         do {
             try content.write(to: fileURL, atomically: true, encoding: .utf8)
+            errorMessage = nil
             loadFiles()
             // Select the newly created file.
             if let newFile = files.first(where: { $0.id == filename }) {
                 selectFile(newFile)
             }
         } catch {
+            errorMessage = "Could not create \(filename): \(error.localizedDescription)"
             print("MemoryEditor: failed to create \(filename): \(error)")
         }
     }
@@ -493,10 +625,83 @@ struct MemoryEditorView: View {
                 editorContent = ""
                 savedContent = ""
             }
+            errorMessage = nil
             loadFiles()
         } catch {
+            errorMessage = "Could not delete \(file.id): \(error.localizedDescription)"
             print("MemoryEditor: failed to delete \(file.id): \(error)")
         }
+    }
+
+    // MARK: - Finder / Context menu actions
+
+    private func openMemoryFolderInFinder() {
+        guard let dir = memoryDir else {
+            errorMessage = "No memory folder: select a project first."
+            return
+        }
+        // Create it on demand so Finder doesn't land on a missing path
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(dir)
+    }
+
+    private func createTask(from content: String) {
+        let title = "Memory: " + String(content.prefix(60))
+            .replacingOccurrences(of: "\n", with: " ")
+        var task = TaskItem(
+            id: nil,
+            projectId: appState.currentProject?.id ?? "__global__",
+            title: title,
+            description: content,
+            status: "todo",
+            priority: 2,
+            sourceSession: nil,
+            source: "memory",
+            createdAt: Date(),
+            completedAt: nil,
+            labels: nil,
+            attachments: nil
+        )
+        task.setLabels(["feature"])
+        do {
+            try DatabaseService.shared.dbQueue.write { db in
+                try task.insert(db)
+            }
+            NotificationCenter.default.post(name: .tasksDidChange, object: nil)
+        } catch {
+            errorMessage = "Could not create task: \(error.localizedDescription)"
+        }
+    }
+
+    private func addToNotes(_ content: String) {
+        let title = "Memory: " + String(content.prefix(60))
+            .replacingOccurrences(of: "\n", with: " ")
+        var note = Note(
+            projectId: appState.currentProject?.id ?? "__global__",
+            title: title,
+            content: content,
+            pinned: false,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        if appState.currentProject == nil {
+            note.isGlobal = true
+        }
+        do {
+            try DatabaseService.shared.dbQueue.write { db in
+                try note.insert(db)
+            }
+        } catch {
+            errorMessage = "Could not add to notes: \(error.localizedDescription)"
+        }
+    }
+
+    private func insertIntoTerminal(_ content: String) {
+        NotificationCenter.default.post(
+            name: .insertIntoTerminal,
+            object: nil,
+            userInfo: ["text": content]
+        )
     }
 
     private func createStarterMemory() {
