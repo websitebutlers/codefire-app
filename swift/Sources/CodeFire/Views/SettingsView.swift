@@ -191,20 +191,11 @@ private struct TerminalSettingsTab: View {
 private struct ContextEngineSettingsTab: View {
     @ObservedObject var settings: AppSettings
     @EnvironmentObject var contextEngine: ContextEngine
+    @StateObject private var modelsService = OpenRouterModelsService.shared
     @State private var apiKey: String = ClaudeService.openRouterAPIKey ?? ""
     @State private var selectedChatModel: String = ClaudeService.openRouterModel
-
-    private let chatModels = [
-        ("google/gemini-3.1-pro-preview", "Gemini 3.1 Pro"),
-        ("google/gemini-3-flash-preview", "Gemini 3 Flash"),
-        ("qwen/qwen3.5-plus-02-15", "Qwen 3.5 Plus"),
-        ("qwen/qwen3-coder-next", "Qwen3 Coder Next"),
-        ("deepseek/deepseek-v3.2", "DeepSeek V3.2"),
-        ("minimax/minimax-m2.5", "MiniMax M2.5"),
-        ("z-ai/glm-5", "GLM-5"),
-        ("moonshotai/kimi-k2.5", "Kimi K2.5"),
-        ("openai/gpt-5.4", "GPT-5.4"),
-    ]
+    @State private var modelSearchText: String = ""
+    @State private var isEditingModel: Bool = false
 
     var body: some View {
         Form {
@@ -266,19 +257,77 @@ private struct ContextEngineSettingsTab: View {
             }
 
             Section("Chat Model") {
-                Picker("Model", selection: $selectedChatModel) {
-                    ForEach(chatModels, id: \.0) { (id, label) in
-                        Text(label).tag(id)
+                // Current selection
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(modelsService.displayName(for: selectedChatModel))
+                            .font(.system(size: 12, weight: .medium))
+                        Text(selectedChatModel)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
                     }
+                    Spacer()
+                    Button(isEditingModel ? "Done" : "Change") {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            isEditingModel.toggle()
+                            if !isEditingModel { modelSearchText = "" }
+                        }
+                    }
+                    .font(.system(size: 11))
                 }
-                .onChange(of: selectedChatModel) { _, newValue in
-                    ClaudeService.openRouterModel = newValue
+
+                if isEditingModel {
+                    TextField("Type model ID or search (e.g. qwen/qwen3-coder)", text: $modelSearchText)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12))
+                        .onSubmit {
+                            if modelSearchText.contains("/") {
+                                selectedChatModel = modelSearchText
+                                ClaudeService.openRouterModel = modelSearchText
+                                isEditingModel = false
+                                modelSearchText = ""
+                            }
+                        }
+
+                    // Model list
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 1) {
+                            ForEach(filteredModels) { model in
+                                modelRow(model)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 220)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                    HStack {
+                        if modelsService.isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                                .scaleEffect(0.7)
+                            Text("Loading models...")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                        } else if let error = modelsService.lastError {
+                            Text(error)
+                                .font(.system(size: 10))
+                                .foregroundColor(.red)
+                        }
+                        Spacer()
+                        Button("Refresh") {
+                            Task { await modelsService.refreshModels() }
+                        }
+                        .font(.system(size: 10))
+                        .disabled(modelsService.isLoading)
+                    }
                 }
 
                 Text("Used for the built-in chat. Same API key as above.")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
             }
+            .task { await modelsService.loadModels() }
 
             Section("Automation") {
                 Toggle("Auto-snapshot sessions", isOn: $settings.autoSnapshotSessions)
@@ -306,6 +355,68 @@ private struct ContextEngineSettingsTab: View {
         case "indexing": return .orange
         case "error": return .red
         default: return .secondary
+        }
+    }
+
+    // MARK: - Model Picker Helpers
+
+    private var filteredModels: [OpenRouterModel] {
+        if modelSearchText.isEmpty { return modelsService.models }
+        let query = modelSearchText.lowercased()
+        return modelsService.models.filter {
+            $0.id.lowercased().contains(query) || $0.name.lowercased().contains(query)
+        }
+    }
+
+    private func modelRow(_ model: OpenRouterModel) -> some View {
+        let isSelected = model.id == selectedChatModel
+        return Button {
+            selectedChatModel = model.id
+            ClaudeService.openRouterModel = model.id
+            isEditingModel = false
+            modelSearchText = ""
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.name)
+                        .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                        .foregroundColor(isSelected ? .accentColor : .primary)
+                    HStack(spacing: 8) {
+                        Text(model.id)
+                            .font(.system(size: 10, design: .monospaced))
+                        if model.contextLength > 0 {
+                            Text(formatContext(model.contextLength))
+                                .font(.system(size: 10))
+                        }
+                        if model.promptPrice > 0 {
+                            Text("$\(String(format: "%.1f", model.promptPrice))/M in")
+                                .font(.system(size: 10))
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.accentColor)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func formatContext(_ tokens: Int) -> String {
+        if tokens >= 1_000_000 {
+            let m = Double(tokens) / 1_000_000
+            return m.truncatingRemainder(dividingBy: 1) == 0
+                ? "\(Int(m))M ctx"
+                : String(format: "%.1fM ctx", m)
+        } else {
+            return "\(tokens / 1000)K ctx"
         }
     }
 }

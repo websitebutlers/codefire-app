@@ -248,6 +248,7 @@ struct GUIPanelView: View {
             Spacer()
 
             PresenceAvatarsView(projectId: appState.currentProject?.id)
+            terminalToggle
             openInMenu
             NotificationBellView()
             IndexIndicator(

@@ -434,16 +434,7 @@ struct ChatDrawerView: View {
 // MARK: - Chat Settings Popover
 
 struct ChatSettingsPopover: View {
-    private let modelNames: [String: String] = [
-        "google/gemini-3.1-pro-preview": "Gemini 3.1 Pro",
-        "google/gemini-3-flash-preview": "Gemini 3 Flash",
-        "qwen/qwen3.5-plus-02-15": "Qwen 3.5 Plus",
-        "qwen/qwen3-coder-next": "Qwen3 Coder Next",
-        "deepseek/deepseek-v3.2": "DeepSeek V3.2",
-        "minimax/minimax-m2.5": "MiniMax M2.5",
-        "z-ai/glm-5": "GLM-5",
-        "moonshotai/kimi-k2.5": "Kimi K2.5",
-    ]
+    private let modelsService = OpenRouterModelsService.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -452,8 +443,11 @@ struct ChatSettingsPopover: View {
 
             GroupBox("Model") {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(modelNames[ClaudeService.openRouterModel] ?? ClaudeService.openRouterModel)
+                    Text(modelsService.displayName(for: ClaudeService.openRouterModel))
                         .font(.system(size: 12, weight: .medium))
+                    Text(ClaudeService.openRouterModel)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
                     Text("Configure in Settings \u{2192} CodeFire Engine")
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
