@@ -1,5 +1,10 @@
 import SwiftUI
 
+enum NoteViewMode: String, CaseIterable {
+    case edit
+    case preview
+}
+
 struct NoteEditorView: View {
     let note: Note
     let onSave: (String, String) -> Void
@@ -9,6 +14,7 @@ struct NoteEditorView: View {
     @EnvironmentObject var settings: AppSettings
     @State private var title: String = ""
     @State private var content: String = ""
+    @State private var viewMode: NoteViewMode = .preview
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,6 +30,17 @@ struct NoteEditorView: View {
                 }
 
                 Spacer()
+
+                // Edit / Preview segmented toggle
+                if !settings.demoMode {
+                    Picker("", selection: $viewMode) {
+                        Text("Edit").tag(NoteViewMode.edit)
+                        Text("Preview").tag(NoteViewMode.preview)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 140)
+                    .help("Toggle between raw markdown and rendered preview")
+                }
 
                 Button {
                     onTogglePin()
@@ -77,7 +94,7 @@ struct NoteEditorView: View {
 
             Divider()
 
-            // Content editor
+            // Content area — demo / edit / preview
             if settings.demoMode {
                 ScrollView {
                     Text(DemoContent.shared.mask(note.content.isEmpty ? "No content" : note.content, as: .snippet))
@@ -86,19 +103,50 @@ struct NoteEditorView: View {
                         .padding(12)
                 }
             } else {
-                TextEditor(text: $content)
-                    .font(.system(size: 13, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .padding(12)
+                switch viewMode {
+                case .edit:
+                    TextEditor(text: $content)
+                        .font(.system(size: 13, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .padding(12)
+                case .preview:
+                    ScrollView {
+                        if content.isEmpty {
+                            VStack(spacing: 6) {
+                                Image(systemName: "doc.text")
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(.tertiary)
+                                Text("Nothing to preview")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                Text("Switch to Edit to add content")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                        } else {
+                            MarkdownContentView(content: content)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(14)
+                        }
+                    }
+                }
             }
         }
         .onAppear {
             title = note.title
             content = note.content
+            viewMode = resolveInitialMode(for: note)
         }
         .onChange(of: note.id) { _, _ in
             title = note.title
             content = note.content
+            viewMode = resolveInitialMode(for: note)
         }
+    }
+
+    private func resolveInitialMode(for note: Note) -> NoteViewMode {
+        note.content.isEmpty ? .edit : .preview
     }
 }

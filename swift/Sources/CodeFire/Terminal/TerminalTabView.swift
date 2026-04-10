@@ -26,6 +26,7 @@ struct TerminalTabView: View {
     @State private var tabs: [TerminalTab] = []
     @State private var selectedTabId: UUID?
     @State private var commandToSend: String?
+    @State private var pasteRawText: String?
     @StateObject private var agentMonitor = AgentMonitor()
 
     var body: some View {
@@ -79,6 +80,7 @@ struct TerminalTabView: View {
                         initialCommand: tab.initialCommand,
                         isActive: isActive,
                         sendCommand: isActive ? $commandToSend : .constant(nil),
+                        pasteRawText: isActive ? $pasteRawText : .constant(nil),
                         onShellStarted: { [weak agentMonitor] pid in
                             tab.shellPid = pid
                             // Start monitoring if this is the active tab
@@ -141,6 +143,12 @@ struct TerminalTabView: View {
             guard let text = notification.userInfo?["text"] as? String else { return }
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .insertIntoTerminal)) { notification in
+            guard let text = notification.userInfo?["text"] as? String else { return }
+            // Writes the text directly to the active terminal's input buffer,
+            // no newline — the user can review before pressing Return.
+            pasteRawText = text
         }
     }
 

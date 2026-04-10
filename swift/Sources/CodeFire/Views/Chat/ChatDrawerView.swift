@@ -527,4 +527,5 @@ struct ThinkingIndicator: View {
 
 extension Notification.Name {
     static let pasteToTerminal = Notification.Name("pasteToTerminal")
+    static let insertIntoTerminal = Notification.Name("insertIntoTerminal")
 }
