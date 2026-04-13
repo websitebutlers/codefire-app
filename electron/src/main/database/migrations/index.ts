@@ -834,4 +834,23 @@ export const migrations: Migration[] = [
       `)
     },
   },
+
+  // Migration 39: Add video/media columns to generatedImages
+  {
+    version: 39,
+    name: 'v39_mediaColumns',
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE generatedImages ADD COLUMN mediaType TEXT DEFAULT 'image';
+        ALTER TABLE generatedImages ADD COLUMN negativePrompt TEXT;
+        ALTER TABLE generatedImages ADD COLUMN seed INTEGER;
+        ALTER TABLE generatedImages ADD COLUMN durationSeconds REAL;
+        ALTER TABLE generatedImages ADD COLUMN audioEnabled INTEGER DEFAULT 0;
+        ALTER TABLE generatedImages ADD COLUMN resolution TEXT;
+        ALTER TABLE generatedImages ADD COLUMN referenceImages TEXT;
+        ALTER TABLE generatedImages ADD COLUMN status TEXT DEFAULT 'complete';
+        ALTER TABLE generatedImages ADD COLUMN generationId TEXT;
+      `)
+    },
+  },
 ]

@@ -35,9 +35,14 @@ export function registerImageHandlers(db: Database.Database) {
     ) => imageDAO.create(data)
   )
 
-  ipcMain.handle('images:delete', (_e, id: number) =>
-    imageDAO.delete(id)
-  )
+  ipcMain.handle('images:delete', (_e, id: number) => {
+    const record = imageDAO.getById(id)
+    const ok = imageDAO.delete(id)
+    if (ok && record?.filePath) {
+      try { fs.unlinkSync(record.filePath) } catch { /* file may already be gone */ }
+    }
+    return ok
+  })
 
   ipcMain.handle('images:readFile', (_e, filePath: string) => {
     try {
@@ -59,30 +64,39 @@ export function registerImageHandlers(db: Database.Database) {
         projectId: string
         prompt: string
         apiKey: string
+        model?: string
         aspectRatio?: string
         imageSize?: string
+        seed?: number
+        referenceImages?: string[]
       }
     ) => {
-      const result = await imageGenService.generate(
-        data.prompt,
-        data.apiKey,
-        data.aspectRatio,
-        data.imageSize
-      )
+      const modelId = data.model || 'google/gemini-2.5-flash-image'
+
+      const result = await imageGenService.generate({
+        prompt: data.prompt,
+        apiKey: data.apiKey,
+        model: modelId,
+        aspectRatio: data.aspectRatio,
+        imageSize: data.imageSize,
+        seed: data.seed,
+        referenceImages: data.referenceImages,
+      })
 
       if (result.error || !result.imagePath) {
         return { error: result.error ?? 'No image generated', image: null }
       }
 
-      // Save to database
       const image = imageDAO.create({
         projectId: data.projectId,
         prompt: data.prompt,
         filePath: result.imagePath,
-        model: 'google/gemini-3.1-flash-image-preview',
+        model: modelId,
         responseText: result.responseText ?? undefined,
         aspectRatio: data.aspectRatio,
         imageSize: data.imageSize,
+        seed: data.seed,
+        referenceImages: data.referenceImages?.length ? JSON.stringify(data.referenceImages) : undefined,
       })
 
       return { error: null, image }
@@ -97,6 +111,7 @@ export function registerImageHandlers(db: Database.Database) {
         imageId: number
         prompt: string
         apiKey: string
+        model?: string
         aspectRatio?: string
         imageSize?: string
       }
@@ -106,24 +121,28 @@ export function registerImageHandlers(db: Database.Database) {
         return { error: 'Original image not found', image: null }
       }
 
+      const modelId = data.model || original.model
+
       const result = await imageGenService.editImage(
         original.filePath,
         data.prompt,
-        data.apiKey,
-        data.aspectRatio ?? original.aspectRatio ?? '1:1',
-        data.imageSize ?? original.imageSize ?? '1K'
+        {
+          apiKey: data.apiKey,
+          model: modelId,
+          aspectRatio: data.aspectRatio ?? original.aspectRatio ?? '1:1',
+          imageSize: data.imageSize ?? original.imageSize ?? '1K',
+        }
       )
 
       if (result.error || !result.imagePath) {
         return { error: result.error ?? 'No image generated', image: null }
       }
 
-      // Save to database with parentImageId link
       const image = imageDAO.create({
         projectId: original.projectId,
         prompt: data.prompt,
         filePath: result.imagePath,
-        model: 'google/gemini-3.1-flash-image-preview',
+        model: modelId,
         responseText: result.responseText ?? undefined,
         aspectRatio: data.aspectRatio ?? original.aspectRatio ?? '1:1',
         imageSize: data.imageSize ?? original.imageSize ?? '1K',
@@ -133,4 +152,10 @@ export function registerImageHandlers(db: Database.Database) {
       return { error: null, image }
     }
   )
+
+  // Reset conversation cache
+  ipcMain.handle('images:resetConversation', () => {
+    imageGenService.resetConversation()
+    return true
+  })
 }

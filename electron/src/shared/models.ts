@@ -255,6 +255,8 @@ export interface BriefingItem {
 
 // ─── Media Models ─────────────────────────────────────────────────────────────
 
+export type MediaItemType = 'image' | 'video'
+
 export interface GeneratedImage {
   id: number
   projectId: string
@@ -266,6 +268,16 @@ export interface GeneratedImage {
   imageSize: string | null
   parentImageId: number | null
   createdAt: string
+  // New media fields (nullable for backwards compat with existing rows)
+  mediaType: MediaItemType | null
+  negativePrompt: string | null
+  seed: number | null
+  durationSeconds: number | null
+  audioEnabled: number | null // 0 or 1
+  resolution: string | null
+  referenceImages: string | null // JSON array of file paths
+  status: string | null // 'generating' | 'polling' | 'complete' | 'error'
+  generationId: string | null // OpenRouter async generation ID for video
 }
 
 export interface Recording {

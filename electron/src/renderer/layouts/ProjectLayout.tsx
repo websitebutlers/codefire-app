@@ -27,7 +27,7 @@ const MemoryView = lazy(() => import('@renderer/views/MemoryView'))
 const ServicesView = lazy(() => import('@renderer/views/ServicesView'))
 const RulesView = lazy(() => import('@renderer/views/RulesView'))
 const GitView = lazy(() => import('@renderer/views/GitView'))
-const ImagesView = lazy(() => import('@renderer/views/ImagesView'))
+const MediaView = lazy(() => import('@renderer/views/MediaView'))
 const RecordingsView = lazy(() => import('@renderer/views/RecordingsView'))
 const BrowserView = lazy(() => import('@renderer/views/BrowserView'))
 const VisualizerView = lazy(() => import('@renderer/views/VisualizerView'))
@@ -178,14 +178,14 @@ export default function ProjectLayout({ projectId }: ProjectLayoutProps) {
         {tab === 'Services' && <ServicesView projectId={pid} projectPath={projectPath} />}
         {tab === 'Rules' && <RulesView projectId={pid} projectPath={projectPath} />}
         {tab === 'Git' && <GitView projectId={pid} projectPath={projectPath} />}
-        {tab === 'Images' && <ImagesView projectId={pid} />}
+        {tab === 'Media' && <MediaView projectId={pid} />}
         {tab === 'Transcribe' && <RecordingsView projectId={pid} />}
         {tab === 'Browser' && <BrowserView projectId={pid} />}
         {tab === 'Visualize' && <VisualizerView projectId={pid} projectPath={projectPath} />}
         {tab === 'Activity' && <ActivityView projectId={pid} />}
         {tab === 'Docs' && <DocsView projectId={pid} />}
         {tab === 'Reviews' && <ReviewsView projectId={pid} />}
-        {!['Sessions','Files','Memory','Services','Rules','Git','Images','Transcribe','Browser','Visualize','Activity','Docs','Reviews'].includes(tab) && (
+        {!['Sessions','Files','Memory','Services','Rules','Git','Media','Transcribe','Browser','Visualize','Activity','Docs','Reviews'].includes(tab) && (
           <div className="flex-1 p-4 overflow-y-auto">
             <h2 className="text-title text-neutral-300">{tab}</h2>
             <p className="text-sm text-neutral-600 mt-1">Coming soon</p>

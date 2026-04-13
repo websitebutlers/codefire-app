@@ -96,6 +96,7 @@ export type ImageChannel =
   | 'images:generate'
   | 'images:edit'
   | 'images:readFile'
+  | 'images:resetConversation'
 
 export type RecordingChannel =
   | 'recordings:list'

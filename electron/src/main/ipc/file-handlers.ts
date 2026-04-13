@@ -41,6 +41,22 @@ export function registerFileHandlers() {
     return result.filePaths[0]
   })
 
+  ipcMain.handle('dialog:selectFiles', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const options = {
+      properties: ['openFile', 'multiSelections'] as ('openFile' | 'multiSelections')[],
+      filters: [
+        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    }
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths
+  })
+
   ipcMain.handle(
     'files:list',
     (_event, dirPath: string): FileEntry[] => {

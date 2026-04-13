@@ -18,7 +18,7 @@ import NotificationBell from '@renderer/components/NotificationBell'
 import { UpdateBanner } from '@renderer/components/UpdateBanner'
 
 const SessionsView = lazy(() => import('@renderer/views/SessionsView'))
-const ImagesView = lazy(() => import('@renderer/views/ImagesView'))
+const MediaView = lazy(() => import('@renderer/views/MediaView'))
 const ActivityView = lazy(() => import('@renderer/views/ActivityView'))
 const DocsView = lazy(() => import('@renderer/views/DocsView'))
 const BrowserView = lazy(() => import('@renderer/views/BrowserView'))
@@ -104,7 +104,7 @@ export default function MainLayout() {
       <Suspense fallback={lazyFallback}>
         {activeTab === 'Sessions' && <SessionsView projectId="__global__" />}
         {activeTab === 'Activity' && <ActivityView projectId="__global__" />}
-        {activeTab === 'Images' && <ImagesView projectId="__global__" />}
+        {activeTab === 'Media' && <MediaView projectId="__global__" />}
         {activeTab === 'Transcribe' && <RecordingsView projectId="__global__" />}
         {activeTab === 'Browser' && <BrowserView projectId="__global__" />}
         {activeTab === 'Docs' && <DocsView projectId="__global__" />}

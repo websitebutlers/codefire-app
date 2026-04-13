@@ -14,18 +14,12 @@ function Thumbnail({ filePath }: { filePath: string }) {
   const [src, setSrc] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!filePath) return
     api.images.readFile(filePath).then((dataUrl) => setSrc(dataUrl))
   }, [filePath])
 
   if (!src) return null
-
-  return (
-    <img
-      src={src}
-      alt=""
-      className="w-full h-full object-cover"
-    />
-  )
+  return <img src={src} alt="" className="w-full h-full object-cover" />
 }
 
 export default function ImageHistoryList({
@@ -38,9 +32,9 @@ export default function ImageHistoryList({
     return (
       <div className="flex flex-col items-center justify-center h-full text-neutral-500 gap-2">
         <Image size={24} />
-        <p className="text-xs">No images yet</p>
+        <p className="text-xs">No media yet</p>
         <p className="text-[10px] text-neutral-600">
-          Generate images with AI tools
+          Generate images with AI
         </p>
       </div>
     )
@@ -50,7 +44,7 @@ export default function ImageHistoryList({
     <div className="flex flex-col h-full">
       <div className="px-3 py-2 border-b border-neutral-800">
         <p className="text-xs font-medium text-neutral-400 uppercase tracking-wider">
-          Image History
+          Media History
         </p>
       </div>
       <div className="flex-1 overflow-y-auto">
