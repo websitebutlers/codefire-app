@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="scroll-smooth">
+<html lang="en">
 <head>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LHBKVKXBP1"></script>
@@ -14,7 +14,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Teams — CodeFire</title>
   <meta name="description" content="Shared persistent memory for development teams. When one agent learns something, every agent on the team knows it. Tasks, notes, sessions, and code search — all synced.">
-  <meta name="theme-color" content="#050505">
+  <meta name="theme-color" content="#07060a">
   <link rel="icon" type="image/svg+xml" href="codefire-logo.svg">
 
   <!-- Open Graph -->
@@ -27,427 +27,302 @@
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700;800&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700;800;900&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Shared CodeFire design system -->
+  <link rel="stylesheet" href="assets/codefire.css">
 
-  <!-- Tailwind -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            fire: {
-              50: '#fff7ed', 100: '#ffedd5', 200: '#fed7aa', 300: '#fdba74',
-              400: '#fb923c', 500: '#f97316', 600: '#ea580c', 700: '#c2410c',
-              800: '#9a3412', 900: '#7c2d12',
-            },
-            surface: {
-              DEFAULT: '#0a0a0a', 50: '#111111', 100: '#161616',
-              200: '#1a1a1a', 300: '#262626', 400: '#333333',
-            }
-          },
-          fontFamily: {
-            sans: ['Figtree', 'system-ui', 'sans-serif'],
-            serif: ['"Instrument Serif"', 'Georgia', 'serif'],
-            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
-          },
-        }
-      }
-    }
-  </script>
   <style>
-    body { background: #050505; }
-
-    /* Film grain overlay */
-    body::after {
-      content: '';
-      position: fixed;
-      inset: 0;
-      z-index: 9999;
-      pointer-events: none;
-      opacity: 0.018;
-      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-      background-size: 200px 200px;
+    /* Page-specific tweaks */
+    .pain-grid, .feat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
     }
-
-    /* Nav scroll state */
-    .nav-scrolled {
-      background: rgba(5,5,5,0.85);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-    }
-
-    /* Fire gradient text */
-    .text-fire-gradient {
-      background: linear-gradient(135deg, #f97316 0%, #fb923c 40%, #fbbf24 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    /* Section divider */
-    .section-divider {
-      height: 1px;
-      background: linear-gradient(90deg, transparent 0%, rgba(249,115,22,0.2) 50%, transparent 100%);
-    }
-
-    /* Scroll-triggered reveal */
-    .reveal {
-      opacity: 0;
-      transform: translateY(28px);
-      transition: opacity 0.7s ease-out, transform 0.7s ease-out;
-    }
-    .reveal.visible { opacity: 1; transform: translateY(0); }
-
-    /* Feature card */
-    .feature-card {
-      position: relative;
-      transition: border-color 0.3s ease;
-    }
-    .feature-card:hover { border-color: #333; }
-
-    /* Step number */
+    .feat-grid { grid-template-columns: repeat(2, 1fr); }
     .step-number {
-      width: 32px;
-      height: 32px;
+      width: 56px;
+      height: 56px;
       border-radius: 50%;
-      border: 2px solid rgba(249,115,22,0.3);
+      border: 1px solid var(--line);
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      color: #fb923c;
-      font-weight: 700;
-      font-size: 14px;
+      font-family: 'Instrument Serif', serif;
+      font-style: italic;
+      font-size: 32px;
       flex-shrink: 0;
+      background: linear-gradient(135deg, #ffde17, #f15a29);
+      -webkit-background-clip: text; background-clip: text;
+      color: transparent;
     }
-
-    /* Subtle grid */
-    .bg-grid {
-      background-image:
-        linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
-      background-size: 72px 72px;
+    @media (max-width: 880px) {
+      .pain-grid, .feat-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
-<body class="text-gray-300 antialiased font-sans">
+<body>
 
-  <!-- NAV -->
-  <nav id="nav" class="fixed top-0 inset-x-0 z-50 transition-all duration-300">
-    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-      <a href="/" class="flex items-center gap-2.5 group">
-        <img src="codefire-logo.svg" alt="" class="h-7 transition-transform group-hover:scale-105">
-        <span class="text-white font-semibold tracking-tight">CodeFire</span>
+<div class="ember-glow"></div>
+
+<!-- ========== NAV ========== -->
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-brand">
+      <img src="codefire-logo.svg" alt="">
+      <span>CodeFire</span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link" href="/#features">Features</a>
+      <a class="nav-link" href="/#agents">Agents</a>
+      <a class="nav-link" href="/#install">Install</a>
+      <a class="nav-link active" href="/teams">Teams</a>
+      <a class="nav-link" href="/getting-started">Docs</a>
+      <a class="nav-link always" href="https://github.com/websitebutlers/codefire-app" target="_blank" rel="noopener" aria-label="GitHub">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.06c-3.2.69-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.74.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18.92-.26 1.91-.39 2.89-.39.98 0 1.97.13 2.89.39 2.21-1.49 3.18-1.18 3.18-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.27 5.68.41.36.78 1.06.78 2.13v3.16c0 .31.21.67.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/></svg>
       </a>
-      <div class="flex items-center gap-6">
-        <a href="/#features" class="hidden sm:block text-sm text-gray-500 hover:text-white transition-colors">Features</a>
-        <a href="/teams" class="hidden sm:block text-sm text-fire-400 transition-colors">Teams</a>
-        <a href="/getting-started" class="hidden sm:block text-sm text-gray-500 hover:text-white transition-colors">Docs</a>
-        <a href="https://github.com/websitebutlers/codefire-app" target="_blank" rel="noopener"
-           class="text-gray-500 hover:text-white transition-colors" aria-label="GitHub">
-          <i data-lucide="github" class="w-5 h-5"></i>
-        </a>
-        <a href="https://github.com/websitebutlers/codefire-app/releases/latest"
-           class="hidden sm:inline-flex items-center gap-2 bg-fire-500 hover:bg-fire-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-          <i data-lucide="download" class="w-4 h-4"></i>
-          Download
-        </a>
+      <a href="https://github.com/websitebutlers/codefire-app/releases/latest" class="btn-fire nav-cta" target="_blank" rel="noopener">
+        Download
+      </a>
+    </div>
+  </div>
+</nav>
+
+
+<!-- ========== HERO ========== -->
+<section style="position:relative; padding: 180px 28px 100px; overflow:hidden;">
+  <div class="grid-bg"></div>
+  <div id="ember-field" style="position:absolute; inset:0; pointer-events:none; overflow:hidden;"></div>
+  <div class="pulse" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:600px; height:600px; background: radial-gradient(circle, rgba(241,90,41,0.18) 0%, transparent 65%); pointer-events:none; filter: blur(20px);"></div>
+
+  <div style="position:relative; max-width: 1180px; margin: 0 auto; text-align:center;">
+    <div class="reveal">
+      <div class="eyebrow center" style="justify-content:center; margin: 0 auto 28px; display:flex; width:fit-content;">
+        <span>For teams · Shared memory</span>
       </div>
     </div>
-  </nav>
+    <h1 class="reveal reveal-2 display" style="font-size: clamp(48px, 8vw, 110px); margin: 0; max-width: 1000px; margin-left:auto; margin-right:auto;">
+      Your team's agents<br>
+      should <span class="serif" style="font-weight:400;">share</span> a <span class="text-fire">brain</span>.
+    </h1>
+    <p class="reveal reveal-3" style="margin: 36px auto 0; max-width: 720px; color:var(--ink-mute); font-size: clamp(16px, 1.6vw, 18px); line-height: 1.6;">
+      When one developer's agent discovers a gotcha, fixes a bug, or makes an architecture decision — every other agent on the team should know about it. <span style="color:var(--ink);">Persistent shared context</span> across every AI coding session.
+    </p>
+    <div class="reveal reveal-4" style="margin-top: 44px; display:flex; gap:14px; justify-content:center; flex-wrap:wrap;">
+      <a href="https://github.com/websitebutlers/codefire-app/releases/latest" class="btn-fire" target="_blank" rel="noopener" style="padding:14px 26px; border-radius:12px; font-weight:600; font-size:14px; text-decoration:none; display:inline-flex; align-items:center; gap:10px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download CodeFire
+      </a>
+      <a href="/getting-started" class="btn-ghost" style="padding:14px 26px; border-radius:12px; font-weight:500; font-size:14px; text-decoration:none; display:inline-flex; align-items:center; gap:10px;">
+        Getting Started
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
 
 
-  <!-- HERO -->
-  <section class="relative overflow-hidden pt-16">
-    <div class="absolute inset-0 bg-grid"></div>
-    <div class="relative z-10 pt-20 md:pt-28 pb-16">
-      <div class="max-w-3xl mx-auto px-6 text-center">
-        <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight text-white mb-6">
-          Your team's AI agents should <span class="text-fire-gradient">share a brain.</span>
-        </h1>
-        <p class="text-lg text-gray-400 max-w-2xl mx-auto leading-relaxed mb-10">
-          When one developer's agent discovers a gotcha, fixes a bug, or makes an architecture decision — every other agent on the team should know about it. CodeFire gives your team shared persistent memory across every AI coding session.
+<!-- ========== PAIN POINTS ========== -->
+<section style="padding: 80px 28px 100px;">
+  <div style="max-width: 1180px; margin: 0 auto;">
+    <div class="reveal" style="margin-bottom: 56px;">
+      <div class="eyebrow">Chapter I · The cost of amnesia</div>
+      <h2 class="display" style="font-size: clamp(36px, 5.5vw, 72px); margin: 32px 0 0; max-width: 900px;">
+        Multiplied <span class="serif" style="font-weight:400;">across</span><br>
+        every <span class="text-fire-deep">developer</span>.
+      </h2>
+    </div>
+
+    <div class="reveal reveal-2 pain-grid">
+      <div class="agent-card">
+        <div class="mono" style="font-size:11px; letter-spacing:0.2em; color: var(--fire-2); text-transform:uppercase; margin-bottom: 18px;">01 — Time</div>
+        <h3 style="color: var(--ink); font-size: 22px; font-weight: 600; margin: 0 0 12px; letter-spacing:-0.01em;">Context dies between sessions</h3>
+        <p style="color: var(--ink-mute); font-size: 15px; line-height: 1.65; margin: 0;">
+          Your agent spends the first five minutes of every session re-discovering what the last session already knew. Multiply that by every developer on your team.
         </p>
-        <div class="flex flex-col sm:flex-row gap-4 justify-center">
-          <a href="https://github.com/websitebutlers/codefire-app/releases/latest" target="_blank" rel="noopener"
-             class="inline-flex items-center gap-2 bg-fire-500 hover:bg-fire-600 text-white font-semibold px-7 py-3 rounded-xl transition-all hover:shadow-lg hover:shadow-fire-500/25">
-            <i data-lucide="download" class="w-5 h-5"></i>
-            Download CodeFire
-          </a>
-          <a href="/getting-started"
-             class="inline-flex items-center gap-2 border border-gray-700 hover:border-gray-500 text-gray-200 font-medium px-7 py-3 rounded-xl transition-all hover:bg-white/[0.03]">
-            Getting Started
-          </a>
+      </div>
+
+      <div class="agent-card">
+        <div class="mono" style="font-size:11px; letter-spacing:0.2em; color: var(--fire-2); text-transform:uppercase; margin-bottom: 18px;">02 — Knowledge</div>
+        <h3 style="color: var(--ink); font-size: 22px; font-weight: 600; margin: 0 0 12px; letter-spacing:-0.01em;">Knowledge stays siloed</h3>
+        <p style="color: var(--ink-mute); font-size: 15px; line-height: 1.65; margin: 0;">
+          Dev A fixes a tricky deployment issue. Dev B hits the same issue next week. Their agents have no way to share what was learned.
+        </p>
+      </div>
+
+      <div class="agent-card">
+        <div class="mono" style="font-size:11px; letter-spacing:0.2em; color: var(--fire-2); text-transform:uppercase; margin-bottom: 18px;">03 — Visibility</div>
+        <h3 style="color: var(--ink); font-size: 22px; font-weight: 600; margin: 0 0 12px; letter-spacing:-0.01em;">No visibility into AI work</h3>
+        <p style="color: var(--ink-mute); font-size: 15px; line-height: 1.65; margin: 0;">
+          Team leads have no idea what their agents are doing — what tasks are in progress, what decisions were made, or what's blocking progress.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ========== FEATURES ========== -->
+<section style="padding: 100px 28px;">
+  <div style="max-width: 1180px; margin: 0 auto;">
+    <div class="reveal" style="text-align:center; margin-bottom: 64px;">
+      <div class="eyebrow center" style="justify-content:center; display:flex; width:fit-content; margin: 0 auto 24px;">
+        <span>Chapter II · Shared by default</span>
+      </div>
+      <h2 class="display" style="font-size: clamp(36px, 6vw, 80px); margin: 0 auto; max-width: 900px;">
+        Everything your<br>
+        team <span class="serif" style="font-weight:400;">needs</span>.
+      </h2>
+    </div>
+
+    <div class="reveal reveal-2 feat-grid">
+      <div class="agent-card">
+        <div class="mono" style="font-size:11px; letter-spacing:0.2em; color: var(--fire-2); text-transform:uppercase; margin-bottom: 18px;">Shared task board</div>
+        <h3 style="color: var(--ink); font-size: 22px; font-weight: 600; margin: 0 0 12px; letter-spacing:-0.01em;">Tasks, in sync.</h3>
+        <p style="color: var(--ink-mute); font-size: 15px; line-height: 1.65; margin: 0;">
+          Drag-and-drop Kanban visible to the whole team. When one agent creates or completes a task, every team member's agent sees it instantly.
+        </p>
+      </div>
+
+      <div class="agent-card">
+        <div class="mono" style="font-size:11px; letter-spacing:0.2em; color: var(--fire-2); text-transform:uppercase; margin-bottom: 18px;">Notes &amp; decisions</div>
+        <h3 style="color: var(--ink); font-size: 22px; font-weight: 600; margin: 0 0 12px; letter-spacing:-0.01em;">Pin once, share forever.</h3>
+        <p style="color: var(--ink-mute); font-size: 15px; line-height: 1.65; margin: 0;">
+          Architecture decisions, gotchas, and bug patterns captured as persistent notes. Pin critical context so every agent reads it at session start.
+        </p>
+      </div>
+
+      <div class="agent-card">
+        <div class="mono" style="font-size:11px; letter-spacing:0.2em; color: var(--fire-2); text-transform:uppercase; margin-bottom: 18px;">Session history</div>
+        <h3 style="color: var(--ink); font-size: 22px; font-weight: 600; margin: 0 0 12px; letter-spacing:-0.01em;">See every run.</h3>
+        <p style="color: var(--ink-mute); font-size: 15px; line-height: 1.65; margin: 0;">
+          See what every developer's agent worked on — token usage, tool calls, and session summaries. Full transparency into AI-assisted work.
+        </p>
+      </div>
+
+      <div class="agent-card">
+        <div class="mono" style="font-size:11px; letter-spacing:0.2em; color: var(--fire-2); text-transform:uppercase; margin-bottom: 18px;">Semantic search</div>
+        <h3 style="color: var(--ink); font-size: 22px; font-weight: 600; margin: 0 0 12px; letter-spacing:-0.01em;">Search by meaning.</h3>
+        <p style="color: var(--ink-mute); font-size: 15px; line-height: 1.65; margin: 0;">
+          Vector + keyword hybrid search across your indexed codebase. Every agent on the team can search by meaning, not just string matching.
+        </p>
+      </div>
+
+      <div class="agent-card">
+        <div class="mono" style="font-size:11px; letter-spacing:0.2em; color: var(--fire-2); text-transform:uppercase; margin-bottom: 18px;">Activity feed</div>
+        <h3 style="color: var(--ink); font-size: 22px; font-weight: 600; margin: 0 0 12px; letter-spacing:-0.01em;">Real-time visibility.</h3>
+        <p style="color: var(--ink-mute); font-size: 15px; line-height: 1.65; margin: 0;">
+          Real-time visibility into what's happening across the team — task updates, note creation, session activity, and code changes.
+        </p>
+      </div>
+
+      <div class="agent-card">
+        <div class="mono" style="font-size:11px; letter-spacing:0.2em; color: var(--fire-2); text-transform:uppercase; margin-bottom: 18px;">Role-based access</div>
+        <h3 style="color: var(--ink); font-size: 22px; font-weight: 600; margin: 0 0 12px; letter-spacing:-0.01em;">Lead, contribute, view.</h3>
+        <p style="color: var(--ink-mute); font-size: 15px; line-height: 1.65; margin: 0;">
+          Invite team members as leads, contributors, or viewers. Control who can create tasks, edit notes, and manage the team.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ========== HOW IT WORKS ========== -->
+<section style="padding: 100px 28px;">
+  <div style="max-width: 980px; margin: 0 auto;">
+    <div class="reveal" style="text-align:center; margin-bottom: 80px;">
+      <div class="eyebrow center" style="justify-content:center; display:flex; width:fit-content; margin: 0 auto 24px;">
+        <span>Chapter III · Up &amp; running</span>
+      </div>
+      <h2 class="display" style="font-size: clamp(36px, 6vw, 80px); margin: 0 auto;">
+        Three steps,<br>
+        <span class="text-fire">minutes</span> to ship.
+      </h2>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap: 56px;">
+      <div class="reveal" style="display:flex; align-items:flex-start; gap: 32px;">
+        <div class="step-number">i</div>
+        <div>
+          <h3 style="color: var(--ink); font-size: 28px; font-weight: 700; letter-spacing:-0.02em; margin: 0 0 12px;">Download &amp; create a team</h3>
+          <p style="color: var(--ink-mute); font-size: 17px; line-height: 1.65; margin: 0;">
+            Install CodeFire, go to <span style="color:var(--ink);">Settings</span>, and create a team. Invite your developers by email — they'll get a link to join.
+          </p>
+        </div>
+      </div>
+
+      <div class="reveal reveal-2" style="display:flex; align-items:flex-start; gap: 32px;">
+        <div class="step-number">ii</div>
+        <div>
+          <h3 style="color: var(--ink); font-size: 28px; font-weight: 700; letter-spacing:-0.02em; margin: 0 0 12px;">Connect your CLI</h3>
+          <p style="color: var(--ink-mute); font-size: 17px; line-height: 1.65; margin: 0;">
+            Each developer adds the CodeFire MCP server to their AI coding CLI. One command for Claude Code, a config snippet for Gemini CLI, Codex CLI, or OpenCode.
+          </p>
+        </div>
+      </div>
+
+      <div class="reveal reveal-3" style="display:flex; align-items:flex-start; gap: 32px;">
+        <div class="step-number">iii</div>
+        <div>
+          <h3 style="color: var(--ink); font-size: 28px; font-weight: 700; letter-spacing:-0.02em; margin: 0 0 12px;">Start coding together</h3>
+          <p style="color: var(--ink-mute); font-size: 17px; line-height: 1.65; margin: 0;">
+            Every agent on the team now shares tasks, notes, session context, and code search. Context accumulates — sessions get smarter over time.
+          </p>
         </div>
       </div>
     </div>
-  </section>
 
-
-  <div class="section-divider max-w-xl mx-auto"></div>
-
-
-  <!-- PAIN POINTS -->
-  <section class="py-16 md:py-24">
-    <div class="max-w-5xl mx-auto px-6">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-        <div class="reveal bg-surface-50 border border-surface-200 rounded-2xl p-8">
-          <div class="mb-4">
-            <i data-lucide="timer" class="w-8 h-8 text-fire-400"></i>
-          </div>
-          <h3 class="text-white font-semibold text-lg mb-2">Context dies between sessions</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">
-            Your agent spends the first 5 minutes of every session re-discovering what the last session already knew. Multiply that by every developer on your team.
-          </p>
-        </div>
-
-        <div class="reveal bg-surface-50 border border-surface-200 rounded-2xl p-8">
-          <div class="mb-4">
-            <i data-lucide="lock" class="w-8 h-8 text-fire-400"></i>
-          </div>
-          <h3 class="text-white font-semibold text-lg mb-2">Knowledge stays siloed</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">
-            Dev A fixes a tricky deployment issue. Dev B hits the same issue next week. Their agents have no way to share what was learned.
-          </p>
-        </div>
-
-        <div class="reveal bg-surface-50 border border-surface-200 rounded-2xl p-8">
-          <div class="mb-4">
-            <i data-lucide="eye-off" class="w-8 h-8 text-fire-400"></i>
-          </div>
-          <h3 class="text-white font-semibold text-lg mb-2">No visibility into AI-assisted work</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">
-            Team leads have no idea what their agents are doing — what tasks are in progress, what decisions were made, or what's blocking progress.
-          </p>
-        </div>
-
-      </div>
+    <div class="reveal" style="text-align:center; margin-top: 64px;">
+      <a href="/getting-started" class="fire-link" style="font-size: 14px; font-weight: 500;">View the full Getting Started guide →</a>
     </div>
-  </section>
+  </div>
+</section>
 
 
-  <div class="section-divider max-w-xl mx-auto"></div>
+<!-- ========== BOTTOM CTA ========== -->
+<section style="position:relative; padding: 120px 28px 160px; overflow:hidden;">
+  <div style="position:absolute; inset:0; background: radial-gradient(ellipse 60% 50% at 50% 50%, rgba(241,90,41,0.18), transparent 70%); pointer-events:none;"></div>
 
-
-  <!-- FEATURE GRID -->
-  <section class="py-16 md:py-24">
-    <div class="max-w-5xl mx-auto px-6">
-      <div class="text-center mb-14 reveal">
-        <h2 class="text-3xl md:text-4xl font-extrabold text-white mb-4">Everything your team needs</h2>
-        <p class="text-gray-400 max-w-xl mx-auto">Shared context that makes every agent on your team smarter with every session.</p>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-        <div class="reveal feature-card bg-surface-50 border border-surface-200 rounded-2xl p-8">
-          <div class="mb-4">
-            <i data-lucide="kanban" class="w-8 h-8 text-fire-400"></i>
-          </div>
-          <h3 class="text-white font-semibold text-lg mb-2">Shared Task Board</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">
-            Drag-and-drop Kanban visible to the whole team. When one agent creates or completes a task, every team member's agent sees it instantly.
-          </p>
-        </div>
-
-        <div class="reveal feature-card bg-surface-50 border border-surface-200 rounded-2xl p-8">
-          <div class="mb-4">
-            <i data-lucide="notebook-pen" class="w-8 h-8 text-fire-400"></i>
-          </div>
-          <h3 class="text-white font-semibold text-lg mb-2">Shared Notes & Decisions</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">
-            Architecture decisions, gotchas, and bug patterns captured as persistent notes. Pin critical context so every agent reads it at session start.
-          </p>
-        </div>
-
-        <div class="reveal feature-card bg-surface-50 border border-surface-200 rounded-2xl p-8">
-          <div class="mb-4">
-            <i data-lucide="history" class="w-8 h-8 text-fire-400"></i>
-          </div>
-          <h3 class="text-white font-semibold text-lg mb-2">Session History</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">
-            See what every developer's agent worked on — token usage, tool calls, and session summaries. Full transparency into AI-assisted work.
-          </p>
-        </div>
-
-        <div class="reveal feature-card bg-surface-50 border border-surface-200 rounded-2xl p-8">
-          <div class="mb-4">
-            <i data-lucide="search" class="w-8 h-8 text-fire-400"></i>
-          </div>
-          <h3 class="text-white font-semibold text-lg mb-2">Semantic Code Search</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">
-            Vector + keyword hybrid search across your indexed codebase. Every agent on the team can search by meaning, not just string matching.
-          </p>
-        </div>
-
-        <div class="reveal feature-card bg-surface-50 border border-surface-200 rounded-2xl p-8">
-          <div class="mb-4">
-            <i data-lucide="activity" class="w-8 h-8 text-fire-400"></i>
-          </div>
-          <h3 class="text-white font-semibold text-lg mb-2">Activity Feed</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">
-            Real-time visibility into what's happening across the team — task updates, note creation, session activity, and code changes.
-          </p>
-        </div>
-
-        <div class="reveal feature-card bg-surface-50 border border-surface-200 rounded-2xl p-8">
-          <div class="mb-4">
-            <i data-lucide="shield-check" class="w-8 h-8 text-fire-400"></i>
-          </div>
-          <h3 class="text-white font-semibold text-lg mb-2">Role-Based Access</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">
-            Invite team members as leads, contributors, or viewers. Control who can create tasks, edit notes, and manage the team.
-          </p>
-        </div>
-
-      </div>
+  <div style="max-width: 980px; margin: 0 auto; position:relative;">
+    <div class="reveal" style="text-align:center; margin-bottom: 64px;">
+      <img src="codefire-logo.svg" alt="" style="height:56px; opacity: 0.95; filter: drop-shadow(0 0 40px rgba(241,90,41,0.5));">
     </div>
-  </section>
-
-
-  <div class="section-divider max-w-xl mx-auto"></div>
-
-
-  <!-- HOW IT WORKS -->
-  <section class="py-16 md:py-24">
-    <div class="max-w-4xl mx-auto px-6">
-      <div class="text-center mb-14 reveal">
-        <h2 class="text-3xl md:text-4xl font-extrabold text-white mb-4">Up and running in minutes</h2>
-      </div>
-
-      <div class="space-y-10">
-
-        <div class="flex items-start gap-5 reveal">
-          <div class="step-number mt-1">1</div>
-          <div>
-            <h3 class="text-xl font-bold text-white mb-2">Download & create a team</h3>
-            <p class="text-gray-400 leading-relaxed">
-              Install CodeFire, go to <strong class="text-gray-200">Settings</strong>, and create a team. Invite your developers by email — they'll get a link to join.
-            </p>
-          </div>
-        </div>
-
-        <div class="flex items-start gap-5 reveal">
-          <div class="step-number mt-1">2</div>
-          <div>
-            <h3 class="text-xl font-bold text-white mb-2">Connect your CLI</h3>
-            <p class="text-gray-400 leading-relaxed">
-              Each developer adds the CodeFire MCP server to their AI coding CLI. One command for Claude Code, a config snippet for Gemini CLI, Codex CLI, or OpenCode.
-            </p>
-          </div>
-        </div>
-
-        <div class="flex items-start gap-5 reveal">
-          <div class="step-number mt-1">3</div>
-          <div>
-            <h3 class="text-xl font-bold text-white mb-2">Start coding together</h3>
-            <p class="text-gray-400 leading-relaxed">
-              Every agent on the team now shares tasks, notes, session context, and code search. Context accumulates — sessions get smarter over time.
-            </p>
-          </div>
-        </div>
-
-      </div>
-
-      <div class="text-center mt-12 reveal">
-        <a href="/getting-started" class="text-fire-400 hover:text-fire-300 text-sm font-medium underline underline-offset-2 transition-colors">
-          View the full Getting Started guide &rarr;
-        </a>
-      </div>
+    <h2 class="reveal reveal-2 display" style="font-size: clamp(36px, 5.5vw, 72px); text-align:center; line-height: 1.05; max-width: 900px; margin: 0 auto;">
+      Give your team <span class="serif" style="font-weight:400;">shared</span> <span class="text-fire">memory</span>.
+    </h2>
+    <p class="reveal reveal-3" style="text-align:center; color: var(--ink-mute); font-size: 16px; margin: 32px auto 0; max-width: 540px; line-height: 1.6;">
+      Free to start. Team plans available in-app.
+    </p>
+    <div class="reveal reveal-4" style="margin-top: 48px; display:flex; gap: 14px; justify-content:center; flex-wrap:wrap;">
+      <a href="https://github.com/websitebutlers/codefire-app/releases/latest" class="btn-fire" target="_blank" rel="noopener" style="padding:16px 30px; border-radius:12px; font-weight:600; font-size:15px; text-decoration:none; display:inline-flex; align-items:center; gap:10px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download CodeFire
+      </a>
+      <a href="/getting-started" class="btn-ghost" style="padding:16px 30px; border-radius:12px; font-weight:500; font-size:15px; text-decoration:none; display:inline-flex; align-items:center; gap:10px;">
+        Getting Started
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </a>
     </div>
-  </section>
+  </div>
+</section>
 
 
-  <div class="section-divider max-w-xl mx-auto"></div>
-
-
-  <!-- BOTTOM CTA -->
-  <section class="py-20 md:py-28">
-    <div class="max-w-3xl mx-auto px-6">
-      <div class="reveal relative rounded-2xl border border-surface-200 p-12 md:p-16 text-center overflow-hidden">
-        <div class="absolute inset-0 bg-gradient-to-b from-fire-500/[0.04] to-transparent pointer-events-none"></div>
-        <div class="relative">
-          <i data-lucide="flame" class="w-8 h-8 text-fire-500 mx-auto mb-6"></i>
-          <h2 class="text-2xl md:text-4xl font-bold text-white mb-4">
-            Give your team shared memory.
-          </h2>
-          <p class="text-gray-400 text-base max-w-lg mx-auto mb-8 leading-relaxed">
-            Free to start. Team plans available in-app.
-          </p>
-          <div class="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="https://github.com/websitebutlers/codefire-app/releases/latest" target="_blank" rel="noopener"
-               class="inline-flex items-center gap-2 bg-fire-500 hover:bg-fire-600 text-white font-semibold px-6 py-3 rounded-xl transition-all hover:shadow-lg hover:shadow-fire-500/25">
-              <i data-lucide="download" class="w-5 h-5"></i>
-              Download CodeFire
-            </a>
-            <a href="/getting-started"
-               class="inline-flex items-center gap-2 border border-gray-700 hover:border-gray-500 text-gray-200 font-medium px-6 py-3 rounded-xl transition-all hover:bg-white/[0.03]">
-              <i data-lucide="arrow-right" class="w-4 h-4"></i>
-              View Getting Started Guide
-            </a>
-          </div>
-        </div>
-      </div>
+<!-- ========== FOOTER ========== -->
+<footer class="cf-footer">
+  <div class="cf-footer-inner">
+    <div class="cf-footer-brand">
+      <img src="codefire-logo.svg" alt="">
+      <span>CodeFire · Built by <a href="https://github.com/websitebutlers" target="_blank" rel="noopener">Website Butlers</a></span>
     </div>
-  </section>
-
-
-  <!-- FOOTER -->
-  <footer class="border-t border-surface-200 py-12">
-    <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
-      <div class="flex items-center gap-3">
-        <img src="codefire-logo.svg" alt="" class="h-5 opacity-60">
-        <span class="text-gray-600 text-sm">
-          Built by <a href="https://github.com/websitebutlers" target="_blank" rel="noopener" class="text-gray-500 hover:text-white transition-colors">Website Butlers</a>
-        </span>
-      </div>
-      <div class="flex items-center gap-6">
-        <a href="https://github.com/websitebutlers/codefire-app" target="_blank" rel="noopener"
-           class="text-gray-600 hover:text-gray-300 transition-colors text-sm flex items-center gap-1.5">
-          <i data-lucide="github" class="w-4 h-4"></i>
-          GitHub
-        </a>
-        <span class="text-gray-800 text-xs font-mono border border-surface-300 rounded px-2 py-0.5">MIT License</span>
-      </div>
+    <div class="cf-footer-meta">
+      MIT licensed · No telemetry · v1.7
     </div>
-  </footer>
+  </div>
+</footer>
 
 
-  <!-- SCRIPTS -->
-  <script>
-    lucide.createIcons();
-
-    // Scroll-triggered reveals
-    document.addEventListener('DOMContentLoaded', () => {
-      const reveals = document.querySelectorAll('.reveal');
-      const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
-            observer.unobserve(entry.target);
-          }
-        });
-      }, { threshold: 0.08, rootMargin: '0px 0px -30px 0px' });
-      reveals.forEach(el => observer.observe(el));
-    });
-
-    // Nav scroll effect
-    const nav = document.getElementById('nav');
-    let ticking = false;
-    window.addEventListener('scroll', () => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          nav.classList.toggle('nav-scrolled', window.scrollY > 24);
-          ticking = false;
-        });
-        ticking = true;
-      }
-    });
-  </script>
+<script src="assets/codefire.js"></script>
 
 </body>
 </html>

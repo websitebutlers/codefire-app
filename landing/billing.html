@@ -14,13 +14,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Billing — CodeFire</title>
   <meta name="description" content="Manage your CodeFire team billing and subscription.">
-  <meta name="theme-color" content="#050505">
+  <meta name="theme-color" content="#07060a">
   <link rel="icon" type="image/svg+xml" href="codefire-logo.svg">
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700;800&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700;800;900&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Shared CodeFire design system -->
+  <link rel="stylesheet" href="assets/codefire.css">
 
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -60,36 +63,34 @@
     }
   </script>
   <style>
-    body { background: #050505; }
-
-    body::after {
-      content: '';
-      position: fixed;
-      inset: 0;
-      z-index: 9999;
-      pointer-events: none;
-      opacity: 0.018;
-      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-      background-size: 200px 200px;
-    }
+    /* Page-specific overrides on top of shared codefire.css */
+    body { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; position: relative; }
 
     .text-fire-gradient {
-      background: linear-gradient(135deg, #f97316 0%, #fb923c 40%, #fbbf24 100%);
+      background: linear-gradient(135deg, #ffde17 0%, #f7941e 45%, #f15a29 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
+
+    /* Form input focus tweaks to use fire palette */
+    input:focus { outline: none; border-color: var(--fire-3) !important; box-shadow: 0 0 0 3px rgba(241,90,41,0.18); }
   </style>
 </head>
-<body class="font-sans text-white antialiased min-h-screen flex items-center justify-center px-4">
+<body class="font-sans">
 
-  <div class="w-full max-w-md animate-fade-in-up">
+  <div class="ember-glow"></div>
+
+  <!-- ambient pulse -->
+  <div class="pulse" style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:520px; height:520px; background: radial-gradient(circle, rgba(241,90,41,0.16) 0%, transparent 65%); pointer-events:none; filter: blur(20px); z-index: 0;"></div>
+
+  <div class="w-full max-w-md animate-fade-in-up" style="position:relative; z-index: 1;">
 
     <!-- Logo -->
     <div class="flex justify-center mb-8">
-      <a href="/" class="flex items-center gap-2">
-        <img src="codefire-logo.svg" alt="CodeFire" class="h-8 w-8">
-        <span class="text-lg font-semibold tracking-tight text-white">CodeFire</span>
+      <a href="/" class="nav-brand" style="gap: 10px;">
+        <img src="codefire-logo.svg" alt="CodeFire">
+        <span>CodeFire</span>
       </a>
     </div>
 
@@ -120,7 +121,7 @@
         <div id="signin-error" class="hidden text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2.5"></div>
 
         <button type="submit" id="signin-submit"
-          class="w-full bg-fire-500 hover:bg-fire-600 text-white font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+          class="btn-fire w-full font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
           <span id="signin-submit-text">Sign In</span>
           <i data-lucide="loader-2" id="signin-spinner" class="w-4 h-4 animate-spin hidden"></i>
         </button>
